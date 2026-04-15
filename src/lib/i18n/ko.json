@@ -1,0 +1,15 @@
+{
+  "app.title": "Identity Provider",
+  "nav.login": "로그인",
+  "nav.logout": "로그아웃",
+  "nav.admin": "관리자",
+  "login.email": "이메일",
+  "login.password": "비밀번호",
+  "login.submit": "로그인",
+  "admin.title": "관리자 대시보드",
+  "admin.users": "사용자",
+  "admin.oidc_clients": "OIDC 클라이언트",
+  "admin.saml_sps": "SAML SP",
+  "admin.signing_keys": "서명 키",
+  "admin.audit": "감사 로그"
+}

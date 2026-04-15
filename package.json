@@ -13,15 +13,15 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"gen": "wrangler types",
-		"db:push": "drizzle-kit push",
 		"db:generate": "drizzle-kit generate",
+		"db:push": "drizzle-kit push",
 		"db:migrate": "drizzle-kit migrate",
+		"db:migrate:preview": "CLOUDFLARE_IS_PREVIEW=true drizzle-kit migrate",
 		"db:studio": "drizzle-kit studio"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",
 		"@eslint/js": "^10.0.1",
-		"@libsql/client": "^0.17.2",
 		"@sveltejs/adapter-cloudflare": "^7.2.8",
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
@@ -43,5 +43,10 @@
 		"typescript-eslint": "^8.58.1",
 		"vite": "^8.0.7",
 		"wrangler": "^4.81.0"
+	},
+	"dependencies": {
+		"@xmldom/xmldom": "^0.9.9",
+		"xmldsigjs": "^2.8.7",
+		"xpath": "^0.0.34"
 	}
 }
