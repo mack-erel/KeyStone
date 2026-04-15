@@ -30,16 +30,16 @@
 			<input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ''} />
 
 			<div>
-				<label for="email" class="block text-sm font-medium text-gray-700">
-					{t('login.email')}
+				<label for="username" class="block text-sm font-medium text-gray-700">
+					{t('login.username')}
 				</label>
 				<input
-					type="email"
-					name="email"
-					id="email"
+					type="text"
+					name="username"
+					id="username"
 					required
 					autocomplete="username"
-					value={form?.email ?? ''}
+					value={form?.username ?? ''}
 					class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm"
 				/>
 			</div>

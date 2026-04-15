@@ -9,7 +9,7 @@ import {
 } from './constants';
 import { hashPassword } from './password';
 import { getRuntimeConfig } from './runtime';
-import { findPasswordCredential, normalizeEmail } from './users';
+import { findPasswordCredential, normalizeEmail, normalizeUsername } from './users';
 
 function isUniqueConstraintError(error: unknown): boolean {
 	return error instanceof Error && /unique constraint failed/i.test(error.message);
@@ -94,6 +94,9 @@ export async function ensureBootstrapAdmin(
 	}
 
 	const email = normalizeEmail(config.bootstrapAdminEmail);
+	const username = config.bootstrapAdminUsername
+		? normalizeUsername(config.bootstrapAdminUsername)
+		: email.split('@')[0];
 	const [existingUser] = await db
 		.select()
 		.from(users)
@@ -101,8 +104,11 @@ export async function ensureBootstrapAdmin(
 		.limit(1);
 
 	if (existingUser) {
-		if (existingUser.role !== 'admin') {
-			await db.update(users).set({ role: 'admin' }).where(eq(users.id, existingUser.id));
+		const updates: Record<string, unknown> = {};
+		if (existingUser.role !== 'admin') updates.role = 'admin';
+		if (!existingUser.username) updates.username = username;
+		if (Object.keys(updates).length > 0) {
+			await db.update(users).set(updates).where(eq(users.id, existingUser.id));
 		}
 
 		const passwordCredential = await findPasswordCredential(db, existingUser.id);
@@ -126,6 +132,7 @@ export async function ensureBootstrapAdmin(
 		id: userId,
 		tenantId: tenant.id,
 		email,
+		username,
 		displayName: config.bootstrapAdminName,
 		role: 'admin',
 		status: 'active'

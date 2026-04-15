@@ -8,6 +8,10 @@ export function normalizeEmail(email: string): string {
 	return email.trim().toLowerCase();
 }
 
+export function normalizeUsername(username: string): string {
+	return username.trim().toLowerCase();
+}
+
 export async function findUserByEmail(
 	db: DB,
 	tenantId: string,
@@ -17,6 +21,20 @@ export async function findUserByEmail(
 		.select()
 		.from(users)
 		.where(and(eq(users.tenantId, tenantId), eq(users.email, normalizeEmail(email))))
+		.limit(1);
+
+	return user ?? null;
+}
+
+export async function findUserByUsername(
+	db: DB,
+	tenantId: string,
+	username: string
+): Promise<User | null> {
+	const [user] = await db
+		.select()
+		.from(users)
+		.where(and(eq(users.tenantId, tenantId), eq(users.username, normalizeUsername(username))))
 		.limit(1);
 
 	return user ?? null;
@@ -35,10 +53,10 @@ export async function findPasswordCredential(db: DB, userId: string): Promise<Cr
 export async function authenticateLocalUser(
 	db: DB,
 	tenantId: string,
-	email: string,
+	username: string,
 	password: string
 ): Promise<User | null> {
-	const user = await findUserByEmail(db, tenantId, email);
+	const user = await findUserByUsername(db, tenantId, username);
 
 	if (!user || user.status !== 'active') {
 		return null;

@@ -1,5 +1,12 @@
 import { json } from '@sveltejs/kit';
+import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
+import * as xpath from 'xpath';
+import { setNodeDependencies } from 'xml-core';
 import * as xmldsigjs from 'xmldsigjs';
+
+// Cloudflare Workers 런타임에는 DOMParser/XMLSerializer/xpath 가 전역으로 없으므로
+// @xmldom/xmldom 구현체를 xml-core 에 직접 등록.
+setNodeDependencies({ DOMParser, XMLSerializer, xpath });
 
 /**
  * PoC: SAML Assertion 서명을 `xmldsigjs` 로 실제 수행.

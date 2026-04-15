@@ -3,7 +3,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { getRequestMetadata, recordAuditEvent } from '$lib/server/audit';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { createSessionRecord, setSessionCookie } from '$lib/server/auth/session';
-import { authenticateLocalUser, normalizeEmail } from '$lib/server/auth/users';
+import { authenticateLocalUser, normalizeUsername } from '$lib/server/auth/users';
 
 function sanitizeRedirectTarget(target: string | null): string | null {
 	if (!target || !target.startsWith('/') || target.startsWith('//')) {
@@ -28,21 +28,21 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 export const actions: Actions = {
 	default: async (event) => {
 		const formData = await event.request.formData();
-		const email = normalizeEmail(String(formData.get('email') ?? ''));
+		const username = normalizeUsername(String(formData.get('username') ?? ''));
 		const password = String(formData.get('password') ?? '');
 		const redirectTo = sanitizeRedirectTarget(String(formData.get('redirectTo') ?? ''));
 
-		if (!email || !password) {
+		if (!username || !password) {
 			return fail(400, {
-				email,
+				username,
 				redirectTo,
-				error: '이메일과 비밀번호를 입력해 주세요.'
+				error: '아이디와 비밀번호를 입력해 주세요.'
 			});
 		}
 
 		if (!event.locals.db || !event.locals.tenant) {
 			return fail(503, {
-				email,
+				username,
 				redirectTo,
 				error:
 					event.locals.runtimeError ??
@@ -51,7 +51,7 @@ export const actions: Actions = {
 		}
 
 		const { db, tenant } = requireDbContext(event.locals);
-		const user = await authenticateLocalUser(db, tenant.id, email, password);
+		const user = await authenticateLocalUser(db, tenant.id, username, password);
 		const requestMetadata = getRequestMetadata(event);
 
 		if (!user) {
@@ -61,13 +61,13 @@ export const actions: Actions = {
 				outcome: 'failure',
 				ip: requestMetadata.ip,
 				userAgent: requestMetadata.userAgent,
-				detail: { email }
+				detail: { username }
 			});
 
 			return fail(400, {
-				email,
+				username,
 				redirectTo,
-				error: '이메일 또는 비밀번호가 올바르지 않습니다.'
+				error: '아이디 또는 비밀번호가 올바르지 않습니다.'
 			});
 		}
 

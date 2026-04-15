@@ -10,11 +10,22 @@
 
 ## 결과 요약
 
-| 항목                               | 상태                       | 비고                                                                                                                        |
-| ---------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| RS256 JWT (WebCrypto)              | ✅ OK                      | 외부 의존성 없이 동작. OIDC ID Token 서명 그대로 사용 가능.                                                                 |
-| 패스워드 해시 (PBKDF2-SHA256 600k) | ✅ OK (MVP)                | WebCrypto 네이티브. M5 에서 argon2id 교체 예정.                                                                             |
-| SAML Assertion 서명                | 🟡 번들 OK / 런타임 미확인 | `xmldsigjs + @xmldom/xmldom` Workers 번들 성공 (2.25 kB). `bun run dev` 로 `/poc/saml-sign` 호출하여 런타임 동작 확인 필요. |
+| 항목                               | 상태                                | 비고                                                                                                                        |
+| ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| RS256 JWT (WebCrypto)              | ✅ OK                               | 외부 의존성 없이 동작. OIDC ID Token 서명 그대로 사용 가능.                                                                 |
+| 패스워드 해시 (PBKDF2-SHA256 600k) | ✅ OK (`M0` 구현 반영 완료)         | WebCrypto 네이티브. 현재 로그인/부트스트랩 관리자 계정 검증에 사용 중. `M5` 에서 argon2id 교체 예정.                        |
+| SAML Assertion 서명                | ✅ OK (`2026-04-16`)               | `xmldsigjs + @xmldom/xmldom` 런타임 검증 완료. `verified: true`, 서명 46ms (keygen 43ms, sign 2ms, verify 1ms). `setNodeDependencies({ DOMParser, XMLSerializer, xpath })` 등록 필요. |
+| 개발 체인 (`lint/check/build`)     | ✅ OK (`2026-04-16` 기준 검증 완료) | `wrangler types --check`, `svelte-check`, `vite build` 까지 통과.                                                           |
+| M0 수동 로그인 검증                 | ✅ OK (`2026-04-16`)               | D1 마이그레이션 적용, bootstrap admin 아이디/비밀번호 로그인 → `/admin` 리다이렉트 확인.                                    |
+
+## 실구현 반영 상태 (2026-04-16)
+
+- `PBKDF2-SHA256 600k` 결정은 실제 인증 모듈에 반영되었고, `credentials.secret` 포맷은 `pbkdf2$sha256:600000$<salt>$<hash>` 형태를 사용한다.
+- `default` tenant bootstrap, bootstrap admin seed, 로그인/로그아웃, 세션 쿠키, 감사 로그 저장/조회까지 `M0` 범위로 구현되었다.
+- 로그인 식별자를 이메일에서 **아이디(username)** 로 변경. `users.username` 컬럼 추가(`drizzle/0002_dizzy_korvac.sql`), bootstrap 시 `IDP_BOOTSTRAP_ADMIN_USERNAME` 미설정이면 email 로컬파트 자동 사용.
+- D1 마이그레이션 적용 및 `wrangler dev` 환경에서 아이디/비밀번호 로그인 수동 검증 완료 (2026-04-16). **M0 완전 완료.**
+- `signing_keys` 스키마와 JWK 저장 구조는 준비되었지만, 실제 `/oidc/jwks` 공개 엔드포인트는 아직 구현하지 않았다.
+- SAML 서명 PoC 는 코드와 빌드 기준으로는 유지되고 있으나, Workers 런타임 요청으로 실제 왕복 검증한 상태는 아직 아니다.
 
 ## 의사결정 기록
 
@@ -25,6 +36,7 @@
 
 ## 다음 작업
 
-- 위 두 결정이 난 뒤 실 라이브러리 통합 PoC 재수행
-- `signing_keys` 테이블에 PoC 에서 생성한 JWK 저장 흐름 연결
-- JWKS 공개 엔드포인트(`/oidc/jwks`) 스캐폴드
+- ~~D1 에 최신 마이그레이션 적용 후 bootstrap admin 계정으로 수동 로그인 검증~~ → **완료 (2026-04-16)**
+- `signing_keys` 테이블과 연결되는 JWKS 공개 엔드포인트(`/oidc/jwks`) 구현 (M1)
+- ~~`/poc/saml-sign` 을 `wrangler dev` 환경에서 호출하여 런타임 검증 완료~~ → **완료 (2026-04-16)** `verified: true`
+- Argon2id(`hash-wasm`) 전환 시점과 롤링 업그레이드 전략을 `M5` 문서에 구체화

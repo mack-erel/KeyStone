@@ -8,7 +8,7 @@
 		"admin": "관리자"
 	},
 	"login": {
-		"email": "이메일",
+		"username": "아이디",
 		"password": "비밀번호",
 		"submit": "로그인"
 	},

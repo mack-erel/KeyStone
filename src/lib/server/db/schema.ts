@@ -35,6 +35,7 @@ export const users = sqliteTable(
 		tenantId: text('tenant_id')
 			.notNull()
 			.references(() => tenants.id, { onDelete: 'cascade' }),
+		username: text('username'),
 		email: text('email').notNull(),
 		emailVerifiedAt: integer('email_verified_at', { mode: 'timestamp_ms' }),
 		displayName: text('display_name'),
@@ -53,6 +54,7 @@ export const users = sqliteTable(
 	},
 	(t) => [
 		uniqueIndex('users_tenant_email_uidx').on(t.tenantId, t.email),
+		uniqueIndex('users_tenant_username_uidx').on(t.tenantId, t.username),
 		index('users_tenant_idx').on(t.tenantId)
 	]
 );
