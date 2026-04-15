@@ -1,5 +1,5 @@
 import { untrack } from 'svelte';
-import ko from './ko.json';
+import ko from './i18n/ko.json';
 
 export type Locale = 'ko';
 
@@ -22,10 +22,10 @@ export function getLocale(): Locale {
 export function t(key: string, params?: Record<string, string | number>): string {
   const locale = getLocale();
   const keys = key.split('.');
-  
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let message: any = messages[locale];
-  
+
   for (const k of keys) {
     if (message && typeof message === 'object' && k in message) {
       message = message[k];

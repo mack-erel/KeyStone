@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { t } from '$lib/i18n';
+  import { t } from '$lib/i18n.svelte';
 </script>
 
 <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
