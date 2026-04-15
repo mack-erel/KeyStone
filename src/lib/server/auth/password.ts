@@ -1,6 +1,8 @@
 const PASSWORD_ALGORITHM = 'pbkdf2';
 const PASSWORD_DIGEST = 'sha256';
-const PASSWORD_ITERATIONS = 600_000;
+// Cloudflare Workers WebCrypto PBKDF2 한도: 100,000회
+// M5 에서 argon2id(hash-wasm) 로 교체 예정
+const PASSWORD_ITERATIONS = 100_000;
 const PASSWORD_SALT_LENGTH = 16;
 
 function bytesToBase64(bytes: Uint8Array): string {

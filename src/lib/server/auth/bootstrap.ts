@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { DB } from '$lib/server/db';
 import { recordAuditEvent } from '$lib/server/audit';
-import { credentials, identities, type Tenant, tenants, users } from '$lib/server/db/schema';
+import { credentials, identities, signingKeys, type Tenant, tenants, users } from '$lib/server/db/schema';
 import {
 	DEFAULT_TENANT_SLUG,
 	LOCAL_IDENTITY_PROVIDER,
@@ -10,6 +10,7 @@ import {
 import { hashPassword } from './password';
 import { getRuntimeConfig } from './runtime';
 import { findPasswordCredential, normalizeEmail, normalizeUsername } from './users';
+import { generateRsaSigningKey, wrapPrivateKey } from '$lib/server/crypto/keys';
 
 function isUniqueConstraintError(error: unknown): boolean {
 	return error instanceof Error && /unique constraint failed/i.test(error.message);
@@ -157,8 +158,38 @@ export async function ensureBootstrapAdmin(
 	});
 }
 
+export async function ensureSigningKey(
+	db: DB,
+	tenant: Tenant,
+	signingKeySecret: string
+): Promise<void> {
+	const [existing] = await db
+		.select({ id: signingKeys.id })
+		.from(signingKeys)
+		.where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true)))
+		.limit(1);
+	if (existing) return;
+
+	const { kid, privateKey, publicJwk } = await generateRsaSigningKey();
+	const privateJwkEncrypted = await wrapPrivateKey(privateKey, signingKeySecret);
+	await db.insert(signingKeys).values({
+		id: crypto.randomUUID(),
+		tenantId: tenant.id,
+		kid,
+		use: 'sig',
+		alg: 'RS256',
+		publicJwk: JSON.stringify(publicJwk),
+		privateJwkEncrypted,
+		active: true
+	});
+}
+
 export async function ensureAuthBaseline(db: DB, platform: App.Platform | undefined) {
+	const config = getRuntimeConfig(platform);
 	const tenant = await ensureDefaultTenant(db, platform);
 	await ensureBootstrapAdmin(db, platform, tenant);
+	if (config.signingKeySecret) {
+		await ensureSigningKey(db, tenant, config.signingKeySecret);
+	}
 	return tenant;
 }

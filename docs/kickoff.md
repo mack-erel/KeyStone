@@ -1,7 +1,7 @@
 # IdP 프로젝트 킥오프
 
 **작성일**: 2026-04-15
-**상태**: In Progress (`M0` 완전 완료, `M1` OIDC 구현 착수 전)
+**상태**: In Progress (`M0` 완전 완료, `M1` OIDC 완전 완료)
 **오너**: jang@hyochan.site
 
 ---
@@ -36,6 +36,7 @@
 - [x] 관리자 대시보드와 Users/OIDC Clients/SAML SPs/Signing Keys/Audit 페이지의 read-only 조회 구현
 - [x] `users.username` 컬럼 추가 (`drizzle/0002_dizzy_korvac.sql`), 로그인을 이메일 대신 아이디(username)로 변경. `IDP_BOOTSTRAP_ADMIN_USERNAME` 미설정 시 email 로컬파트 자동 사용.
 - [x] D1 마이그레이션 적용, bootstrap admin env 설정, `wrangler dev` 에서 아이디/비밀번호 로그인 수동 검증 완료
+- [x] **M1 OIDC 완전 완료 (2026-04-16)**: `IDP_SIGNING_KEY_SECRET` 기반 RSA-2048 서명 키 자동 생성(`signing_keys` 테이블), `/.well-known/openid-configuration`, `/oidc/jwks`, `/oidc/authorize`(PKCE S256), `/oidc/token`(RS256 ID Token + HMAC-SHA256 opaque access token), `/oidc/userinfo`, `/oidc/end-session` 구현 및 수동 E2E 검증 완료.
 
 ---
 
@@ -179,7 +180,8 @@ audit_events(id, tenant_id, user_id, sp_or_client_id, kind, ip, ua, detail_json,
 ### 진행 현황 (2026-04-16)
 
 - `M0` 완전 완료. D1 마이그레이션 적용, bootstrap admin 계정 수동 로그인 검증까지 완료.
-- `M1`/`M2` 는 아직 미착수. 다만 OIDC/SAML 을 위한 스키마, PoC 엔드포인트, 관리자 read-only 조회 기반은 준비됨
+- `M1` 완전 완료 (2026-04-16). OIDC authorization_code + PKCE 전체 플로우, RS256 ID Token, HMAC opaque access token, userinfo, end-session 수동 E2E 검증 완료.
+- `M2` 는 아직 미착수. SAML 을 위한 스키마, PoC 엔드포인트, 관리자 read-only 조회 기반은 준비됨.
 
 ---
 
@@ -209,7 +211,7 @@ audit_events(id, tenant_id, user_id, sp_or_client_id, kind, ip, ua, detail_json,
 - [x] `M0` 인증 기반 구현: 로그인/로그아웃, D1 세션, bootstrap admin seed, 관리자 보호, 감사 로그 조회
 - [x] D1 에 마이그레이션 적용 (`0001_flashy_blackheart.sql`, `0002_dizzy_korvac.sql`)
 - [x] `IDP_BOOTSTRAP_ADMIN_EMAIL`, `IDP_BOOTSTRAP_ADMIN_PASSWORD`, `IDP_BOOTSTRAP_ADMIN_USERNAME` 설정 후 수동 로그인 검증 완료
-- [ ] OIDC Discovery·JWKS 스캐폴드
-- [ ] OIDC `authorize/token/userinfo` 최소 플로우 구현
-- [ ] `/poc/saml-sign` 런타임 검증 후 SAML Metadata 스캐폴드
+- [x] OIDC Discovery·JWKS 스캐폴드 → **완료 (2026-04-16)**
+- [x] OIDC `authorize/token/userinfo/end-session` 최소 플로우 구현 → **완료 (2026-04-16)**
+- [ ] SAML Metadata 스캐폴드 및 SSO 최소 플로우 구현 (M2)
 - [ ] 관리자 UI 등록/수정/삭제(CUD) 구현

@@ -4,6 +4,8 @@ export interface RuntimeConfig {
 	bootstrapAdminUsername?: string;
 	bootstrapAdminName: string;
 	defaultTenantName: string;
+	issuerUrl?: string;
+	signingKeySecret?: string;
 }
 
 type EnvLookup = Record<string, unknown>;
@@ -21,6 +23,8 @@ export function getRuntimeConfig(platform: App.Platform | undefined): RuntimeCon
 		bootstrapAdminPassword: getString(env, 'IDP_BOOTSTRAP_ADMIN_PASSWORD'),
 		bootstrapAdminUsername: getString(env, 'IDP_BOOTSTRAP_ADMIN_USERNAME')?.trim().toLowerCase(),
 		bootstrapAdminName: getString(env, 'IDP_BOOTSTRAP_ADMIN_NAME') ?? '관리자',
-		defaultTenantName: getString(env, 'IDP_DEFAULT_TENANT_NAME') ?? 'Default Tenant'
+		defaultTenantName: getString(env, 'IDP_DEFAULT_TENANT_NAME') ?? 'Default Tenant',
+		issuerUrl: getString(env, 'IDP_ISSUER_URL')?.trim().replace(/\/$/, ''),
+		signingKeySecret: getString(env, 'IDP_SIGNING_KEY_SECRET')
 	};
 }
