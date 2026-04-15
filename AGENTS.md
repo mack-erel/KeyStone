@@ -4,6 +4,14 @@
 - **Package Manager**: bun
 - **Add-ons**: prettier, eslint, tailwindcss, sveltekit-adapter, drizzle, mcp
 
+## Project Rules
+
+### Database migrations
+
+- 스키마 변경 작업 시 **`bun run db:generate` 까지만** 수행한다. 생성된 마이그레이션 파일(`drizzle/*.sql`)과 메타 변경은 커밋/보고한다.
+- **`drizzle-kit migrate`, `drizzle-kit push`, `bun run db:migrate`, `bun run db:migrate:preview`** 같은 실제 D1 적용 명령은 **절대 자동 실행하지 않는다.** 반드시 사용자에게 실행을 요청한다.
+- 이유: 원격 D1 변경은 되돌리기 어렵고, 프리뷰/프로덕션 선택은 사용자 판단 영역.
+
 ---
 
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:

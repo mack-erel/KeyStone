@@ -39,20 +39,15 @@ export const GET = async () => {
 	const doc = xmldsigjs.Parse(assertionXml);
 
 	const signedXml = new xmldsigjs.SignedXml();
-	await signedXml.Sign(
-		{ name: 'RSASSA-PKCS1-v1_5' },
-		keys.privateKey,
-		doc,
-		{
-			keyValue: keys.publicKey,
-			references: [
-				{
-					hash: 'SHA-256',
-					transforms: ['enveloped', 'exc-c14n']
-				}
-			]
-		}
-	);
+	await signedXml.Sign({ name: 'RSASSA-PKCS1-v1_5' }, keys.privateKey, doc, {
+		keyValue: keys.publicKey,
+		references: [
+			{
+				hash: 'SHA-256',
+				transforms: ['enveloped', 'exc-c14n']
+			}
+		]
+	});
 
 	// Sign() 은 서명 요소만 반환하므로, 문서 루트에 삽입한 뒤 직렬화.
 	const sigNode = signedXml.XmlSignature.GetXml();

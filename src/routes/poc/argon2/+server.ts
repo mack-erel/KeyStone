@@ -35,8 +35,7 @@ export const GET = async () => {
 	);
 	const elapsed = Date.now() - t0;
 
-	const b64 = (b: ArrayBuffer | Uint8Array) =>
-		btoa(String.fromCharCode(...new Uint8Array(b)));
+	const b64 = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(b)));
 
 	return json({
 		note: 'PBKDF2-SHA256 fallback. 프로덕션은 argon2id(hash-wasm) 전환 예정.',

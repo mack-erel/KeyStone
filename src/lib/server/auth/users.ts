@@ -1,0 +1,67 @@
+import { and, eq } from 'drizzle-orm';
+import type { DB } from '$lib/server/db';
+import { credentials, type Credential, type User, users } from '$lib/server/db/schema';
+import { PASSWORD_CREDENTIAL_TYPE } from './constants';
+import { verifyPassword } from './password';
+
+export function normalizeEmail(email: string): string {
+	return email.trim().toLowerCase();
+}
+
+export async function findUserByEmail(
+	db: DB,
+	tenantId: string,
+	email: string
+): Promise<User | null> {
+	const [user] = await db
+		.select()
+		.from(users)
+		.where(and(eq(users.tenantId, tenantId), eq(users.email, normalizeEmail(email))))
+		.limit(1);
+
+	return user ?? null;
+}
+
+export async function findPasswordCredential(db: DB, userId: string): Promise<Credential | null> {
+	const [credential] = await db
+		.select()
+		.from(credentials)
+		.where(and(eq(credentials.userId, userId), eq(credentials.type, PASSWORD_CREDENTIAL_TYPE)))
+		.limit(1);
+
+	return credential ?? null;
+}
+
+export async function authenticateLocalUser(
+	db: DB,
+	tenantId: string,
+	email: string,
+	password: string
+): Promise<User | null> {
+	const user = await findUserByEmail(db, tenantId, email);
+
+	if (!user || user.status !== 'active') {
+		return null;
+	}
+
+	const credential = await findPasswordCredential(db, user.id);
+
+	if (!credential?.secret) {
+		return null;
+	}
+
+	const result = await verifyPassword(password, credential.secret);
+
+	if (!result.valid) {
+		return null;
+	}
+
+	if (result.rehash) {
+		await db
+			.update(credentials)
+			.set({ secret: result.rehash, lastUsedAt: new Date() })
+			.where(eq(credentials.id, credential.id));
+	}
+
+	return user;
+}

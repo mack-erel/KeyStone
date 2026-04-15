@@ -1,0 +1,24 @@
+export interface RuntimeConfig {
+	bootstrapAdminEmail?: string;
+	bootstrapAdminPassword?: string;
+	bootstrapAdminName: string;
+	defaultTenantName: string;
+}
+
+type EnvLookup = Record<string, unknown>;
+
+function getString(env: EnvLookup | undefined, key: string): string | undefined {
+	const value = env?.[key];
+	return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+export function getRuntimeConfig(platform: App.Platform | undefined): RuntimeConfig {
+	const env = platform?.env as EnvLookup | undefined;
+
+	return {
+		bootstrapAdminEmail: getString(env, 'IDP_BOOTSTRAP_ADMIN_EMAIL')?.trim().toLowerCase(),
+		bootstrapAdminPassword: getString(env, 'IDP_BOOTSTRAP_ADMIN_PASSWORD'),
+		bootstrapAdminName: getString(env, 'IDP_BOOTSTRAP_ADMIN_NAME') ?? '관리자',
+		defaultTenantName: getString(env, 'IDP_DEFAULT_TENANT_NAME') ?? 'Default Tenant'
+	};
+}

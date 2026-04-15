@@ -38,6 +38,9 @@ export const users = sqliteTable(
 		email: text('email').notNull(),
 		emailVerifiedAt: integer('email_verified_at', { mode: 'timestamp_ms' }),
 		displayName: text('display_name'),
+		role: text('role', { enum: ['admin', 'user'] })
+			.notNull()
+			.default('user'),
 		status: text('status', { enum: ['active', 'disabled', 'locked'] })
 			.notNull()
 			.default('active'),
@@ -56,7 +59,7 @@ export const users = sqliteTable(
 
 /**
  * 인증 수단. 한 유저가 여러 credential 을 가질 수 있음 (password + TOTP + WebAuthn 복수).
- * - type='password': secret = argon2id hash, publicKey=NULL
+ * - type='password': secret = pbkdf2/argon2id hash, publicKey=NULL
  * - type='totp': secret = encrypted TOTP seed, publicKey=NULL
  * - type='webauthn': secret=NULL, publicKey = CBOR-encoded COSE key, credentialId 별도, counter
  * - type='backup_code': secret = hash of one-time code, usedAt 로 소진 관리
@@ -116,11 +119,7 @@ export const identities = sqliteTable(
 		lastLoginAt: integer('last_login_at', { mode: 'timestamp_ms' })
 	},
 	(t) => [
-		uniqueIndex('identities_tenant_provider_subject_uidx').on(
-			t.tenantId,
-			t.provider,
-			t.subject
-		),
+		uniqueIndex('identities_tenant_provider_subject_uidx').on(t.tenantId, t.provider, t.subject),
 		index('identities_user_idx').on(t.userId)
 	]
 );
@@ -318,11 +317,15 @@ export const samlSps = sqliteTable(
 		entityId: text('entity_id').notNull(),
 		name: text('name').notNull(),
 		acsUrl: text('acs_url').notNull(),
-		acsBinding: text('acs_binding').notNull().default('urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST'),
+		acsBinding: text('acs_binding')
+			.notNull()
+			.default('urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST'),
 		sloUrl: text('slo_url'),
 		sloBinding: text('slo_binding'),
 		cert: text('cert'),
-		nameIdFormat: text('name_id_format').notNull().default('urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'),
+		nameIdFormat: text('name_id_format')
+			.notNull()
+			.default('urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress'),
 		signAssertion: integer('sign_assertion', { mode: 'boolean' }).notNull().default(true),
 		signResponse: integer('sign_response', { mode: 'boolean' }).notNull().default(false),
 		encryptAssertion: integer('encrypt_assertion', { mode: 'boolean' }).notNull().default(false),

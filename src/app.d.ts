@@ -10,7 +10,14 @@ declare global {
 		}
 
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+			db?: import('$lib/server/db').DB;
+			tenant: import('$lib/server/db/schema').Tenant | null;
+			session: import('$lib/server/db/schema').Session | null;
+			user: import('$lib/server/db/schema').User | null;
+			runtimeConfig: import('$lib/server/auth/runtime').RuntimeConfig;
+			runtimeError: string | null;
+		}
 		// interface PageData {}
 		// interface PageState {}
 	}
