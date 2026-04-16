@@ -84,9 +84,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		}
 	}
 
-	// scope 검증 (클라이언트가 허용한 scope 만)
-	const allowedScopes = client.scopes.split(',').map((s) => s.trim());
-	const requestedScopes = scope.split(' ').filter((s) => allowedScopes.includes(s));
+	// scope 검증 — client.scopes 는 공백 구분 문자열로 저장됨
+	const allowedScopes = client.scopes.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
+	const requestedScopes = scope.split(/[\s,]+/).filter((s) => allowedScopes.includes(s));
 	if (!requestedScopes.includes('openid')) {
 		authRedirectError(redirectUri, 'invalid_scope', 'openid scope 가 필요합니다.', state);
 	}
