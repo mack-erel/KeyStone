@@ -24,6 +24,10 @@
 	];
 </script>
 
+{#if !data.currentUser}
+	{@render children()}
+{:else}
+
 <div class="flex min-h-screen bg-gray-50">
 	<aside class="flex w-72 flex-col border-r border-gray-200 bg-white">
 		<div class="flex h-16 items-center border-b border-gray-200 px-6">
@@ -92,3 +96,5 @@
 		{@render children()}
 	</main>
 </div>
+
+{/if}
