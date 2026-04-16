@@ -15,6 +15,12 @@
 		{ route: '/admin/signing-keys' as const, key: 'admin.signing_keys' },
 		{ route: '/admin/audit' as const, key: 'admin.audit' }
 	];
+
+	const orgMenuItems = [
+		{ route: '/admin/positions' as const, key: 'admin.positions' },
+		{ route: '/admin/departments' as const, key: 'admin.departments' },
+		{ route: '/admin/teams' as const, key: 'admin.teams' }
+	];
 </script>
 
 <div class="flex min-h-screen bg-gray-50">
@@ -30,7 +36,7 @@
 			<p class="text-sm text-gray-500">{data.currentUser.email}</p>
 		</div>
 
-		<nav class="p-4">
+		<nav class="p-4 space-y-4">
 			<ul class="space-y-1">
 				{#each menuItems as item (item.key)}
 					<li>
@@ -46,6 +52,24 @@
 					</li>
 				{/each}
 			</ul>
+
+			<div>
+				<p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{t('admin.org')}</p>
+				<ul class="space-y-1">
+					{#each orgMenuItems as item (item.key)}
+						<li>
+							<a
+								href={resolve(item.route)}
+								class="block rounded-md px-3 py-2 text-sm font-medium transition-colors {page.url.pathname === resolve(item.route)
+									? 'bg-blue-50 text-blue-700'
+									: 'text-gray-700 hover:bg-gray-100'}"
+							>
+								{t(item.key)}
+							</a>
+						</li>
+					{/each}
+				</ul>
+			</div>
 		</nav>
 
 		<div class="mt-auto p-4">
