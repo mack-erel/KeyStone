@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { resolve } from '$app/paths';
 	import type { ActionData, PageData } from './$types';
 
 	const { data, form } = $props<{ data: PageData; form?: ActionData }>();
@@ -119,8 +120,10 @@
 					{#each data.users as user (user.id)}
 						<tr class="hover:bg-gray-50">
 							<td class="px-4 py-3">
-								<p class="text-sm font-medium text-gray-900">{user.username ?? '-'}</p>
-								<p class="text-xs text-gray-500">{user.email}</p>
+								<a href={resolve(`/admin/users/${user.id}`)} class="block hover:underline">
+									<p class="text-sm font-medium text-gray-900">{user.username ?? '-'}</p>
+									<p class="text-xs text-gray-500">{user.email}</p>
+								</a>
 							</td>
 							<td class="px-4 py-3 text-sm text-gray-600">{user.displayName ?? '-'}</td>
 
