@@ -41,6 +41,8 @@ export interface BuildSamlResponseParams {
 	attributes: Record<string, string>;
 	certPem: string;
 	privateKey: CryptoKey;
+	/** true 이면 Response 요소도 서명 (Assertion 서명 후 추가 서명) */
+	signResponse?: boolean;
 }
 
 export async function buildSignedSamlResponse(params: BuildSamlResponseParams): Promise<string> {
@@ -155,7 +157,46 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
 		}
 	}
 
-	// ── 5. 직렬화 → base64 (HTTP-POST 바인딩) ────────────────────────────────
+	// ── 5. Response 서명 (signResponse: true 일 때) ───────────────────────────
+	if (params.signResponse) {
+		// Response 루트에 ID 속성을 XML ID 타입으로 등록
+		const responseEl = responseDoc.documentElement as Element & {
+			setIdAttribute?: (name: string, flag: boolean) => void;
+		};
+		responseEl.setIdAttribute?.('ID', true);
+
+		const signedXmlResponse = new xmldsigjs.SignedXml();
+		await signedXmlResponse.Sign(
+			{ name: 'RSASSA-PKCS1-v1_5' },
+			params.privateKey,
+			responseDoc,
+			{
+				x509: [certB64],
+				references: [
+					{
+						uri: `#${responseId}`,
+						hash: 'SHA-256',
+						transforms: ['enveloped', 'exc-c14n']
+					}
+				]
+			}
+		);
+
+		const responseSigNode = signedXmlResponse.XmlSignature.GetXml();
+		if (responseSigNode) {
+			// Response 의 직계 자식 <saml:Issuer> 바로 뒤에 삽입
+			const directIssuer = Array.from(responseDoc.documentElement.childNodes).find(
+				(n) => n.nodeType === 1 && (n as Element).localName === 'Issuer'
+			) as Element | undefined;
+			if (directIssuer?.nextSibling) {
+				responseDoc.documentElement.insertBefore(responseSigNode, directIssuer.nextSibling);
+			} else {
+				responseDoc.documentElement.appendChild(responseSigNode);
+			}
+		}
+	}
+
+	// ── 6. 직렬화 → base64 (HTTP-POST 바인딩) ────────────────────────────────
 	const serialized = xmldsigjs
 		.Stringify(responseDoc)
 		.replace(/^<\?xml[^?]*\?>\s*/i, '');

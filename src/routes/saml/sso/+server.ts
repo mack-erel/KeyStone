@@ -131,7 +131,8 @@ export const GET: RequestHandler = async ({ locals, url, platform }) => {
 		sessionIndex,
 		attributes,
 		certPem: signingKey.certPem,
-		privateKey: signingKey.privateKey
+		privateKey: signingKey.privateKey,
+		signResponse: sp.signResponse
 	});
 
 	await recordAuditEvent(db, {
