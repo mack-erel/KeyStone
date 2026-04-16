@@ -77,6 +77,7 @@ export const GET: RequestHandler = async ({ locals, url, platform }) => {
 	if (user.displayName) attributes[attrMapping['displayName'] ?? 'displayName'] = user.displayName;
 	if (user.givenName) attributes[attrMapping['givenName'] ?? 'givenName'] = user.givenName;
 	if (user.familyName) attributes[attrMapping['familyName'] ?? 'familyName'] = user.familyName;
+	if (user.familyName) attributes[attrMapping['surName'] ?? 'surName'] = user.familyName;
 	if (user.phoneNumber) attributes[attrMapping['phoneNumber'] ?? 'phoneNumber'] = user.phoneNumber;
 
 	// 조직 정보 (주소속 부서/팀/직급/직책)
