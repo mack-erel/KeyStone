@@ -232,9 +232,9 @@ function createD1Database(name: string): string | null {
     return null;
   }
 
-  // 출력에서 UUID 추출: database_id = "xxxx-..."
+  // 출력에서 UUID 추출: TOML("database_id = ...") 또는 JSON("database_id": "...") 모두 대응
   const combined = result.stdout + result.stderr;
-  const match = combined.match(/database_id\s*=\s*"([0-9a-f-]{36})"/i);
+  const match = combined.match(/"?database_id"?\s*[=:]\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/i);
   if (!match) {
     console.error(red(`D1 생성 결과에서 database_id를 찾을 수 없습니다:\n${combined}`));
     return null;
