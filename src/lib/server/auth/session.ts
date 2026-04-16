@@ -32,6 +32,8 @@ export async function createSessionRecord(
 		userId: string;
 		ip?: string | null;
 		userAgent?: string | null;
+		/** Authentication Methods References (RFC 8176), e.g. ['pwd'], ['pwd','totp'] */
+		amr?: string[];
 	}
 ) {
 	const now = Date.now();
@@ -43,6 +45,7 @@ export async function createSessionRecord(
 		tenantId: params.tenantId,
 		userId: params.userId,
 		idpSessionId: sessionToken,
+		amr: params.amr ? params.amr.join(' ') : null,
 		ip: params.ip ?? null,
 		userAgent: params.userAgent ?? null,
 		expiresAt,

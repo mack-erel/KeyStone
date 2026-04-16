@@ -7,7 +7,7 @@
 
 import { DOMParser } from '@xmldom/xmldom';
 
-async function inflateRaw(compressed: Uint8Array): Promise<string> {
+async function inflateRaw(compressed: Uint8Array<ArrayBuffer>): Promise<string> {
 	const ds = new DecompressionStream('deflate-raw');
 	const writer = ds.writable.getWriter();
 	const reader = ds.readable.getReader();
@@ -50,12 +50,18 @@ export async function parseAuthnRequest(
 	relayState: string | null
 ): Promise<ParsedAuthnRequest> {
 	// HTTP-Redirect 바인딩은 표준 base64 (base64url 이 아님)
-	const binary = Uint8Array.from(atob(samlRequestB64), (c) => c.charCodeAt(0));
+	const raw = atob(samlRequestB64);
+	const binary = new Uint8Array(raw.length) as Uint8Array<ArrayBuffer>;
+	for (let i = 0; i < raw.length; i++) binary[i] = raw.charCodeAt(i);
 	const xml = await inflateRaw(binary);
 
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(xml, 'text/xml');
 	const root = doc.documentElement;
+
+	if (!root) {
+		throw new Error('AuthnRequest XML 파싱 실패: documentElement 없음');
+	}
 
 	const id = root.getAttribute('ID') ?? '';
 	const acsUrl = root.getAttribute('AssertionConsumerServiceURL') ?? null;

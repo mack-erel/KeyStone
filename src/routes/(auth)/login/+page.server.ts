@@ -1,9 +1,14 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { eq, and } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import { getRequestMetadata, recordAuditEvent } from '$lib/server/audit';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { createSessionRecord, setSessionCookie } from '$lib/server/auth/session';
 import { authenticateLocalUser, normalizeUsername } from '$lib/server/auth/users';
+import { createMfaPendingToken, MFA_PENDING_COOKIE } from '$lib/server/auth/mfa';
+import { AMR_PASSWORD, TOTP_CREDENTIAL_TYPE } from '$lib/server/auth/constants';
+import { getRuntimeConfig } from '$lib/server/auth/runtime';
+import { credentials } from '$lib/server/db/schema';
 
 function sanitizeRedirectTarget(target: string | null): string | null {
 	if (!target || !target.startsWith('/') || target.startsWith('//')) {
@@ -71,11 +76,47 @@ export const actions: Actions = {
 			});
 		}
 
+		// TOTP 등록 여부 확인
+		const [totpCredential] = await db
+			.select({ id: credentials.id })
+			.from(credentials)
+			.where(and(eq(credentials.userId, user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+			.limit(1);
+
+		if (totpCredential) {
+			// MFA 단계로 진행
+			const config = getRuntimeConfig(event.platform);
+			if (!config.signingKeySecret) {
+				return fail(503, {
+					username,
+					redirectTo,
+					error: 'MFA 설정 오류: IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.'
+				});
+			}
+
+			const mfaToken = await createMfaPendingToken(
+				{ userId: user.id, tenantId: tenant.id, redirectTo },
+				config.signingKeySecret
+			);
+
+			event.cookies.set(MFA_PENDING_COOKIE, mfaToken, {
+				path: '/',
+				httpOnly: true,
+				sameSite: 'lax',
+				secure: event.url.protocol === 'https:',
+				maxAge: 5 * 60 // 5분
+			});
+
+			throw redirect(303, '/mfa');
+		}
+
+		// MFA 없음 — 세션 바로 생성
 		const { sessionToken, expiresAt } = await createSessionRecord(db, {
 			tenantId: tenant.id,
 			userId: user.id,
 			ip: requestMetadata.ip,
-			userAgent: requestMetadata.userAgent
+			userAgent: requestMetadata.userAgent,
+			amr: [AMR_PASSWORD]
 		});
 
 		setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);
