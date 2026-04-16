@@ -7,7 +7,7 @@
 	"routes": [
 		{
 			// 실제 배포 도메인으로 변경하세요
-			"pattern": "idp.example.com",
+			"pattern": "keystone.example.com",
 			"custom_domain": true
 		}
 	],
@@ -40,12 +40,12 @@
 		// wrangler secret put IDP_SIGNING_KEY_SECRET  (openssl rand -base64 32 으로 생성)
 
 		// OIDC/SAML 토큰 발급 issuer URL (배포 도메인과 일치시킬 것)
-		"IDP_ISSUER_URL": "https://idp.example.com"
+		"IDP_ISSUER_URL": "https://keystone.example.com"
 	},
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "idp-db",
+			"database_name": "keystone-db",
 			// D1 데이터베이스 ID (CLOUDFLARE_D1_DATABASE_ID와 동일)
 			"database_id": "YOUR_D1_DATABASE_ID",
 			// 프리뷰 DB가 따로 있다면 주석 해제
