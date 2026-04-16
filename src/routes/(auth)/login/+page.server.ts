@@ -1,14 +1,12 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { eq, and } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import { getRequestMetadata, recordAuditEvent } from '$lib/server/audit';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { createSessionRecord, setSessionCookie } from '$lib/server/auth/session';
-import { authenticateLocalUser, normalizeUsername } from '$lib/server/auth/users';
+import { authenticateLocalUser, hasTotpCredential, normalizeUsername } from '$lib/server/auth/users';
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from '$lib/server/auth/mfa';
-import { AMR_PASSWORD, TOTP_CREDENTIAL_TYPE } from '$lib/server/auth/constants';
+import { AMR_PASSWORD } from '$lib/server/auth/constants';
 import { getRuntimeConfig } from '$lib/server/auth/runtime';
-import { credentials } from '$lib/server/db/schema';
 import { checkRateLimit } from '$lib/server/ratelimit';
 
 function sanitizeRedirectTarget(target: string | null): string | null {
@@ -89,14 +87,7 @@ export const actions: Actions = {
 			});
 		}
 
-		// TOTP 등록 여부 확인
-		const [totpCredential] = await db
-			.select({ id: credentials.id })
-			.from(credentials)
-			.where(and(eq(credentials.userId, user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
-			.limit(1);
-
-		if (totpCredential) {
+		if (await hasTotpCredential(db, user.id)) {
 			// MFA 단계로 진행
 			const config = getRuntimeConfig(event.platform);
 			if (!config.signingKeySecret) {

@@ -1,16 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { and, eq, gt, isNull } from 'drizzle-orm';
 import { requireDbContext } from '$lib/server/auth/guards';
+import { findActiveUserById } from '$lib/server/auth/users';
 import { recordAuditEvent } from '$lib/server/audit';
-import { oidcClients, oidcGrants, users } from '$lib/server/db/schema';
 import { checkRateLimit } from '$lib/server/ratelimit';
-import {
-	b64uEncode,
-	generateAccessToken,
-	getActiveSigningKey,
-	signJwt
-} from '$lib/server/crypto/keys';
+import { findOidcClient, isValidClientSecret, parseBasicAuth } from '$lib/server/oidc/client';
+import { consumeGrant, findGrant } from '$lib/server/oidc/grant';
+import { verifyPkce } from '$lib/server/oidc/pkce';
+import { generateAccessToken, getActiveSigningKey, signJwt } from '$lib/server/crypto/keys';
 
 const ACCESS_TOKEN_TTL_S = 3600; // 1시간
 const ID_TOKEN_TTL_S = 600; // 10분
@@ -20,12 +17,6 @@ function tokenError(code: string, description: string, status = 400): Response {
 		status,
 		headers: { 'Content-Type': 'application/json' }
 	});
-}
-
-async function verifySha256Challenge(verifier: string, challenge: string): Promise<boolean> {
-	const enc = new TextEncoder();
-	const hash = await crypto.subtle.digest('SHA-256', enc.encode(verifier));
-	return b64uEncode(hash) === challenge;
 }
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
@@ -40,7 +31,10 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 	const rl = await checkRateLimit(db, `token:${ip}`, { windowMs: 60 * 1000, limit: 30 });
 	if (!rl.allowed) {
 		return new Response(
-			JSON.stringify({ error: 'rate_limit_exceeded', error_description: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' }),
+			JSON.stringify({
+				error: 'rate_limit_exceeded',
+				error_description: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.'
+			}),
 			{
 				status: 429,
 				headers: {
@@ -52,31 +46,26 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 	}
 
 	if (!signingKeySecret) {
-		return tokenError(
-			'server_error',
-			'IDP_SIGNING_KEY_SECRET 가 설정되지 않았습니다.',
-			503
-		);
+		return tokenError('server_error', 'IDP_SIGNING_KEY_SECRET 가 설정되지 않았습니다.', 503);
 	}
 
 	const issuer = issuerUrl ?? url.origin;
-
 	const body = await request.formData();
 
 	if (body.get('grant_type') !== 'authorization_code') {
 		return tokenError('unsupported_grant_type', 'authorization_code 만 지원합니다.');
 	}
 
-	// 클라이언트 인증 (Basic 또는 body params)
+	// 클라이언트 인증 (Basic 헤더 또는 body params)
 	let clientId = '';
 	let clientSecret = '';
 
 	const authHeader = request.headers.get('Authorization');
-	if (authHeader?.startsWith('Basic ')) {
-		const decoded = atob(authHeader.slice(6));
-		const sep = decoded.indexOf(':');
-		clientId = sep > -1 ? decoded.slice(0, sep) : decoded;
-		clientSecret = sep > -1 ? decoded.slice(sep + 1) : '';
+	if (authHeader) {
+		const parsed = parseBasicAuth(authHeader);
+		if (!parsed) return tokenError('invalid_client', '잘못된 Authorization 헤더입니다.', 401);
+		clientId = parsed.clientId;
+		clientSecret = parsed.clientSecret;
 	} else {
 		clientId = String(body.get('client_id') ?? '');
 		clientSecret = String(body.get('client_secret') ?? '');
@@ -86,27 +75,13 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		return tokenError('invalid_client', 'client_id 가 필요합니다.', 401);
 	}
 
-	const [client] = await db
-		.select()
-		.from(oidcClients)
-		.where(
-			and(
-				eq(oidcClients.tenantId, tenant.id),
-				eq(oidcClients.clientId, clientId),
-				eq(oidcClients.enabled, true)
-			)
-		)
-		.limit(1);
-
+	const client = await findOidcClient(db, tenant.id, clientId);
 	if (!client) {
 		return tokenError('invalid_client', '등록되지 않은 클라이언트입니다.', 401);
 	}
 
-	// 기밀 클라이언트 시크릿 검증 (M1: 평문 비교 — M2 에서 해시 비교로 전환)
-	if (client.tokenEndpointAuthMethod !== 'none') {
-		if (!client.clientSecretHash || !clientSecret || clientSecret !== client.clientSecretHash) {
-			return tokenError('invalid_client', '클라이언트 인증에 실패했습니다.', 401);
-		}
+	if (!isValidClientSecret(client, clientSecret)) {
+		return tokenError('invalid_client', '클라이언트 인증에 실패했습니다.', 401);
 	}
 
 	const code = String(body.get('code') ?? '');
@@ -117,22 +92,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		return tokenError('invalid_request', 'code 와 redirect_uri 는 필수입니다.');
 	}
 
-	// authorization code 조회 및 검증
-	const now = new Date();
-	const [grant] = await db
-		.select()
-		.from(oidcGrants)
-		.where(
-			and(
-				eq(oidcGrants.code, code),
-				eq(oidcGrants.tenantId, tenant.id),
-				eq(oidcGrants.clientId, clientId),
-				isNull(oidcGrants.usedAt),
-				gt(oidcGrants.expiresAt, now)
-			)
-		)
-		.limit(1);
-
+	const grant = await findGrant(db, tenant.id, clientId, code);
 	if (!grant) {
 		return tokenError('invalid_grant', '유효하지 않거나 만료된 authorization code 입니다.');
 	}
@@ -146,31 +106,20 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		if (!codeVerifier) {
 			return tokenError('invalid_grant', 'code_verifier 가 필요합니다.');
 		}
-		if (grant.codeChallengeMethod === 'S256') {
-			const valid = await verifySha256Challenge(codeVerifier, grant.codeChallenge);
-			if (!valid) return tokenError('invalid_grant', 'code_verifier 검증에 실패했습니다.');
-		} else if (grant.codeChallengeMethod === 'plain') {
-			if (codeVerifier !== grant.codeChallenge) {
-				return tokenError('invalid_grant', 'code_verifier 검증에 실패했습니다.');
-			}
+		const valid = await verifyPkce(grant.codeChallenge, grant.codeChallengeMethod ?? 'plain', codeVerifier);
+		if (!valid) {
+			return tokenError('invalid_grant', 'code_verifier 검증에 실패했습니다.');
 		}
 	}
 
-	// code 를 소진 처리 (replay 방지)
-	await db.update(oidcGrants).set({ usedAt: now }).where(eq(oidcGrants.id, grant.id));
+	// code 소진 처리 (replay 방지)
+	await consumeGrant(db, grant.id);
 
-	// 사용자 조회
-	const [user] = await db
-		.select()
-		.from(users)
-		.where(and(eq(users.id, grant.userId), eq(users.status, 'active')))
-		.limit(1);
-
+	const user = await findActiveUserById(db, grant.userId);
 	if (!user) {
 		return tokenError('invalid_grant', '사용자를 찾을 수 없습니다.');
 	}
 
-	// 서명 키 조회
 	const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
 	if (!signingKey) {
 		return tokenError('server_error', '활성 서명 키를 찾을 수 없습니다.', 503);

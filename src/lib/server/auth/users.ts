@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { DB } from '$lib/server/db';
 import { credentials, type Credential, type User, users } from '$lib/server/db/schema';
-import { PASSWORD_CREDENTIAL_TYPE } from './constants';
+import { PASSWORD_CREDENTIAL_TYPE, TOTP_CREDENTIAL_TYPE } from './constants';
 import { verifyPassword } from './password';
 
 export function normalizeEmail(email: string): string {
@@ -82,4 +82,22 @@ export async function authenticateLocalUser(
 	}
 
 	return user;
+}
+
+export async function findActiveUserById(db: DB, userId: string): Promise<User | null> {
+	const [user] = await db
+		.select()
+		.from(users)
+		.where(and(eq(users.id, userId), eq(users.status, 'active')))
+		.limit(1);
+	return user ?? null;
+}
+
+export async function hasTotpCredential(db: DB, userId: string): Promise<boolean> {
+	const [row] = await db
+		.select({ id: credentials.id })
+		.from(credentials)
+		.where(and(eq(credentials.userId, userId), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+		.limit(1);
+	return Boolean(row);
 }

@@ -1,11 +1,9 @@
 import { error, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { and, eq } from 'drizzle-orm';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { recordAuditEvent } from '$lib/server/audit';
-import { oidcClients, oidcGrants } from '$lib/server/db/schema';
-
-const AUTH_CODE_TTL_MS = 5 * 60 * 1000; // 5분
+import { findOidcClient, isAllowedRedirectUri, parseGrantedScopes } from '$lib/server/oidc/client';
+import { createGrant } from '$lib/server/oidc/grant';
 
 /** redirect_uri 가 확정된 이후에만 사용. 그 전 오류는 throw error() 로 직접 응답. */
 function authRedirectError(
@@ -41,31 +39,12 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		throw error(400, 'response_type=code 만 지원합니다.');
 	}
 
-	// 클라이언트 조회
-	const [client] = await db
-		.select()
-		.from(oidcClients)
-		.where(
-			and(
-				eq(oidcClients.tenantId, tenant.id),
-				eq(oidcClients.clientId, clientId),
-				eq(oidcClients.enabled, true)
-			)
-		)
-		.limit(1);
-
+	const client = await findOidcClient(db, tenant.id, clientId);
 	if (!client) {
 		throw error(401, '등록되지 않은 client_id 입니다.');
 	}
 
-	// redirect_uri 검증 — redirectUris 는 JSON 배열 문자열로 저장됨
-	let allowedUris: string[] = [];
-	try {
-		allowedUris = JSON.parse(client.redirectUris ?? '[]') as string[];
-	} catch {
-		allowedUris = [];
-	}
-	if (!allowedUris.includes(redirectUri)) {
+	if (!isAllowedRedirectUri(client, redirectUri)) {
 		throw error(400, 'redirect_uri 가 등록된 값과 일치하지 않습니다.');
 	}
 
@@ -84,13 +63,12 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		}
 	}
 
-	// scope 검증 — client.scopes 는 공백 구분 문자열로 저장됨
-	const allowedScopes = client.scopes.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
-	const requestedScopes = scope.split(/[\s,]+/).filter((s) => allowedScopes.includes(s));
-	if (!requestedScopes.includes('openid')) {
+	// scope 검증
+	const grantedScopes = parseGrantedScopes(client, scope);
+	if (!grantedScopes.includes('openid')) {
 		authRedirectError(redirectUri, 'invalid_scope', 'openid scope 가 필요합니다.', state);
 	}
-	const grantedScope = requestedScopes.join(' ');
+	const grantedScope = grantedScopes.join(' ');
 
 	// 로그인 여부 확인
 	if (!locals.user || !locals.session) {
@@ -102,10 +80,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	// authorization code 발급
 	const code =
 		crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-	const expiresAt = new Date(Date.now() + AUTH_CODE_TTL_MS);
 
-	await db.insert(oidcGrants).values({
-		id: crypto.randomUUID(),
+	await createGrant(db, {
 		tenantId: tenant.id,
 		clientId,
 		userId: locals.user.id,
@@ -116,8 +92,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		redirectUri,
 		scope: grantedScope,
 		nonce: nonce ?? null,
-		state: state ?? null,
-		expiresAt
+		state: state ?? null
 	});
 
 	await recordAuditEvent(db, {
