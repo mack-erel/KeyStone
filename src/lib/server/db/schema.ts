@@ -598,6 +598,75 @@ export const userDepartments = sqliteTable(
 );
 
 /**
+ * 파트. 팀 하위 단위. teamId(nullable)로 팀 소속 또는 독립 구성.
+ */
+export const parts = sqliteTable(
+	'parts',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => tenants.id, { onDelete: 'cascade' }),
+		teamId: text('team_id').references(() => teams.id, { onDelete: 'set null' }),
+		name: text('name').notNull(),
+		code: text('code'),
+		description: text('description'),
+		leaderId: text('leader_id').references(() => users.id, { onDelete: 'set null' }),
+		status: text('status', { enum: ['active', 'inactive'] })
+			.notNull()
+			.default('active'),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+		updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => [
+		index('parts_tenant_idx').on(t.tenantId),
+		index('parts_team_idx').on(t.teamId),
+		uniqueIndex('parts_tenant_code_uidx').on(t.tenantId, t.code)
+	]
+);
+
+/**
+ * 유저↔파트 소속 (N:M).
+ */
+export const userParts = sqliteTable(
+	'user_parts',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => tenants.id, { onDelete: 'cascade' }),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		partId: text('part_id')
+			.notNull()
+			.references(() => parts.id, { onDelete: 'cascade' }),
+		jobTitle: text('job_title'),
+		isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+		startedAt: integer('started_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+		endedAt: integer('ended_at', { mode: 'timestamp_ms' }),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => [
+		index('user_parts_user_idx').on(t.userId),
+		index('user_parts_part_idx').on(t.partId),
+		index('user_parts_tenant_idx').on(t.tenantId)
+	]
+);
+
+/**
  * 유저↔팀 소속 (N:M). 복수 팀 동시 소속 지원.
  * isPrimary=true 인 행이 주소속 팀.
  * endedAt=NULL 이면 현재 소속.
@@ -662,3 +731,5 @@ export type Department = typeof departments.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type UserDepartment = typeof userDepartments.$inferSelect;
 export type UserTeam = typeof userTeams.$inferSelect;
+export type Part = typeof parts.$inferSelect;
+export type UserPart = typeof userParts.$inferSelect;

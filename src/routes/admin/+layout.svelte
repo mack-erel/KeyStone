@@ -19,7 +19,8 @@
 	const orgMenuItems = [
 		{ route: '/admin/positions' as const, key: 'admin.positions' },
 		{ route: '/admin/departments' as const, key: 'admin.departments' },
-		{ route: '/admin/teams' as const, key: 'admin.teams' }
+		{ route: '/admin/teams' as const, key: 'admin.teams' },
+		{ route: '/admin/parts' as const, key: 'admin.parts' }
 	];
 </script>
 

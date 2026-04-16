@@ -24,7 +24,8 @@
 		"org": "조직 관리",
 		"positions": "직급",
 		"departments": "부서",
-		"teams": "팀"
+		"teams": "팀",
+		"parts": "파트"
 	},
 	"account": {
 		"profile": "내 프로필",

@@ -89,7 +89,7 @@
 		</section>
 
 		<!-- 조직 소속 (읽기 전용) -->
-		{#if data.membership.departments.length > 0 || data.membership.teams.length > 0}
+		{#if data.membership.departments.length > 0 || data.membership.teams.length > 0 || data.membership.parts.length > 0}
 			<section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
 				<h2 class="mb-4 text-sm font-semibold text-gray-700">조직 소속</h2>
 				<div class="space-y-3">
@@ -108,6 +108,15 @@
 							{#if team.departmentName}<span class="text-gray-400 text-xs">({team.departmentName})</span>{/if}
 							{#if team.isPrimary}<span class="rounded-full bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700">주소속</span>{/if}
 							{#if team.jobTitle}<span class="text-gray-500">/ {team.jobTitle}</span>{/if}
+						</div>
+					{/each}
+					{#each data.membership.parts as part}
+						<div class="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm">
+							<span class="text-gray-500 text-xs">파트</span>
+							<span class="font-medium text-gray-900">{part.name}</span>
+							{#if part.teamName}<span class="text-gray-400 text-xs">({part.teamName})</span>{/if}
+							{#if part.isPrimary}<span class="rounded-full bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">주소속</span>{/if}
+							{#if part.jobTitle}<span class="text-gray-500">/ {part.jobTitle}</span>{/if}
 						</div>
 					{/each}
 				</div>
