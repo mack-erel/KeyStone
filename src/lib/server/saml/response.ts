@@ -107,6 +107,15 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
 
 	// Assertion 서명 (xmldsigjs)
 	const assertionDoc = xmldsigjs.Parse(assertionXml);
+
+	// xmldom 은 기본적으로 대문자 'ID' 속성을 XML ID 타입으로 인식하지 않아
+	// getElementById 가 null 을 반환한다. setIdAttribute 로 명시적으로 등록해야
+	// uri: '#assertionId' 참조가 올바른 엘리먼트를 찾을 수 있다.
+	const assertionEl = assertionDoc.documentElement;
+	if (typeof (assertionEl as unknown as { setIdAttribute?: (name: string, flag: boolean) => void }).setIdAttribute === 'function') {
+		(assertionEl as unknown as { setIdAttribute: (name: string, flag: boolean) => void }).setIdAttribute('ID', true);
+	}
+
 	const signedXml = new xmldsigjs.SignedXml();
 	await signedXml.Sign({ name: 'RSASSA-PKCS1-v1_5' }, params.privateKey, assertionDoc, {
 		x509: [certB64],
