@@ -8,7 +8,7 @@ import * as readline from "node:readline";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 
 // ─── ANSI Colors ─────────────────────────────────────────────────────────────
 const C = {
@@ -191,13 +191,40 @@ async function select(prompt: string, options: string[]): Promise<number> {
   });
 }
 
-// ─── Wrangler Helpers ─────────────────────────────────────────────────────────
-interface D1Database {
-  name: string;
-  uuid: string;
+// ─── Spinner ──────────────────────────────────────────────────────────────────
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+async function runWithSpinner(
+  label: string,
+  cmd: string,
+  args: string[],
+  options: { env?: Record<string, string> } = {}
+): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number }> {
+  let frameIdx = 0;
+  process.stdout.write(`  ${SPINNER_FRAMES[0]} ${label}`);
+  const interval = setInterval(() => {
+    process.stdout.write(`\r  ${SPINNER_FRAMES[frameIdx++ % SPINNER_FRAMES.length]} ${label}`);
+  }, 80);
+
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, {
+      cwd: ROOT,
+      env: options.env ? { ...process.env, ...options.env } : process.env,
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+    child.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+    child.on('close', (code: number | null) => {
+      clearInterval(interval);
+      const success = (code ?? 1) === 0;
+      process.stdout.write(`\r  ${success ? green('✓') : red('✗')} ${label}\n`);
+      resolve({ success, stdout, stderr, exitCode: code ?? 1 });
+    });
+  });
 }
 
-
+// ─── Command (inherit 모드용 — db:generate, db:migrate 등) ────────────────────
 function runCommand(cmd: string, args: string[], options: { inherit?: boolean; env?: Record<string, string> } = {}): {
   success: boolean;
   stdout: string;
@@ -219,50 +246,46 @@ function runCommand(cmd: string, args: string[], options: { inherit?: boolean; e
   };
 }
 
-function checkWranglerLogin(): boolean {
-  const result = runCommand("wrangler", ["whoami"]);
-  return result.success && !result.stdout.includes("You are not authenticated");
+// ─── Wrangler Helpers ─────────────────────────────────────────────────────────
+interface D1Database {
+  name: string;
+  uuid: string;
 }
 
-/** wrangler whoami 출력에서 Account ID(32자 hex) 자동 추출 */
-function getWranglerAccountId(): string | null {
-  const result = runCommand("wrangler", ["whoami"]);
+/** wrangler whoami → { loggedIn, accountId } */
+async function wranglerWhoami(): Promise<{ loggedIn: boolean; accountId: string | null }> {
+  const result = await runWithSpinner("wrangler 인증 확인 중...", "wrangler", ["whoami"]);
   const combined = result.stdout + result.stderr;
+  const loggedIn = result.success && !combined.includes("You are not authenticated");
   const match = combined.match(/([0-9a-f]{32})/i);
-  return match ? match[1] : null;
+  return { loggedIn, accountId: match ? match[1] : null };
 }
 
-function createD1Database(name: string): string | null {
-  console.log(`  D1 데이터베이스 생성 중: ${name}`);
-  const result = runCommand("wrangler", ["d1", "create", name]);
-
+async function createD1Database(name: string): Promise<string | null> {
+  const result = await runWithSpinner(`D1 DB 생성 중: ${name}`, "wrangler", ["d1", "create", name]);
   if (!result.success) {
-    console.error(red(`D1 DB 생성 실패:\n${result.stderr}`));
+    console.error(red(`  D1 DB 생성 실패:\n${result.stderr}`));
     return null;
   }
-
-  // 출력에서 UUID 추출: TOML("database_id = ...") 또는 JSON("database_id": "...") 모두 대응
   const combined = result.stdout + result.stderr;
   const match = combined.match(/"?database_id"?\s*[=:]\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/i);
   if (!match) {
-    console.error(red(`D1 생성 결과에서 database_id를 찾을 수 없습니다:\n${combined}`));
+    console.error(red(`  D1 생성 결과에서 database_id를 찾을 수 없습니다:\n${combined}`));
     return null;
   }
   return match[1];
 }
 
-function listD1Databases(): D1Database[] | null {
-  const result = runCommand("wrangler", ["d1", "list", "--json"]);
-
+async function listD1Databases(): Promise<D1Database[] | null> {
+  const result = await runWithSpinner("D1 DB 목록 조회 중...", "wrangler", ["d1", "list", "--json"]);
   if (!result.success) {
-    console.error(red(`D1 목록 조회 실패:\n${result.stderr}`));
+    console.error(red(`  D1 목록 조회 실패:\n${result.stderr}`));
     return null;
   }
-
   try {
     return JSON.parse(result.stdout) as D1Database[];
   } catch {
-    console.error(red(`D1 목록 파싱 실패:\n${result.stdout}`));
+    console.error(red(`  D1 목록 파싱 실패:\n${result.stdout}`));
     return null;
   }
 }
@@ -308,7 +331,10 @@ function loadEnvFile(envPath: string): Record<string, string> {
 async function step0_wranglerLogin(args: Args): Promise<string | null> {
   console.log(`\n${cyan("─── 0. wrangler 로그인 체크 ───────────────────────────────")}`);
 
-  if (!checkWranglerLogin()) {
+  const { loggedIn, accountId: detectedId } = await wranglerWhoami();
+  let accountId = detectedId;
+
+  if (!loggedIn) {
     console.log(yellow("  wrangler에 로그인하지 않았습니다."));
 
     if (args.yes) {
@@ -331,13 +357,13 @@ async function step0_wranglerLogin(args: Args): Promise<string | null> {
       closeRL();
       process.exit(1);
     }
+
+    // 로그인 후 재확인
+    ({ accountId } = await wranglerWhoami());
   }
 
-  const accountId = getWranglerAccountId();
   if (accountId) {
     console.log(green(`  ✓ wrangler 로그인 확인됨 (Account ID: ${accountId})`));
-  } else {
-    console.log(green("  ✓ wrangler 로그인 확인됨"));
   }
   return accountId;
 }
@@ -411,18 +437,17 @@ async function setupDb(
   if (choice === 1) {
     // Create new
     const name = nameArg ?? await ask(`${label} 이름을 입력하세요`, defaultName);
-    const id = createD1Database(name);
+    const id = await createD1Database(name);
     if (!id) {
       console.error(red(`  ${label} 생성 실패. 종료합니다.`));
       closeRL();
       process.exit(1);
     }
-    console.log(green(`  ✓ ${label} 생성 완료 (id: ${id})`));
     return { id, name };
   }
 
   // Use existing DB
-  const dbs = listD1Databases();
+  const dbs = await listD1Databases();
   if (!dbs || dbs.length === 0) {
     console.error(red("  D1 데이터베이스 목록을 가져올 수 없거나 비어있습니다. 종료합니다."));
     closeRL();
