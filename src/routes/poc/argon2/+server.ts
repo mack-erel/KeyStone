@@ -1,49 +1,31 @@
 import { json } from '@sveltejs/kit';
+import { hashPassword, verifyPassword } from '$lib/server/auth/password';
 
 /**
- * PoC: 패스워드 해시 가능성 점검.
- *
- * Cloudflare Workers 제약:
- *  - Node crypto(bcrypt 네이티브) 미지원
- *  - WebAssembly 로드는 가능 (Wasm binding)
- *
- * 후보 라이브러리 (아직 설치하지 않음 — 사용자 승인 후):
- *  - `hash-wasm` (argon2id 포함, 단일 wasm, Workers 호환 리포트 있음)
- *  - `@node-rs/argon2` (NAPI/WASM, Workers 호환은 WASM 빌드 한정)
- *
- * 현재 코드: WebCrypto PBKDF2 를 fallback 으로 시연. 실서비스 해시로는 부적절하나
- * Workers 내부에서 SubtleCrypto 가 동작함을 확인하는 용도.
+ * PoC: argon2id (hash-wasm) 동작 확인.
  *
  * GET /poc/argon2
  */
 export const GET = async () => {
 	const password = 'correct horse battery staple';
-	const salt = crypto.getRandomValues(new Uint8Array(16));
 
 	const t0 = Date.now();
-	const keyMaterial = await crypto.subtle.importKey(
-		'raw',
-		new TextEncoder().encode(password),
-		{ name: 'PBKDF2' },
-		false,
-		['deriveBits']
-	);
-	const derived = await crypto.subtle.deriveBits(
-		{ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 600000 },
-		keyMaterial,
-		256
-	);
-	const elapsed = Date.now() - t0;
+	const hash = await hashPassword(password);
+	const hashElapsed = Date.now() - t0;
 
-	const b64 = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(b)));
+	const t1 = Date.now();
+	const result = await verifyPassword(password, hash);
+	const verifyElapsed = Date.now() - t1;
+
+	const wrongResult = await verifyPassword('wrong password', hash);
 
 	return json({
-		note: 'PBKDF2-SHA256 fallback. 프로덕션은 argon2id(hash-wasm) 전환 예정.',
-		algorithm: 'PBKDF2-SHA256',
-		iterations: 600000,
-		salt_b64: b64(salt),
-		hash_b64: b64(derived),
-		elapsed_ms: elapsed,
-		next_step: 'bun add hash-wasm 승인 후 argon2id 로 교체'
+		algorithm: 'argon2id',
+		params: 'm=65536,t=3,p=4',
+		hash,
+		hash_elapsed_ms: hashElapsed,
+		verify_correct: result.valid,
+		verify_elapsed_ms: verifyElapsed,
+		verify_wrong: wrongResult.valid
 	});
 };
