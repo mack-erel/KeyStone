@@ -2,7 +2,7 @@
 
 **작성일**: 2026-04-15
 **상태**: In Progress (`M0` 완전 완료, `M1` OIDC 완전 완료, `M2` SAML 구현 완료, `M3` TOTP MFA 구현 완료)
-**오너**: jang@hyochan.site
+**오너**: maintainer
 
 ---
 
