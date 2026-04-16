@@ -883,7 +883,7 @@ async function step5b_bootstrapConfig(args: Args) {
     if (!password) console.log(red("  비밀번호는 필수입니다."));
   }
 
-  const issuerUrl = args.issuerUrl ?? await ask("IDP Issuer URL", "https://keystone.example.com");
+  const issuerUrl = args.issuerUrl ?? await ask("IDP Issuer URL", "http://localhost:5173");
 
   let envContent = readFile(ENV_FILE);
   envContent = envContent.replace(/^IDP_DEFAULT_TENANT_NAME=".*"$/m, `IDP_DEFAULT_TENANT_NAME="${tenantName}"`);
