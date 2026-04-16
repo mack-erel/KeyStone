@@ -197,11 +197,6 @@ interface D1Database {
   uuid: string;
 }
 
-interface D1CreateResult {
-  name: string;
-  uuid: string;
-  [key: string]: unknown;
-}
 
 function runCommand(cmd: string, args: string[], options: { inherit?: boolean } = {}): {
   success: boolean;
@@ -230,20 +225,21 @@ function checkWranglerLogin(): boolean {
 
 function createD1Database(name: string): string | null {
   console.log(`  D1 데이터베이스 생성 중: ${name}`);
-  const result = runCommand("wrangler", ["d1", "create", name, "--json"]);
+  const result = runCommand("wrangler", ["d1", "create", name]);
 
   if (!result.success) {
     console.error(red(`D1 DB 생성 실패:\n${result.stderr}`));
     return null;
   }
 
-  try {
-    const data = JSON.parse(result.stdout) as D1CreateResult;
-    return data.uuid;
-  } catch {
-    console.error(red(`D1 생성 결과 파싱 실패:\n${result.stdout}`));
+  // 출력에서 UUID 추출: database_id = "xxxx-..."
+  const combined = result.stdout + result.stderr;
+  const match = combined.match(/database_id\s*=\s*"([0-9a-f-]{36})"/i);
+  if (!match) {
+    console.error(red(`D1 생성 결과에서 database_id를 찾을 수 없습니다:\n${combined}`));
     return null;
   }
+  return match[1];
 }
 
 function listD1Databases(): D1Database[] | null {
