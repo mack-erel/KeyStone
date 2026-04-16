@@ -51,7 +51,12 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	// PKCE 검증
 	if (client.requirePkce) {
 		if (!codeChallenge) {
-			authRedirectError(redirectUri, 'invalid_request', 'PKCE code_challenge 가 필요합니다.', state);
+			authRedirectError(
+				redirectUri,
+				'invalid_request',
+				'PKCE code_challenge 가 필요합니다.',
+				state
+			);
 		}
 		if (codeChallengeMethod !== 'S256') {
 			authRedirectError(
@@ -78,8 +83,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 	}
 
 	// authorization code 발급
-	const code =
-		crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+	const code = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
 
 	await createGrant(db, {
 		tenantId: tenant.id,

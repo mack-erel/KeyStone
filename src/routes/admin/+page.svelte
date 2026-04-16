@@ -12,7 +12,7 @@
 	</div>
 
 	<div>
-		<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">인증 프로토콜</p>
+		<p class="mb-3 text-xs font-semibold tracking-wider text-gray-400 uppercase">인증 프로토콜</p>
 		<div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
 			<div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
 				<h3 class="text-sm font-medium text-gray-500">{t('admin.users')}</h3>
@@ -38,7 +38,9 @@
 	</div>
 
 	<div>
-		<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">{t('admin.org')}</p>
+		<p class="mb-3 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+			{t('admin.org')}
+		</p>
 		<div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
 			<div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
 				<h3 class="text-sm font-medium text-gray-500">{t('admin.departments')}</h3>

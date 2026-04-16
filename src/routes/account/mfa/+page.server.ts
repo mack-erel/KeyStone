@@ -12,10 +12,7 @@ import {
 	generateBackupCodes,
 	hashBackupCode
 } from '$lib/server/auth/totp';
-import {
-	TOTP_CREDENTIAL_TYPE,
-	BACKUP_CODE_CREDENTIAL_TYPE
-} from '$lib/server/auth/constants';
+import { TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from '$lib/server/auth/constants';
 import { credentials } from '$lib/server/db/schema';
 import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit';
 
@@ -31,7 +28,9 @@ async function createSetupToken(base32Secret: string, signingKeySecret: string):
 			.replace(/\+/g, '-')
 			.replace(/\//g, '_')
 			.replace(/=+$/, '');
-	const data = b64u(enc.encode(JSON.stringify({ s: base32Secret, exp: Date.now() + TOTP_SETUP_TTL_MS })));
+	const data = b64u(
+		enc.encode(JSON.stringify({ s: base32Secret, exp: Date.now() + TOTP_SETUP_TTL_MS }))
+	);
 	const key = await crypto.subtle.importKey(
 		'raw',
 		enc.encode(signingKeySecret),
@@ -66,7 +65,10 @@ async function verifySetupToken(token: string, signingKeySecret: string): Promis
 		);
 		const valid = await crypto.subtle.verify('HMAC', key, b64uDec(sigB64), enc.encode(data));
 		if (!valid) return null;
-		const payload = JSON.parse(new TextDecoder().decode(b64uDec(data))) as { s: string; exp: number };
+		const payload = JSON.parse(new TextDecoder().decode(b64uDec(data))) as {
+			s: string;
+			exp: number;
+		};
 		if (payload.exp < Date.now()) return null;
 		return payload.s;
 	} catch {
@@ -88,9 +90,7 @@ export const load: PageServerLoad = async ({ locals, cookies, platform, url }) =
 	const [totpCred] = await db
 		.select({ id: credentials.id, createdAt: credentials.createdAt })
 		.from(credentials)
-		.where(
-			and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE))
-		)
+		.where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
 		.limit(1);
 
 	// 미사용 백업 코드 수
@@ -252,10 +252,7 @@ export const actions: Actions = {
 		await db
 			.delete(credentials)
 			.where(
-				and(
-					eq(credentials.userId, locals.user.id),
-					eq(credentials.type, TOTP_CREDENTIAL_TYPE)
-				)
+				and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE))
 			);
 
 		await db
@@ -288,7 +285,10 @@ export const actions: Actions = {
 
 		const config = getRuntimeConfig(platform);
 		if (!config.signingKeySecret) {
-			return fail(503, { regenerate: true, error: 'IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.' });
+			return fail(503, {
+				regenerate: true,
+				error: 'IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.'
+			});
 		}
 
 		const { db, tenant } = requireDbContext(locals);

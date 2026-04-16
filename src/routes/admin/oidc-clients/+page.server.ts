@@ -59,9 +59,10 @@ export const actions: Actions = {
 		const redirectUrisRaw = String(fd.get('redirectUris') ?? '').trim();
 		const postLogoutUrisRaw = String(fd.get('postLogoutRedirectUris') ?? '').trim();
 		const scopes = String(fd.get('scopes') ?? 'openid').trim();
-		const tokenMethod = String(
-			fd.get('tokenEndpointAuthMethod') ?? 'client_secret_basic'
-		) as 'client_secret_basic' | 'client_secret_post' | 'none';
+		const tokenMethod = String(fd.get('tokenEndpointAuthMethod') ?? 'client_secret_basic') as
+			| 'client_secret_basic'
+			| 'client_secret_post'
+			| 'none';
 		const requirePkce = fd.get('requirePkce') === 'true';
 
 		if (!name) return fail(400, { create: true, error: '이름은 필수입니다.' });

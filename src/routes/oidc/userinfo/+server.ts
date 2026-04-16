@@ -63,9 +63,7 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
 		response.locale = user.locale;
 		response.zoneinfo = user.zoneinfo;
 		response.birthdate = user.birthdate;
-		response.updated_at = user.updatedAt
-			? Math.floor(user.updatedAt.getTime() / 1000)
-			: undefined;
+		response.updated_at = user.updatedAt ? Math.floor(user.updatedAt.getTime() / 1000) : undefined;
 	}
 
 	if (scopes.has('phone')) {
@@ -82,7 +80,12 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
 			is_primary: d.isPrimary,
 			job_title: d.jobTitle,
 			position: d.position
-				? { id: d.position.id, name: d.position.name, code: d.position.code, level: d.position.level }
+				? {
+						id: d.position.id,
+						name: d.position.name,
+						code: d.position.code,
+						level: d.position.level
+					}
 				: null
 		}));
 		response.team = membership.teams.map((t) => ({

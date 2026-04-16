@@ -10,14 +10,14 @@
 
 ## 결과 요약
 
-| 항목                               | 상태                                | 비고                                                                                                                        |
-| ---------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| RS256 JWT (WebCrypto)              | ✅ OK                               | 외부 의존성 없이 동작. OIDC ID Token 서명 그대로 사용 가능.                                                                 |
-| 패스워드 해시 (PBKDF2-SHA256 100k) | ✅ OK (`M0` 구현 반영 완료)         | WebCrypto 네이티브. Workers 런타임 PBKDF2 한도 100,000회 — 600k 는 런타임 오류 발생하여 100k 로 조정. `M5` 에서 argon2id 교체 예정. |
-| SAML Assertion 서명                | ✅ OK (`2026-04-16`)               | `xmldsigjs + @xmldom/xmldom` 런타임 검증 완료. `verified: true`, 서명 46ms (keygen 43ms, sign 2ms, verify 1ms). `setNodeDependencies({ DOMParser, XMLSerializer, xpath })` 등록 필요. |
-| 개발 체인 (`lint/check/build`)     | ✅ OK (`2026-04-16` 기준 검증 완료) | `wrangler types --check`, `svelte-check`, `vite build` 까지 통과.                                                           |
-| M0 수동 로그인 검증                 | ✅ OK (`2026-04-16`)               | D1 마이그레이션 적용, bootstrap admin 아이디/비밀번호 로그인 → `/admin` 리다이렉트 확인.                                    |
-| M1 OIDC E2E 검증                    | ✅ OK (`2026-04-16`)               | PKCE S256 authorize → token(RS256 ID Token + HMAC access token) → userinfo 전체 플로우 수동 검증 완료. `signing_keys` 자동 생성 확인. |
+| 항목                               | 상태                                | 비고                                                                                                                                                                                  |
+| ---------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RS256 JWT (WebCrypto)              | ✅ OK                               | 외부 의존성 없이 동작. OIDC ID Token 서명 그대로 사용 가능.                                                                                                                           |
+| 패스워드 해시 (PBKDF2-SHA256 100k) | ✅ OK (`M0` 구현 반영 완료)         | WebCrypto 네이티브. Workers 런타임 PBKDF2 한도 100,000회 — 600k 는 런타임 오류 발생하여 100k 로 조정. `M5` 에서 argon2id 교체 예정.                                                   |
+| SAML Assertion 서명                | ✅ OK (`2026-04-16`)                | `xmldsigjs + @xmldom/xmldom` 런타임 검증 완료. `verified: true`, 서명 46ms (keygen 43ms, sign 2ms, verify 1ms). `setNodeDependencies({ DOMParser, XMLSerializer, xpath })` 등록 필요. |
+| 개발 체인 (`lint/check/build`)     | ✅ OK (`2026-04-16` 기준 검증 완료) | `wrangler types --check`, `svelte-check`, `vite build` 까지 통과.                                                                                                                     |
+| M0 수동 로그인 검증                | ✅ OK (`2026-04-16`)                | D1 마이그레이션 적용, bootstrap admin 아이디/비밀번호 로그인 → `/admin` 리다이렉트 확인.                                                                                              |
+| M1 OIDC E2E 검증                   | ✅ OK (`2026-04-16`)                | PKCE S256 authorize → token(RS256 ID Token + HMAC access token) → userinfo 전체 플로우 수동 검증 완료. `signing_keys` 자동 생성 확인.                                                 |
 
 ## 실구현 반영 상태 (2026-04-16)
 

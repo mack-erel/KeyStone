@@ -172,21 +172,16 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
 		const signedXmlResponse = new xmldsigjs.SignedXml();
 		signedXmlResponse.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm =
 			'http://www.w3.org/2001/10/xml-exc-c14n#';
-		await signedXmlResponse.Sign(
-			{ name: 'RSASSA-PKCS1-v1_5' },
-			params.privateKey,
-			responseDoc,
-			{
-				x509: [certB64],
-				references: [
-					{
-						uri: `#${responseId}`,
-						hash: 'SHA-256',
-						transforms: ['enveloped', 'exc-c14n']
-					}
-				]
-			}
-		);
+		await signedXmlResponse.Sign({ name: 'RSASSA-PKCS1-v1_5' }, params.privateKey, responseDoc, {
+			x509: [certB64],
+			references: [
+				{
+					uri: `#${responseId}`,
+					hash: 'SHA-256',
+					transforms: ['enveloped', 'exc-c14n']
+				}
+			]
+		});
 
 		const responseSigNode = signedXmlResponse.XmlSignature.GetXml();
 		if (responseSigNode) {
@@ -203,9 +198,7 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
 	}
 
 	// ── 6. 직렬화 → base64 (HTTP-POST 바인딩) ────────────────────────────────
-	const serialized = xmldsigjs
-		.Stringify(responseDoc)
-		.replace(/^<\?xml[^?]*\?>\s*/i, '');
+	const serialized = xmldsigjs.Stringify(responseDoc).replace(/^<\?xml[^?]*\?>\s*/i, '');
 
 	// TextEncoder 를 통한 안전한 UTF-8 → base64 변환
 	const bytes = new TextEncoder().encode(serialized);

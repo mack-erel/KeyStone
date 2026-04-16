@@ -138,9 +138,7 @@ export const actions: Actions = {
 		const id = String(fd.get('id') ?? '');
 		if (!id) return fail(400, { error: '잘못된 요청입니다.' });
 
-		await db
-			.delete(samlSps)
-			.where(and(eq(samlSps.id, id), eq(samlSps.tenantId, tenant.id)));
+		await db.delete(samlSps).where(and(eq(samlSps.id, id), eq(samlSps.tenantId, tenant.id)));
 
 		const requestMetadata = getRequestMetadata(event);
 		await recordAuditEvent(db, {

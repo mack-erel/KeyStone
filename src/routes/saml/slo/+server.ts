@@ -39,7 +39,6 @@ export const GET: RequestHandler = async ({ locals, url, cookies }) => {
 	}
 
 	// RelayState 가 URL 이면 리다이렉트, 아니면 홈으로
-	const dest =
-		relayState && /^https?:\/\//.test(relayState) ? relayState : '/';
+	const dest = relayState && /^https?:\/\//.test(relayState) ? relayState : '/';
 	throw redirect(302, dest);
 };

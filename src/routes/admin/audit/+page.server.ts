@@ -13,10 +13,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const outcomeFilter = url.searchParams.get('outcome')?.trim() || null;
 	const limitParam = parseInt(url.searchParams.get('limit') ?? '100', 10);
 
-	const outcome =
-		VALID_OUTCOMES.includes(outcomeFilter as (typeof VALID_OUTCOMES)[number])
-			? (outcomeFilter as 'success' | 'failure')
-			: null;
+	const outcome = VALID_OUTCOMES.includes(outcomeFilter as (typeof VALID_OUTCOMES)[number])
+		? (outcomeFilter as 'success' | 'failure')
+		: null;
 	const limit = LIMIT_OPTIONS.includes(limitParam as (typeof LIMIT_OPTIONS)[number])
 		? limitParam
 		: 100;

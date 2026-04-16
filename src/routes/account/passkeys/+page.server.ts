@@ -23,10 +23,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		})
 		.from(credentials)
 		.where(
-			and(
-				eq(credentials.userId, locals.user.id),
-				eq(credentials.type, WEBAUTHN_CREDENTIAL_TYPE)
-			)
+			and(eq(credentials.userId, locals.user.id), eq(credentials.type, WEBAUTHN_CREDENTIAL_TYPE))
 		);
 
 	return {

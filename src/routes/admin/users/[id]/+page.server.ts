@@ -134,7 +134,19 @@ export const actions: Actions = {
 
 		await db
 			.update(users)
-			.set({ displayName, givenName, familyName, phoneNumber, bio, birthdate, locale, zoneinfo, role, status, updatedAt: new Date() })
+			.set({
+				displayName,
+				givenName,
+				familyName,
+				phoneNumber,
+				bio,
+				birthdate,
+				locale,
+				zoneinfo,
+				role,
+				status,
+				updatedAt: new Date()
+			})
 			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)));
 
 		return { updated: true };
@@ -152,7 +164,9 @@ export const actions: Actions = {
 
 		if (!departmentId) return fail(400, { error: '부서를 선택해 주세요.' });
 
-		await db.insert(userDepartments).values({ tenantId: tenant.id, userId, departmentId, positionId, jobTitle, isPrimary });
+		await db
+			.insert(userDepartments)
+			.values({ tenantId: tenant.id, userId, departmentId, positionId, jobTitle, isPrimary });
 		return { addedDept: true };
 	},
 

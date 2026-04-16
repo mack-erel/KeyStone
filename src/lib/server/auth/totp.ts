@@ -102,7 +102,10 @@ export async function verifyTotp(code: string, base32Secret: string): Promise<bo
 
 // ── TOTP 시크릿 암호화/복호화 ──────────────────────────────────────────────────
 
-async function deriveTotpWrapKey(signingKeySecret: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+async function deriveTotpWrapKey(
+	signingKeySecret: string,
+	salt: Uint8Array<ArrayBuffer>
+): Promise<CryptoKey> {
 	const enc = new TextEncoder();
 	const keyMaterial = await crypto.subtle.importKey(
 		'raw',
@@ -124,12 +127,19 @@ async function deriveTotpWrapKey(signingKeySecret: string, salt: Uint8Array<Arra
  * TOTP base32 시크릿을 AES-256-GCM 으로 암호화한다.
  * 형식: `<salt_b64u>.<iv_b64u>.<ciphertext_b64u>`
  */
-export async function encryptTotpSecret(base32Secret: string, signingKeySecret: string): Promise<string> {
+export async function encryptTotpSecret(
+	base32Secret: string,
+	signingKeySecret: string
+): Promise<string> {
 	const salt = crypto.getRandomValues(new Uint8Array(16));
 	const iv = crypto.getRandomValues(new Uint8Array(12));
 	const wrapKey = await deriveTotpWrapKey(signingKeySecret, salt);
 	const enc = new TextEncoder();
-	const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, enc.encode(base32Secret));
+	const ct = await crypto.subtle.encrypt(
+		{ name: 'AES-GCM', iv },
+		wrapKey,
+		enc.encode(base32Secret)
+	);
 	const b64u = (buf: Uint8Array) =>
 		btoa(String.fromCharCode(...buf))
 			.replace(/\+/g, '-')
@@ -141,7 +151,10 @@ export async function encryptTotpSecret(base32Secret: string, signingKeySecret: 
 /**
  * `encryptTotpSecret` 역연산. 복호화된 base32 시크릿 반환.
  */
-export async function decryptTotpSecret(encrypted: string, signingKeySecret: string): Promise<string> {
+export async function decryptTotpSecret(
+	encrypted: string,
+	signingKeySecret: string
+): Promise<string> {
 	const parts = encrypted.split('.');
 	if (parts.length !== 3) throw new Error('Invalid encrypted TOTP secret format');
 	const [saltB64, ivB64, ctB64] = parts;

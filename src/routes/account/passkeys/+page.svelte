@@ -69,17 +69,13 @@
 
 			<!-- 에러 -->
 			{#if formError}
-				<div
-					class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-				>
+				<div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 					{formError}
 				</div>
 			{/if}
 
 			{#if registerError}
-				<div
-					class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-				>
+				<div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 					{registerError}
 				</div>
 			{/if}
@@ -116,11 +112,7 @@
 								</div>
 							</div>
 
-							<form
-								method="POST"
-								action="?/delete"
-								use:enhance
-							>
+							<form method="POST" action="?/delete" use:enhance>
 								<input type="hidden" name="id" value={pk.id} />
 								<button
 									type="submit"

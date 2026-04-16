@@ -40,13 +40,9 @@
 		}
 	});
 
-	const backupCodes = $derived(
-		(form as { backupCodes?: string[] } | null)?.backupCodes ?? null
-	);
+	const backupCodes = $derived((form as { backupCodes?: string[] } | null)?.backupCodes ?? null);
 
-	const formError = $derived(
-		(form as { error?: string } | null)?.error ?? null
-	);
+	const formError = $derived((form as { error?: string } | null)?.error ?? null);
 
 	const isSetupMode = $derived(!!otpauthUri);
 	const isConfirmMode = $derived(
@@ -75,11 +71,14 @@
 				<div class="mb-6 rounded-xl border border-green-200 bg-green-50 p-5">
 					<h2 class="mb-2 font-semibold text-green-900">백업 코드가 생성되었습니다</h2>
 					<p class="mb-4 text-sm text-green-700">
-						이 코드는 지금만 표시됩니다. 안전한 곳에 저장해 두세요. 코드 하나당 1회만 사용 가능합니다.
+						이 코드는 지금만 표시됩니다. 안전한 곳에 저장해 두세요. 코드 하나당 1회만 사용
+						가능합니다.
 					</p>
 					<div class="grid grid-cols-2 gap-2">
 						{#each backupCodes as code}
-							<code class="rounded-md bg-white px-3 py-1.5 text-center font-mono text-sm text-gray-800 shadow-sm">
+							<code
+								class="rounded-md bg-white px-3 py-1.5 text-center font-mono text-sm text-gray-800 shadow-sm"
+							>
 								{code}
 							</code>
 						{/each}
@@ -103,7 +102,9 @@
 						{:else if qrError}
 							<p class="text-sm text-gray-500">QR 코드 생성 실패</p>
 						{:else}
-							<div class="flex h-[200px] w-[200px] items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+							<div
+								class="flex h-[200px] w-[200px] items-center justify-center rounded-lg border border-gray-200 bg-gray-50"
+							>
 								<span class="text-xs text-gray-400">로딩 중...</span>
 							</div>
 						{/if}
@@ -112,7 +113,9 @@
 							<summary class="cursor-pointer text-xs text-gray-500 hover:text-gray-700">
 								직접 입력 (키 보기)
 							</summary>
-							<div class="mt-2 break-all rounded-md bg-gray-100 px-3 py-2 font-mono text-xs text-gray-600">
+							<div
+								class="mt-2 rounded-md bg-gray-100 px-3 py-2 font-mono text-xs break-all text-gray-600"
+							>
 								{otpauthUri}
 							</div>
 						</details>
@@ -143,16 +146,13 @@
 					</form>
 
 					<form method="POST" action="?/setup" use:enhance>
-						<button
-							type="submit"
-							class="w-full text-center text-sm text-gray-500 hover:underline"
-						>
+						<button type="submit" class="w-full text-center text-sm text-gray-500 hover:underline">
 							새 QR 코드 생성
 						</button>
 					</form>
 				</div>
 
-			<!-- 등록된 상태 -->
+				<!-- 등록된 상태 -->
 			{:else if data.enrolled}
 				<div class="space-y-5">
 					<div class="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4">
@@ -192,7 +192,9 @@
 									type="submit"
 									class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
 									onclick={(e) => {
-										if (!confirm('기존 백업 코드가 모두 삭제되고 새로 발급됩니다. 계속하시겠습니까?')) {
+										if (
+											!confirm('기존 백업 코드가 모두 삭제되고 새로 발급됩니다. 계속하시겠습니까?')
+										) {
 											e.preventDefault();
 										}
 									}}
@@ -219,13 +221,13 @@
 					</form>
 				</div>
 
-			<!-- 미등록 상태 -->
+				<!-- 미등록 상태 -->
 			{:else}
 				<div class="space-y-5">
 					<div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
 						<p class="text-sm text-gray-600">
-							2단계 인증을 활성화하면 계정 보안이 강화됩니다. Google Authenticator, Authy 등의
-							인증 앱이 필요합니다.
+							2단계 인증을 활성화하면 계정 보안이 강화됩니다. Google Authenticator, Authy 등의 인증
+							앱이 필요합니다.
 						</p>
 					</div>
 

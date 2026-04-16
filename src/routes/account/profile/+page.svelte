@@ -30,7 +30,9 @@
 		</div>
 	{/if}
 	{#if err}
-		<div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</div>
+		<div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+			{err}
+		</div>
 	{/if}
 
 	<form method="POST" use:enhance class="space-y-6">
@@ -39,28 +41,69 @@
 			<h2 class="mb-4 text-sm font-semibold text-gray-700">기본 정보</h2>
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div>
-					<label for="givenName" class="block text-xs font-medium text-gray-700">이름 (Given Name)</label>
-					<input id="givenName" type="text" name="givenName" value={data.profile.givenName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="givenName" class="block text-xs font-medium text-gray-700"
+						>이름 (Given Name)</label
+					>
+					<input
+						id="givenName"
+						type="text"
+						name="givenName"
+						value={data.profile.givenName ?? ''}
+						class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+					/>
 				</div>
 				<div>
-					<label for="familyName" class="block text-xs font-medium text-gray-700">성 (Family Name)</label>
-					<input id="familyName" type="text" name="familyName" value={data.profile.familyName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="familyName" class="block text-xs font-medium text-gray-700"
+						>성 (Family Name)</label
+					>
+					<input
+						id="familyName"
+						type="text"
+						name="familyName"
+						value={data.profile.familyName ?? ''}
+						class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+					/>
 				</div>
 				<div class="sm:col-span-2">
 					<label for="displayName" class="block text-xs font-medium text-gray-700">표시 이름</label>
-					<input id="displayName" type="text" name="displayName" value={data.profile.displayName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<input
+						id="displayName"
+						type="text"
+						name="displayName"
+						value={data.profile.displayName ?? ''}
+						class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+					/>
 				</div>
 				<div>
 					<label for="birthdate" class="block text-xs font-medium text-gray-700">생년월일</label>
-					<input id="birthdate" type="date" name="birthdate" value={data.profile.birthdate ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<input
+						id="birthdate"
+						type="date"
+						name="birthdate"
+						value={data.profile.birthdate ?? ''}
+						class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+					/>
 				</div>
 				<div>
 					<label for="phoneNumber" class="block text-xs font-medium text-gray-700">전화번호</label>
-					<input id="phoneNumber" type="tel" name="phoneNumber" value={data.profile.phoneNumber ?? ''} placeholder="+82-10-1234-5678" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<input
+						id="phoneNumber"
+						type="tel"
+						name="phoneNumber"
+						value={data.profile.phoneNumber ?? ''}
+						placeholder="+82-10-1234-5678"
+						class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+					/>
 				</div>
 				<div class="sm:col-span-2">
 					<label for="bio" class="block text-xs font-medium text-gray-700">소개</label>
-					<textarea id="bio" name="bio" rows="3" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none">{data.profile.bio ?? ''}</textarea>
+					<textarea
+						id="bio"
+						name="bio"
+						rows="3"
+						class="mt-1 w-full resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+						>{data.profile.bio ?? ''}</textarea
+					>
 				</div>
 			</div>
 		</section>
@@ -71,17 +114,29 @@
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div>
 					<label for="locale" class="block text-xs font-medium text-gray-700">언어</label>
-					<select id="locale" name="locale" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+					<select
+						id="locale"
+						name="locale"
+						class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+					>
 						{#each LOCALE_OPTIONS as opt}
-							<option value={opt.value} selected={data.profile.locale === opt.value}>{opt.label}</option>
+							<option value={opt.value} selected={data.profile.locale === opt.value}
+								>{opt.label}</option
+							>
 						{/each}
 					</select>
 				</div>
 				<div>
 					<label for="zoneinfo" class="block text-xs font-medium text-gray-700">시간대</label>
-					<select id="zoneinfo" name="zoneinfo" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+					<select
+						id="zoneinfo"
+						name="zoneinfo"
+						class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+					>
 						{#each TIMEZONE_OPTIONS as opt}
-							<option value={opt.value} selected={data.profile.zoneinfo === opt.value}>{opt.label}</option>
+							<option value={opt.value} selected={data.profile.zoneinfo === opt.value}
+								>{opt.label}</option
+							>
 						{/each}
 					</select>
 				</div>
@@ -96,26 +151,36 @@
 					{#each data.membership.departments as dept}
 						<div class="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm">
 							<span class="font-medium text-gray-900">{dept.name}</span>
-							{#if dept.isPrimary}<span class="rounded-full bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">주소속</span>{/if}
+							{#if dept.isPrimary}<span
+									class="rounded-full bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">주소속</span
+								>{/if}
 							{#if dept.jobTitle}<span class="text-gray-500">/ {dept.jobTitle}</span>{/if}
 							{#if dept.position}<span class="text-gray-400">({dept.position.name})</span>{/if}
 						</div>
 					{/each}
 					{#each data.membership.teams as team}
 						<div class="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm">
-							<span class="text-gray-500 text-xs">팀</span>
+							<span class="text-xs text-gray-500">팀</span>
 							<span class="font-medium text-gray-900">{team.name}</span>
-							{#if team.departmentName}<span class="text-gray-400 text-xs">({team.departmentName})</span>{/if}
-							{#if team.isPrimary}<span class="rounded-full bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700">주소속</span>{/if}
+							{#if team.departmentName}<span class="text-xs text-gray-400"
+									>({team.departmentName})</span
+								>{/if}
+							{#if team.isPrimary}<span
+									class="rounded-full bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700"
+									>주소속</span
+								>{/if}
 							{#if team.jobTitle}<span class="text-gray-500">/ {team.jobTitle}</span>{/if}
 						</div>
 					{/each}
 					{#each data.membership.parts as part}
 						<div class="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm">
-							<span class="text-gray-500 text-xs">파트</span>
+							<span class="text-xs text-gray-500">파트</span>
 							<span class="font-medium text-gray-900">{part.name}</span>
-							{#if part.teamName}<span class="text-gray-400 text-xs">({part.teamName})</span>{/if}
-							{#if part.isPrimary}<span class="rounded-full bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700">주소속</span>{/if}
+							{#if part.teamName}<span class="text-xs text-gray-400">({part.teamName})</span>{/if}
+							{#if part.isPrimary}<span
+									class="rounded-full bg-violet-100 px-1.5 py-0.5 text-xs text-violet-700"
+									>주소속</span
+								>{/if}
 							{#if part.jobTitle}<span class="text-gray-500">/ {part.jobTitle}</span>{/if}
 						</div>
 					{/each}
@@ -124,7 +189,10 @@
 		{/if}
 
 		<div class="flex justify-end">
-			<button type="submit" class="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700">
+			<button
+				type="submit"
+				class="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700"
+			>
 				저장
 			</button>
 		</div>

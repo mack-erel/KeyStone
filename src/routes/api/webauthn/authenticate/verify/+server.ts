@@ -28,11 +28,7 @@ export const POST: RequestHandler = async (event) => {
 		throw error(400, '인증 세션이 만료되었습니다. 다시 시도해 주세요.');
 	}
 
-	const payload = await verifyChallengeCookie(
-		cookieValue,
-		config.signingKeySecret,
-		'authenticate'
-	);
+	const payload = await verifyChallengeCookie(cookieValue, config.signingKeySecret, 'authenticate');
 	if (!payload) {
 		cookies.delete(WEBAUTHN_CHALLENGE_COOKIE, { path: '/' });
 		throw error(400, '인증 세션이 유효하지 않습니다. 다시 시도해 주세요.');
@@ -43,13 +39,7 @@ export const POST: RequestHandler = async (event) => {
 
 	const { db, tenant } = requireDbContext(locals);
 
-	const result = await verifyPasskeyAuthentication(
-		db,
-		body,
-		payload.challenge,
-		rpID,
-		origin
-	);
+	const result = await verifyPasskeyAuthentication(db, body, payload.challenge, rpID, origin);
 
 	cookies.delete(WEBAUTHN_CHALLENGE_COOKIE, { path: '/' });
 
@@ -67,11 +57,7 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	// 사용자 조회
-	const [user] = await db
-		.select()
-		.from(users)
-		.where(eq(users.id, result.userId))
-		.limit(1);
+	const [user] = await db.select().from(users).where(eq(users.id, result.userId)).limit(1);
 
 	if (!user || user.status !== 'active') {
 		throw error(403, '비활성화된 계정입니다.');

@@ -34,7 +34,10 @@ export function b64uDecode(str: string): Uint8Array<ArrayBuffer> {
 
 // ── private key wrapping ──────────────────────────────────────────────────────
 
-async function deriveWrappingKey(secret: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+async function deriveWrappingKey(
+	secret: string,
+	salt: Uint8Array<ArrayBuffer>
+): Promise<CryptoKey> {
 	const enc = new TextEncoder();
 	const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(secret), 'HKDF', false, [
 		'deriveKey'
@@ -167,10 +170,13 @@ export interface AccessTokenClaims {
 
 async function deriveHmacKey(secret: string): Promise<CryptoKey> {
 	const enc = new TextEncoder();
-	return crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, [
-		'sign',
-		'verify'
-	]);
+	return crypto.subtle.importKey(
+		'raw',
+		enc.encode(secret),
+		{ name: 'HMAC', hash: 'SHA-256' },
+		false,
+		['sign', 'verify']
+	);
 }
 
 export async function generateAccessToken(
@@ -212,7 +218,12 @@ export async function getActiveSigningKey(
 	db: DB,
 	tenantId: string,
 	secret: string
-): Promise<{ kid: string; privateKey: CryptoKey; publicJwk: JsonWebKey; certPem: string | null } | null> {
+): Promise<{
+	kid: string;
+	privateKey: CryptoKey;
+	publicJwk: JsonWebKey;
+	certPem: string | null;
+} | null> {
 	const [row] = await db
 		.select()
 		.from(signingKeys)

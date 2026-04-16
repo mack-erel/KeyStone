@@ -60,7 +60,9 @@ export const actions: Actions = {
 		}
 
 		const formData = await event.request.formData();
-		const code = String(formData.get('code') ?? '').trim().replace(/\s/g, '');
+		const code = String(formData.get('code') ?? '')
+			.trim()
+			.replace(/\s/g, '');
 		const useBackup = formData.get('use_backup') === '1';
 
 		if (!code) {
@@ -75,11 +77,7 @@ export const actions: Actions = {
 		const requestMetadata = getRequestMetadata(event);
 
 		// 사용자 확인
-		const [user] = await db
-			.select()
-			.from(users)
-			.where(eq(users.id, claims.userId))
-			.limit(1);
+		const [user] = await db.select().from(users).where(eq(users.id, claims.userId)).limit(1);
 
 		if (!user || user.status !== 'active' || user.tenantId !== claims.tenantId) {
 			event.cookies.delete(MFA_PENDING_COOKIE, { path: '/' });
@@ -121,9 +119,7 @@ export const actions: Actions = {
 			const [totpCred] = await db
 				.select()
 				.from(credentials)
-				.where(
-					and(eq(credentials.userId, user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE))
-				)
+				.where(and(eq(credentials.userId, user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
 				.limit(1);
 
 			if (totpCred?.secret) {

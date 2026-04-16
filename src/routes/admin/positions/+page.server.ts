@@ -57,9 +57,7 @@ export const actions: Actions = {
 		const id = String(fd.get('id') ?? '');
 		if (!id) return fail(400, { error: '잘못된 요청입니다.' });
 
-		await db
-			.delete(positions)
-			.where(and(eq(positions.id, id), eq(positions.tenantId, tenant.id)));
+		await db.delete(positions).where(and(eq(positions.id, id), eq(positions.tenantId, tenant.id)));
 		return { deleted: true };
 	}
 };

@@ -3,7 +3,11 @@ import type { Actions, PageServerLoad } from './$types';
 import { getRequestMetadata, recordAuditEvent } from '$lib/server/audit';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { createSessionRecord, setSessionCookie } from '$lib/server/auth/session';
-import { authenticateLocalUser, hasTotpCredential, normalizeUsername } from '$lib/server/auth/users';
+import {
+	authenticateLocalUser,
+	hasTotpCredential,
+	normalizeUsername
+} from '$lib/server/auth/users';
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from '$lib/server/auth/mfa';
 import { AMR_PASSWORD } from '$lib/server/auth/constants';
 import { getRuntimeConfig } from '$lib/server/auth/runtime';

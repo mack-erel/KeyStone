@@ -34,11 +34,7 @@ export async function checkRateLimit(
 	const now = Date.now();
 	const newExpiresAt = new Date(now + options.windowMs);
 
-	const [existing] = await db
-		.select()
-		.from(rateLimits)
-		.where(eq(rateLimits.key, key))
-		.limit(1);
+	const [existing] = await db.select().from(rateLimits).where(eq(rateLimits.key, key)).limit(1);
 
 	// 레코드 없거나 윈도우 만료 → 새 윈도우 시작
 	if (!existing || existing.expiresAt.getTime() <= now) {

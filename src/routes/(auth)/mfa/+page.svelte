@@ -10,12 +10,7 @@
 	<div class="w-full max-w-[420px] rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
 		<div class="mb-6 space-y-2 text-center">
 			<div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-50">
-				<svg
-					class="h-6 w-6 text-blue-600"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
+				<svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"
@@ -79,9 +74,7 @@
 		</div>
 
 		<div class="mt-3 text-center">
-			<a href="/login" class="text-sm text-gray-500 hover:underline">
-				← 로그인으로 돌아가기
-			</a>
+			<a href="/login" class="text-sm text-gray-500 hover:underline"> ← 로그인으로 돌아가기 </a>
 		</div>
 	</div>
 </div>

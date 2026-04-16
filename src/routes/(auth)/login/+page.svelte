@@ -14,7 +14,7 @@
 		try {
 			// 1. 인증 옵션 요청
 			const optRes = await fetch('/api/webauthn/authenticate/options', { method: 'POST' });
-			if (!optRes.ok) throw new Error(await optRes.text() || '옵션 요청 실패');
+			if (!optRes.ok) throw new Error((await optRes.text()) || '옵션 요청 실패');
 			const options = await optRes.json();
 
 			// 2. 브라우저 패스키 인증 (클라이언트 전용)
@@ -30,7 +30,7 @@
 				body: JSON.stringify({ ...authResponse, _redirectTo: pendingRedirect })
 			});
 
-			if (!verRes.ok) throw new Error(await verRes.text() || '인증 실패');
+			if (!verRes.ok) throw new Error((await verRes.text()) || '인증 실패');
 
 			const { redirectTo } = (await verRes.json()) as { redirectTo?: string };
 			await goto(redirectTo ?? '/');
@@ -138,12 +138,7 @@
 				</svg>
 				인증 중...
 			{:else}
-				<svg
-					class="h-4 w-4 text-gray-500"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
+				<svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path
 						stroke-linecap="round"
 						stroke-linejoin="round"

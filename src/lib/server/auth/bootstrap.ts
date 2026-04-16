@@ -1,7 +1,14 @@
 import { and, eq } from 'drizzle-orm';
 import type { DB } from '$lib/server/db';
 import { recordAuditEvent } from '$lib/server/audit';
-import { credentials, identities, signingKeys, type Tenant, tenants, users } from '$lib/server/db/schema';
+import {
+	credentials,
+	identities,
+	signingKeys,
+	type Tenant,
+	tenants,
+	users
+} from '$lib/server/db/schema';
 import {
 	DEFAULT_TENANT_SLUG,
 	LOCAL_IDENTITY_PROVIDER,
@@ -10,7 +17,12 @@ import {
 import { hashPassword } from './password';
 import { getRuntimeConfig } from './runtime';
 import { findPasswordCredential, normalizeEmail, normalizeUsername } from './users';
-import { generateRsaSigningKey, generateSelfSignedCert, unwrapPrivateKey, wrapPrivateKey } from '$lib/server/crypto/keys';
+import {
+	generateRsaSigningKey,
+	generateSelfSignedCert,
+	unwrapPrivateKey,
+	wrapPrivateKey
+} from '$lib/server/crypto/keys';
 
 function isUniqueConstraintError(error: unknown): boolean {
 	return error instanceof Error && /unique constraint failed/i.test(error.message);

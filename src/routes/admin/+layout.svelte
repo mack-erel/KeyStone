@@ -37,7 +37,7 @@
 			<p class="text-sm text-gray-500">{data.currentUser.email}</p>
 		</div>
 
-		<nav class="p-4 space-y-4">
+		<nav class="space-y-4 p-4">
 			<ul class="space-y-1">
 				{#each menuItems as item (item.key)}
 					<li>
@@ -55,13 +55,16 @@
 			</ul>
 
 			<div>
-				<p class="px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-gray-400">{t('admin.org')}</p>
+				<p class="px-3 pb-1 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+					{t('admin.org')}
+				</p>
 				<ul class="space-y-1">
 					{#each orgMenuItems as item (item.key)}
 						<li>
 							<a
 								href={resolve(item.route)}
-								class="block rounded-md px-3 py-2 text-sm font-medium transition-colors {page.url.pathname === resolve(item.route)
+								class="block rounded-md px-3 py-2 text-sm font-medium transition-colors {page.url
+									.pathname === resolve(item.route)
 									? 'bg-blue-50 text-blue-700'
 									: 'text-gray-700 hover:bg-gray-100'}"
 							>

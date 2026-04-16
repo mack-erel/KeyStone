@@ -1,5 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { type AnySQLiteColumn, integer, sqliteTable, text, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import {
+	type AnySQLiteColumn,
+	integer,
+	sqliteTable,
+	text,
+	index,
+	uniqueIndex
+} from 'drizzle-orm/sqlite-core';
 
 // ---------- Tenancy ----------
 

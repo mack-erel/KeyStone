@@ -17,8 +17,10 @@
 
 	function applyFilters() {
 		const params = new URLSearchParams(page.url.searchParams);
-		if (kindFilter) params.set('kind', kindFilter); else params.delete('kind');
-		if (outcomeFilter) params.set('outcome', outcomeFilter); else params.delete('outcome');
+		if (kindFilter) params.set('kind', kindFilter);
+		else params.delete('kind');
+		if (outcomeFilter) params.set('outcome', outcomeFilter);
+		else params.delete('outcome');
 		params.set('limit', limitFilter);
 		goto(`?${params.toString()}`, { replaceState: true });
 	}
@@ -111,32 +113,55 @@
 		<table class="min-w-full divide-y divide-gray-200">
 			<thead class="bg-gray-50">
 				<tr>
-					<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">시각</th>
-					<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">사용자</th>
-					<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">이벤트</th>
-					<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">결과</th>
-					<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">IP</th>
-					<th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">상세</th>
+					<th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
+						>시각</th
+					>
+					<th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
+						>사용자</th
+					>
+					<th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
+						>이벤트</th
+					>
+					<th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
+						>결과</th
+					>
+					<th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
+						>IP</th
+					>
+					<th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
+						>상세</th
+					>
 				</tr>
 			</thead>
 			<tbody class="divide-y divide-gray-200">
 				{#if data.events.length === 0}
 					<tr>
-						<td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500">감사 로그가 없습니다.</td>
+						<td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500"
+							>감사 로그가 없습니다.</td
+						>
 					</tr>
 				{:else}
 					{#each data.events as ev (ev.id)}
 						<tr class="hover:bg-gray-50">
-							<td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{dateTimeFormatter.format(ev.createdAt)}</td>
+							<td class="px-4 py-3 text-xs whitespace-nowrap text-gray-500"
+								>{dateTimeFormatter.format(ev.createdAt)}</td
+							>
 							<td class="px-4 py-3 text-xs text-gray-600">{ev.userEmail ?? '—'}</td>
 							<td class="px-4 py-3 font-mono text-xs text-gray-800">{ev.kind}</td>
 							<td class="px-4 py-3">
-								<span class="rounded-full px-2 py-0.5 text-xs font-medium {ev.outcome === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">
+								<span
+									class="rounded-full px-2 py-0.5 text-xs font-medium {ev.outcome === 'success'
+										? 'bg-green-100 text-green-700'
+										: 'bg-red-100 text-red-600'}"
+								>
 									{ev.outcome === 'success' ? '성공' : '실패'}
 								</span>
 							</td>
 							<td class="px-4 py-3 font-mono text-xs text-gray-400">{ev.ip ?? '—'}</td>
-							<td class="px-4 py-3 font-mono text-xs text-gray-500 max-w-[280px] truncate" title={ev.detailJson ?? ''}>
+							<td
+								class="max-w-[280px] truncate px-4 py-3 font-mono text-xs text-gray-500"
+								title={ev.detailJson ?? ''}
+							>
 								{formatDetail(ev.detailJson)}
 							</td>
 						</tr>
