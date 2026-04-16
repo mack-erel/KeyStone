@@ -7,7 +7,9 @@
 import * as readline from "node:readline";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as os from "node:os";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import { spawnSync, spawn } from "node:child_process";
 
 // ─── ANSI Colors ─────────────────────────────────────────────────────────────
@@ -465,6 +467,7 @@ async function step3_dbSetup(args: Args): Promise<{
   dbId: string;
   dbName: string;
   previewDbId: string | null;
+  previewDbName: string | null;
 }> {
   console.log(`\n${cyan("─── 3. D1 데이터베이스 설정 ────────────────────────────────")}`);
 
@@ -475,10 +478,12 @@ async function step3_dbSetup(args: Args): Promise<{
   }
 
   let previewDbId: string | null = null;
+  let previewDbName: string | null = null;
 
   if (!args.noPreview) {
     if (args.previewDbId) {
       previewDbId = args.previewDbId;
+      previewDbName = args.previewDbName ?? `${db.name}-preview`;
       console.log(green(`  ✓ 프리뷰 DB ID: ${previewDbId}`));
     } else {
       const previewDb = await setupDb(
@@ -489,10 +494,11 @@ async function step3_dbSetup(args: Args): Promise<{
         true
       );
       previewDbId = previewDb?.id ?? null;
+      previewDbName = previewDb?.name ?? null;
     }
   }
 
-  return { dbId: db.id, dbName: db.name, previewDbId };
+  return { dbId: db.id, dbName: db.name, previewDbId, previewDbName };
 }
 
 async function step4_updateFiles(dbId: string, previewDbId: string | null, accountId: string | null) {
@@ -542,7 +548,166 @@ async function step4_updateFiles(dbId: string, previewDbId: string | null, accou
   console.log(green("  ✓ .env 업데이트 완료"));
 }
 
-async function step5_migrate(args: Args, hasPreviewDb: boolean) {
+// ─── Migration Conflict Detection ────────────────────────────────────────────
+
+async function getExistingTables(
+  dbName: string,
+  env: Record<string, string>
+): Promise<string[] | null> {
+  const result = await runWithSpinner(
+    `기존 테이블 조회 중 (${dbName})...`,
+    "wrangler",
+    [
+      "d1", "execute", dbName, "--remote", "--json",
+      "--command",
+      "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    ],
+    { env }
+  );
+  if (!result.success) {
+    console.warn(yellow(`  테이블 조회 실패 (건너뜀): ${result.stderr.slice(0, 120)}`));
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(result.stdout) as Array<{ results: Array<{ name: string }> }>;
+    return (parsed[0]?.results ?? []).map((r) => r.name);
+  } catch {
+    return null;
+  }
+}
+
+function extractTablesFromMigrations(): string[] {
+  const drizzleDir = path.join(ROOT, "drizzle");
+  if (!fs.existsSync(drizzleDir)) return [];
+  const tables = new Set<string>();
+  for (const file of fs.readdirSync(drizzleDir).filter((f) => f.endsWith(".sql")).sort()) {
+    const content = readFile(path.join(drizzleDir, file));
+    for (const m of content.matchAll(/CREATE TABLE [`"]?(\w+)[`"]?\s*\(/gi)) {
+      tables.add(m[1]);
+    }
+  }
+  return [...tables];
+}
+
+function buildFilteredMigrationSQL(conflicting: Set<string>): string {
+  const drizzleDir = path.join(ROOT, "drizzle");
+  const stmts: string[] = [];
+  for (const file of fs.readdirSync(drizzleDir).filter((f) => f.endsWith(".sql")).sort()) {
+    const content = readFile(path.join(drizzleDir, file));
+    for (const stmt of content.split("--> statement-breakpoint")) {
+      const s = stmt.trim();
+      if (!s) continue;
+      const tblMatch = s.match(/^CREATE TABLE [`"]?(\w+)[`"]?\s*\(/i);
+      if (tblMatch && conflicting.has(tblMatch[1])) continue;
+      const idxMatch = s.match(/^CREATE (?:UNIQUE )?INDEX \S+ ON [`"]?(\w+)[`"]?/i);
+      if (idxMatch && conflicting.has(idxMatch[1])) continue;
+      stmts.push(s);
+    }
+  }
+  return stmts.join(";\n");
+}
+
+function buildDrizzleTrackingSQL(): string {
+  const drizzleDir = path.join(ROOT, "drizzle");
+  const now = Date.now();
+  const lines = [
+    `CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, hash TEXT NOT NULL, created_at NUMERIC);`,
+  ];
+  for (const file of fs.readdirSync(drizzleDir).filter((f) => f.endsWith(".sql")).sort()) {
+    const content = readFile(path.join(drizzleDir, file));
+    const hash = createHash("sha256").update(content).digest("hex");
+    lines.push(
+      `INSERT INTO "__drizzle_migrations" (hash, created_at) SELECT '${hash}', ${now} WHERE NOT EXISTS (SELECT 1 FROM "__drizzle_migrations" WHERE hash = '${hash}');`
+    );
+  }
+  return lines.join("\n");
+}
+
+async function handleMigrationConflicts(
+  dbName: string,
+  env: Record<string, string>,
+  args: Args
+): Promise<"proceed" | "done"> {
+  const existing = await getExistingTables(dbName, env);
+  if (!existing || existing.length === 0) return "proceed";
+
+  const migrationTables = extractTablesFromMigrations();
+  const conflicts = migrationTables.filter((t) => existing.includes(t));
+  if (conflicts.length === 0) return "proceed";
+
+  console.log(yellow(`\n  ⚠  이미 존재하는 테이블 발견 (${dbName}):`));
+  conflicts.forEach((t) => console.log(`     - ${t}`));
+
+  let choice: number;
+  if (args.yes) {
+    choice = 2;
+    console.log(yellow("  (--yes 모드) 겹치는 테이블은 건너뜀으로 자동 선택"));
+  } else {
+    choice = await select("마이그레이션 방식을 선택하세요", [
+      "겹치는 테이블 삭제 후 전체 마이그레이션 (데이터 손실 주의)",
+      "겹치는 테이블은 건너뛰고 나머지만 마이그레이션",
+    ]);
+  }
+
+  if (choice === 1) {
+    const dropSQL = [
+      "PRAGMA foreign_keys = OFF;",
+      ...conflicts.map((t) => `DROP TABLE IF EXISTS \`${t}\`;`),
+      "PRAGMA foreign_keys = ON;",
+    ].join("\n");
+
+    const tmpFile = path.join(os.tmpdir(), `keystone_drop_${Date.now()}.sql`);
+    writeFile(tmpFile, dropSQL);
+    try {
+      const dropResult = await runWithSpinner(
+        `겹치는 테이블 삭제 중 (${dbName})...`,
+        "wrangler",
+        ["d1", "execute", dbName, "--remote", "--file", tmpFile],
+        { env }
+      );
+      if (!dropResult.success) {
+        console.error(red(`  테이블 삭제 실패:\n${dropResult.stderr}`));
+        closeRL();
+        process.exit(1);
+      }
+    } finally {
+      fs.unlinkSync(tmpFile);
+    }
+    console.log(green(`  ✓ ${conflicts.length}개 테이블 삭제 완료 → 전체 마이그레이션 진행`));
+    return "proceed";
+  }
+
+  // Option 2: 필터링된 SQL + drizzle tracking
+  const combinedSQL = buildFilteredMigrationSQL(new Set(conflicts)) + "\n" + buildDrizzleTrackingSQL();
+  const tmpFile = path.join(os.tmpdir(), `keystone_filtered_${Date.now()}.sql`);
+  writeFile(tmpFile, combinedSQL);
+  try {
+    const runResult = await runWithSpinner(
+      `필터링된 마이그레이션 실행 중 (${dbName})...`,
+      "wrangler",
+      ["d1", "execute", dbName, "--remote", "--file", tmpFile],
+      { env }
+    );
+    if (!runResult.success) {
+      console.error(red(`  필터링된 마이그레이션 실패:\n${runResult.stderr}`));
+      closeRL();
+      process.exit(1);
+    }
+  } finally {
+    fs.unlinkSync(tmpFile);
+  }
+  console.log(green(`  ✓ 필터링된 마이그레이션 완료 (drizzle tracking 업데이트됨)`));
+  return "done";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function step5_migrate(
+  args: Args,
+  hasPreviewDb: boolean,
+  dbName: string,
+  previewDbName: string | null
+) {
   console.log(`\n${cyan("─── 5. 마이그레이션 ────────────────────────────────────────")}`);
 
   let doMigrate = args.migrate;
@@ -592,7 +757,6 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
       closeRL();
       process.exit(1);
     }
-    // CLOUDFLARE_API_TOKEN으로 통일 저장
     let envContent = readFile(ENV_FILE);
     if (/^CLOUDFLARE_D1_TOKEN=/m.test(envContent)) {
       envContent = envContent.replace(/^CLOUDFLARE_D1_TOKEN=".*"$/m, `CLOUDFLARE_D1_TOKEN="${token}"`);
@@ -622,35 +786,42 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
   }
   console.log(green("  ✓ db:generate 완료"));
 
-  // Run production migration
-  console.log("  bun run db:migrate 실행 중...");
-  const migrateResult = runCommand("bun", ["run", "db:migrate"], { inherit: true, env: migrateEnv });
-  if (!migrateResult.success) {
-    console.error(red("  db:migrate 실패"));
-    closeRL();
-    process.exit(1);
+  // 프로덕션 DB 충돌 확인 후 마이그레이션
+  const prodConflict = await handleMigrationConflicts(dbName, migrateEnv, args);
+  if (prodConflict !== "done") {
+    console.log("  bun run db:migrate 실행 중...");
+    const migrateResult = runCommand("bun", ["run", "db:migrate"], { inherit: true, env: migrateEnv });
+    if (!migrateResult.success) {
+      console.error(red("  db:migrate 실패"));
+      closeRL();
+      process.exit(1);
+    }
+    console.log(green("  ✓ db:migrate 완료"));
   }
-  console.log(green("  ✓ db:migrate 완료"));
 
-  // Preview migration
-  if (hasPreviewDb) {
+  // 프리뷰 DB 마이그레이션
+  if (hasPreviewDb && previewDbName) {
     let doMigratePreview = args.migratePreview;
     if (doMigratePreview === undefined) {
       doMigratePreview = await confirm("프리뷰 DB에도 마이그레이션을 진행하시겠습니까?", true);
     }
 
     if (doMigratePreview) {
-      console.log("  bun run db:migrate:preview 실행 중...");
-      const previewResult = runCommand("bun", ["run", "db:migrate:preview"], {
-        inherit: true,
-        env: { ...migrateEnv, CLOUDFLARE_IS_PREVIEW: "true" },
-      });
-      if (!previewResult.success) {
-        console.error(red("  db:migrate:preview 실패"));
-        closeRL();
-        process.exit(1);
+      const previewEnv = { ...migrateEnv, CLOUDFLARE_IS_PREVIEW: "true" };
+      const previewConflict = await handleMigrationConflicts(previewDbName, previewEnv, args);
+      if (previewConflict !== "done") {
+        console.log("  bun run db:migrate:preview 실행 중...");
+        const previewResult = runCommand("bun", ["run", "db:migrate:preview"], {
+          inherit: true,
+          env: previewEnv,
+        });
+        if (!previewResult.success) {
+          console.error(red("  db:migrate:preview 실패"));
+          closeRL();
+          process.exit(1);
+        }
+        console.log(green("  ✓ db:migrate:preview 완료"));
       }
-      console.log(green("  ✓ db:migrate:preview 완료"));
     } else {
       console.log("  프리뷰 DB 마이그레이션 건너뜀");
     }
@@ -727,13 +898,13 @@ async function main() {
   await step2_createEnv(args);
 
   // Step 3: DB setup
-  const { dbId, previewDbId } = await step3_dbSetup(args);
+  const { dbId, dbName, previewDbId, previewDbName } = await step3_dbSetup(args);
 
   // Step 4: Update files
   await step4_updateFiles(dbId, previewDbId, accountId);
 
   // Step 5: Migration
-  await step5_migrate(args, previewDbId !== null);
+  await step5_migrate(args, previewDbId !== null, dbName, previewDbName);
 
   // Step 6: Signing key
   await step6_signingKey(args);

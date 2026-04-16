@@ -31,3 +31,6 @@ vite.config.ts.timestamp-*
 # Cloudflare Workers
 wrangler.jsonc
 worker-configuration.d.ts
+
+# Drizzle generated files
+drizzle/
