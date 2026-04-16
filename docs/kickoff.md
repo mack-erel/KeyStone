@@ -183,7 +183,8 @@ audit_events(id, tenant_id, user_id, sp_or_client_id, kind, ip, ua, detail_json,
 
 - `M0` 완전 완료. D1 마이그레이션 적용, bootstrap admin 계정 수동 로그인 검증까지 완료.
 - `M1` 완전 완료 (2026-04-16). OIDC authorization_code + PKCE 전체 플로우, RS256 ID Token, HMAC opaque access token, userinfo, end-session 수동 E2E 검증 완료.
-- `M2` 는 아직 미착수. SAML 을 위한 스키마, PoC 엔드포인트, 관리자 read-only 조회 기반은 준비됨.
+- `M2` 완전 완료 (2026-04-16). Cloudflare Access SAML SSO E2E 검증 완료.
+- `M3` 완전 완료 (2026-04-16). TOTP 등록 → 로그인 → OIDC/SAML 전체 E2E 검증 완료.
 
 ---
 

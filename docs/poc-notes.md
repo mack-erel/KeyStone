@@ -51,5 +51,5 @@
 - ~~D1 에 최신 마이그레이션 적용 후 bootstrap admin 계정으로 수동 로그인 검증~~ → **완료 (2026-04-16)**
 - ~~`signing_keys` 테이블과 연결되는 JWKS 공개 엔드포인트(`/oidc/jwks`) 구현~~ → **완료 (2026-04-16)**
 - ~~`/poc/saml-sign` 을 `wrangler dev` 환경에서 호출하여 런타임 검증 완료~~ → **완료 (2026-04-16)** `verified: true`
-- `/account/mfa` 에서 TOTP 등록 및 로그인 E2E 수동 검증 (M3)
+- ~~`/account/mfa` 에서 TOTP 등록 및 로그인 E2E 수동 검증~~ → **완료 (2026-04-16)** TOTP 등록 → 로그인 → OIDC/SAML 전체 정상 확인
 - Argon2id(`hash-wasm`) 전환 시점과 롤링 업그레이드 전략을 `M5` 문서에 구체화
