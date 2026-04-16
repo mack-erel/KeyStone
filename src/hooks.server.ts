@@ -48,8 +48,46 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	const response = await resolve(event);
+
+	// ── 보안 헤더 ──────────────────────────────────────────────────────────────
+	// Clickjacking 방지
 	response.headers.set('X-Frame-Options', 'DENY');
-	response.headers.set('Referrer-Policy', 'same-origin');
+	response.headers.set('X-Content-Type-Options', 'nosniff');
+
+	// Referrer 정책
+	response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+
+	// HSTS (HTTPS 강제, 1년)
+	response.headers.set(
+		'Strict-Transport-Security',
+		'max-age=31536000; includeSubDomains'
+	);
+
+	// Permissions Policy — 불필요한 브라우저 기능 비활성화
+	response.headers.set(
+		'Permissions-Policy',
+		'camera=(), microphone=(), geolocation=(), payment=()'
+	);
+
+	// Content-Security-Policy
+	// - 기본 self only
+	// - 스타일·폰트: self + data: (Tailwind 인라인 스타일 대응)
+	// - 스크립트: self only (SvelteKit hydration)
+	// - frame-ancestors: none (X-Frame-Options 이중 설정)
+	// - form-action: self (SAML ACS POST 예외는 별도 처리 불필요 — 서버→SP 방향)
+	const csp = [
+		"default-src 'self'",
+		"script-src 'self' 'unsafe-inline'",  // SvelteKit SSR 인라인 스크립트 필요
+		"style-src 'self' 'unsafe-inline'",   // Tailwind 인라인 스타일
+		"img-src 'self' data:",
+		"font-src 'self' data:",
+		"connect-src 'self'",
+		"frame-ancestors 'none'",
+		"form-action 'self' https:",  // SAML ACS POST 허용 (SP는 HTTPS 외부 도메인)
+		"base-uri 'self'",
+		"object-src 'none'"
+	].join('; ');
+	response.headers.set('Content-Security-Policy', csp);
 
 	return response;
 };
