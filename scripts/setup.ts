@@ -224,6 +224,14 @@ function checkWranglerLogin(): boolean {
   return result.success && !result.stdout.includes("You are not authenticated");
 }
 
+/** wrangler whoami 출력에서 Account ID(32자 hex) 자동 추출 */
+function getWranglerAccountId(): string | null {
+  const result = runCommand("wrangler", ["whoami"]);
+  const combined = result.stdout + result.stderr;
+  const match = combined.match(/([0-9a-f]{32})/i);
+  return match ? match[1] : null;
+}
+
 function createD1Database(name: string): string | null {
   console.log(`  D1 데이터베이스 생성 중: ${name}`);
   const result = runCommand("wrangler", ["d1", "create", name]);
@@ -519,17 +527,27 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
   const envVars = loadEnvFile(ENV_FILE);
 
   if (!envVars.CLOUDFLARE_ACCOUNT_ID) {
-    console.log(yellow("\n  드리즐이 Cloudflare 계정 ID를 필요로 합니다."));
-    const id = await ask("CLOUDFLARE_ACCOUNT_ID 입력", "");
-    if (!id) {
-      console.error(red("  계정 ID가 없으면 마이그레이션을 실행할 수 없습니다."));
-      closeRL();
-      process.exit(1);
+    // wrangler whoami에서 자동 감지 시도
+    const detected = getWranglerAccountId();
+    if (detected) {
+      console.log(green(`  ✓ wrangler에서 Account ID 자동 감지: ${detected}`));
+      envVars.CLOUDFLARE_ACCOUNT_ID = detected;
+      let envContent = readFile(ENV_FILE);
+      envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${detected}"`);
+      writeFile(ENV_FILE, envContent);
+    } else {
+      console.log(yellow("\n  Cloudflare 계정 ID를 감지할 수 없습니다."));
+      const id = await ask("CLOUDFLARE_ACCOUNT_ID 직접 입력", "");
+      if (!id) {
+        console.error(red("  계정 ID가 없으면 마이그레이션을 실행할 수 없습니다."));
+        closeRL();
+        process.exit(1);
+      }
+      envVars.CLOUDFLARE_ACCOUNT_ID = id;
+      let envContent = readFile(ENV_FILE);
+      envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${id}"`);
+      writeFile(ENV_FILE, envContent);
     }
-    envVars.CLOUDFLARE_ACCOUNT_ID = id;
-    let envContent = readFile(ENV_FILE);
-    envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${id}"`);
-    writeFile(ENV_FILE, envContent);
   }
 
   if (!envVars.CLOUDFLARE_D1_TOKEN && !envVars.CLOUDFLARE_API_TOKEN) {
