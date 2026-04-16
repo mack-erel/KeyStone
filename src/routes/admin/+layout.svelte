@@ -13,6 +13,7 @@
 		{ route: '/admin/oidc-clients' as const, key: 'admin.oidc_clients' },
 		{ route: '/admin/saml-sps' as const, key: 'admin.saml_sps' },
 		{ route: '/admin/signing-keys' as const, key: 'admin.signing_keys' },
+		{ route: '/admin/ldap-providers' as const, key: 'admin.ldap_providers' },
 		{ route: '/admin/audit' as const, key: 'admin.audit' }
 	];
 

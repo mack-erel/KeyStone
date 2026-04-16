@@ -12,6 +12,11 @@ import { createMfaPendingToken, MFA_PENDING_COOKIE } from '$lib/server/auth/mfa'
 import { AMR_PASSWORD } from '$lib/server/auth/constants';
 import { getRuntimeConfig } from '$lib/server/auth/runtime';
 import { checkRateLimit } from '$lib/server/ratelimit';
+import { and, eq } from 'drizzle-orm';
+import { identityProviders } from '$lib/server/db/schema';
+import { authenticateLdap } from '$lib/server/ldap/auth';
+import { provisionLdapUser } from '$lib/server/ldap/provision';
+import type { LdapProviderConfig } from '$lib/server/ldap/types';
 
 function sanitizeRedirectTarget(target: string | null): string | null {
 	if (!target || !target.startsWith('/') || target.startsWith('//')) {
@@ -72,7 +77,34 @@ export const actions: Actions = {
 			});
 		}
 
-		const user = await authenticateLocalUser(db, tenant.id, username, password);
+		// LDAP 프로바이더가 설정된 경우 먼저 시도
+		const [ldapProvider] = await db
+			.select()
+			.from(identityProviders)
+			.where(
+				and(
+					eq(identityProviders.tenantId, tenant.id),
+					eq(identityProviders.kind, 'ldap'),
+					eq(identityProviders.enabled, true)
+				)
+			)
+			.limit(1);
+
+		let user = null;
+
+		if (ldapProvider) {
+			const ldapConfig = JSON.parse(ldapProvider.configJson ?? '{}') as LdapProviderConfig;
+			const ldapAttrs = await authenticateLdap(ldapConfig, username, password);
+
+			if (ldapAttrs) {
+				user = await provisionLdapUser(db, tenant.id, ldapProvider.id, ldapAttrs);
+			}
+		}
+
+		// LDAP 미설정 또는 LDAP 인증 실패 시 로컬 인증 시도
+		if (!user) {
+			user = await authenticateLocalUser(db, tenant.id, username, password);
+		}
 
 		if (!user) {
 			await recordAuditEvent(db, {

@@ -155,7 +155,7 @@ export const identityProviders = sqliteTable(
 		tenantId: text('tenant_id')
 			.notNull()
 			.references(() => tenants.id, { onDelete: 'cascade' }),
-		kind: text('kind', { enum: ['oidc', 'saml', 'oauth2'] }).notNull(),
+		kind: text('kind', { enum: ['oidc', 'saml', 'oauth2', 'ldap'] }).notNull(),
 		name: text('name').notNull(),
 		clientId: text('client_id'),
 		clientSecretEnc: text('client_secret_enc'),

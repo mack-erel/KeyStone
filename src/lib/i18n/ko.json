@@ -25,7 +25,8 @@
 		"positions": "직급",
 		"departments": "부서",
 		"teams": "팀",
-		"parts": "파트"
+		"parts": "파트",
+		"ldap_providers": "LDAP 프로바이더"
 	},
 	"account": {
 		"profile": "내 프로필",
