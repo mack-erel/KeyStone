@@ -58,8 +58,13 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		throw error(401, '등록되지 않은 client_id 입니다.');
 	}
 
-	// redirect_uri 검증
-	const allowedUris = client.redirectUris.split(',').map((u) => u.trim());
+	// redirect_uri 검증 — redirectUris 는 JSON 배열 문자열로 저장됨
+	let allowedUris: string[] = [];
+	try {
+		allowedUris = JSON.parse(client.redirectUris ?? '[]') as string[];
+	} catch {
+		allowedUris = [];
+	}
 	if (!allowedUris.includes(redirectUri)) {
 		throw error(400, 'redirect_uri 가 등록된 값과 일치하지 않습니다.');
 	}
