@@ -308,16 +308,22 @@ async function createD1Database(name: string): Promise<string | null> {
   return match[1];
 }
 
+let _cachedDbList: D1Database[] | null | undefined = undefined;
+
 async function listD1Databases(): Promise<D1Database[] | null> {
+  if (_cachedDbList !== undefined) return _cachedDbList;
   const result = await runWithSpinner("D1 DB 목록 조회 중...", "wrangler", ["d1", "list", "--json"]);
   if (!result.success) {
     console.error(red(`  D1 목록 조회 실패:\n${result.stderr}`));
+    _cachedDbList = null;
     return null;
   }
   try {
-    return JSON.parse(result.stdout) as D1Database[];
+    _cachedDbList = JSON.parse(result.stdout) as D1Database[];
+    return _cachedDbList;
   } catch {
     console.error(red(`  D1 목록 파싱 실패:\n${result.stdout}`));
+    _cachedDbList = null;
     return null;
   }
 }
