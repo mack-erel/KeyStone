@@ -18,16 +18,13 @@
 	"workers_dev": true,
 	"preview_urls": true,
 	"vars": {
-		// Cloudflare Workers Preview 환경 여부 (변경 불필요)
-		"CLOUDFLARE_IS_PREVIEW": true,
-
 		// Cloudflare 계정 ID (대시보드 우측 하단에서 확인)
 		"CLOUDFLARE_ACCOUNT_ID": "YOUR_CLOUDFLARE_ACCOUNT_ID",
 
-		// D1 데이터베이스 ID (bun run db:create 후 생성되는 값)
+		// D1 데이터베이스 ID
 		"CLOUDFLARE_D1_DATABASE_ID": "YOUR_D1_DATABASE_ID",
 
-		// 프리뷰용 D1 데이터베이스 ID (선택, 없으면 위 ID와 동일하게 설정)
+		// 프리뷰용 D1 데이터베이스 ID (선택)
 		"CLOUDFLARE_D1_PREVIEW_DATABASE_ID": "YOUR_D1_PREVIEW_DATABASE_ID",
 
 		// 기본 테넌트 이름
