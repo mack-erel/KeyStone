@@ -44,6 +44,12 @@ interface Args {
   migrate?: boolean;
   migratePreview?: boolean;
   signingKey?: string;
+  tenantName?: string;
+  adminUsername?: string;
+  adminEmail?: string;
+  adminName?: string;
+  adminPassword?: string;
+  issuerUrl?: string;
   yes: boolean;
   help: boolean;
 }
@@ -88,6 +94,24 @@ function parseArgs(argv: string[]): Args {
       case "--signing-key":
         args.signingKey = argv[++i];
         break;
+      case "--tenant-name":
+        args.tenantName = argv[++i];
+        break;
+      case "--admin-username":
+        args.adminUsername = argv[++i];
+        break;
+      case "--admin-email":
+        args.adminEmail = argv[++i];
+        break;
+      case "--admin-name":
+        args.adminName = argv[++i];
+        break;
+      case "--admin-password":
+        args.adminPassword = argv[++i];
+        break;
+      case "--issuer-url":
+        args.issuerUrl = argv[++i];
+        break;
       case "-y":
       case "--yes":
         args.yes = true;
@@ -117,6 +141,12 @@ ${cyan("옵션:")}
   --migrate-preview         프리뷰 DB 마이그레이션 자동 진행
   --no-migrate-preview      프리뷰 DB 마이그레이션 건너뜀
   --signing-key <secret>    IDP_SIGNING_KEY_SECRET 값
+  --tenant-name <name>      조직(테넌트) 이름
+  --admin-username <id>     초기 관리자 아이디
+  --admin-email <email>     초기 관리자 이메일
+  --admin-name <name>       초기 관리자 표시 이름
+  --admin-password <pass>   초기 관리자 비밀번호
+  --issuer-url <url>        IDP Issuer URL (배포 도메인)
   -y, --yes                 모든 확인 프롬프트 자동 승인
   -h, --help                도움말 출력
 `);
@@ -828,6 +858,38 @@ async function step5_migrate(
   }
 }
 
+async function step5b_bootstrapConfig(args: Args) {
+  console.log(`\n${cyan("─── 5b. 초기 관리자 및 테넌트 설정 ──────────────────────────")}`);
+
+  if (!fs.existsSync(ENV_FILE)) {
+    console.log(yellow("  .env 파일이 없어 건너뜁니다."));
+    return;
+  }
+
+  const tenantName = args.tenantName ?? await ask("조직(테넌트) 이름", "My Organization");
+  const username = args.adminUsername ?? await ask("초기 관리자 아이디", "admin");
+  const email = args.adminEmail ?? await ask("초기 관리자 이메일", "admin@example.com");
+  const displayName = args.adminName ?? await ask("초기 관리자 표시 이름", "관리자");
+
+  let password = args.adminPassword ?? "";
+  while (!password) {
+    password = await ask("초기 관리자 비밀번호 (⚠️ 배포 후 변경 권장)");
+    if (!password) console.log(red("  비밀번호는 필수입니다."));
+  }
+
+  const issuerUrl = args.issuerUrl ?? await ask("IDP Issuer URL", "https://keystone.example.com");
+
+  let envContent = readFile(ENV_FILE);
+  envContent = envContent.replace(/^IDP_DEFAULT_TENANT_NAME=".*"$/m, `IDP_DEFAULT_TENANT_NAME="${tenantName}"`);
+  envContent = envContent.replace(/^IDP_BOOTSTRAP_ADMIN_USERNAME=".*"$/m, `IDP_BOOTSTRAP_ADMIN_USERNAME="${username}"`);
+  envContent = envContent.replace(/^IDP_BOOTSTRAP_ADMIN_EMAIL=".*"$/m, `IDP_BOOTSTRAP_ADMIN_EMAIL="${email}"`);
+  envContent = envContent.replace(/^IDP_BOOTSTRAP_ADMIN_PASSWORD=".*"$/m, `IDP_BOOTSTRAP_ADMIN_PASSWORD="${password}"`);
+  envContent = envContent.replace(/^IDP_BOOTSTRAP_ADMIN_NAME=".*"$/m, `IDP_BOOTSTRAP_ADMIN_NAME="${displayName}"`);
+  envContent = envContent.replace(/^IDP_ISSUER_URL=".*"$/m, `IDP_ISSUER_URL="${issuerUrl}"`);
+  writeFile(ENV_FILE, envContent);
+  console.log(green("  ✓ .env 업데이트 완료"));
+}
+
 async function step6_signingKey(args: Args) {
   console.log(`\n${cyan("─── 6. 시크릿 설정 ────────────────────────────────────────")}`);
 
@@ -905,6 +967,9 @@ async function main() {
 
   // Step 5: Migration
   await step5_migrate(args, previewDbId !== null, dbName, previewDbName);
+
+  // Step 5b: Bootstrap admin & tenant config
+  await step5b_bootstrapConfig(args);
 
   // Step 6: Signing key
   await step6_signingKey(args);
