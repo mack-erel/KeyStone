@@ -551,8 +551,17 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
   }
 
   if (!envVars.CLOUDFLARE_D1_TOKEN && !envVars.CLOUDFLARE_API_TOKEN) {
-    console.log(yellow("\n  드리즐이 Cloudflare API 토큰을 필요로 합니다."));
-    console.log(`  ${cyan("wrangler의 API 토큰(CLOUDFLARE_API_TOKEN)을 사용할 수 있습니다.")}`);
+    console.log(`
+  ${cyan("Cloudflare API 토큰이 필요합니다.")}
+  아래 URL에서 토큰을 생성하세요:
+
+  ${yellow("https://dash.cloudflare.com/?to=/:account/api-tokens/create")}
+
+  토큰 생성 방법:
+    1. [사용자 정의 토큰 만들기] 선택
+    2. 권한 추가: [계정] > [D1] > [편집]
+    3. 토큰 생성 후 아래에 붙여넣기
+`);
     const token = await ask("CLOUDFLARE_API_TOKEN 입력", "");
     if (!token) {
       console.error(red("  토큰이 없으면 마이그레이션을 실행할 수 없습니다."));
