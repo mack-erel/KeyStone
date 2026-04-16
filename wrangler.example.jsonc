@@ -1,0 +1,60 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "idp",
+	"compatibility_date": "2026-04-15",
+	"compatibility_flags": ["nodejs_als"],
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"routes": [
+		{
+			// 실제 배포 도메인으로 변경하세요
+			"pattern": "idp.example.com",
+			"custom_domain": true
+		}
+	],
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"workers_dev": true,
+	"preview_urls": true,
+	"vars": {
+		// Cloudflare Workers Preview 환경 여부 (변경 불필요)
+		"CLOUDFLARE_IS_PREVIEW": true,
+
+		// Cloudflare 계정 ID (대시보드 우측 하단에서 확인)
+		"CLOUDFLARE_ACCOUNT_ID": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+
+		// D1 데이터베이스 ID (bun run db:create 후 생성되는 값)
+		"CLOUDFLARE_D1_DATABASE_ID": "YOUR_D1_DATABASE_ID",
+
+		// 프리뷰용 D1 데이터베이스 ID (선택, 없으면 위 ID와 동일하게 설정)
+		"CLOUDFLARE_D1_PREVIEW_DATABASE_ID": "YOUR_D1_PREVIEW_DATABASE_ID",
+
+		// 기본 테넌트 이름
+		"IDP_DEFAULT_TENANT_NAME": "My Organization",
+
+		// 최초 부트스트랩 시 생성될 관리자 계정 (배포 후 삭제 또는 비밀번호 변경 권장)
+		"IDP_BOOTSTRAP_ADMIN_USERNAME": "admin",
+		"IDP_BOOTSTRAP_ADMIN_EMAIL": "admin@example.com",
+		"IDP_BOOTSTRAP_ADMIN_NAME": "관리자",
+
+		// ⚠️ 아래 두 값은 반드시 wrangler secret put 으로 설정하세요 (vars에 평문 입력 금지)
+		// wrangler secret put IDP_BOOTSTRAP_ADMIN_PASSWORD
+		// wrangler secret put IDP_SIGNING_KEY_SECRET  (openssl rand -base64 32 으로 생성)
+
+		// OIDC/SAML 토큰 발급 issuer URL (배포 도메인과 일치시킬 것)
+		"IDP_ISSUER_URL": "https://idp.example.com"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "idp-db",
+			// D1 데이터베이스 ID (CLOUDFLARE_D1_DATABASE_ID와 동일)
+			"database_id": "YOUR_D1_DATABASE_ID",
+			// 프리뷰 DB가 따로 있다면 주석 해제
+			// "preview_database_id": "YOUR_D1_PREVIEW_DATABASE_ID",
+			"migrations_dir": "drizzle",
+			"remote": true
+		}
+	]
+}
