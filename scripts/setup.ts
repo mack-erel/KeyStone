@@ -198,7 +198,7 @@ interface D1Database {
 }
 
 
-function runCommand(cmd: string, args: string[], options: { inherit?: boolean } = {}): {
+function runCommand(cmd: string, args: string[], options: { inherit?: boolean; env?: Record<string, string> } = {}): {
   success: boolean;
   stdout: string;
   stderr: string;
@@ -208,6 +208,7 @@ function runCommand(cmd: string, args: string[], options: { inherit?: boolean } 
     stdio: options.inherit ? "inherit" : "pipe",
     cwd: ROOT,
     encoding: "utf-8",
+    env: options.env ? { ...process.env, ...options.env } : process.env,
   });
 
   return {
@@ -273,6 +274,25 @@ function writeFile(filePath: string, content: string) {
 
 function replaceAll(content: string, search: string, replacement: string): string {
   return content.split(search).join(replacement);
+}
+
+/** .env 파일을 파싱해 key=value 맵 반환 */
+function loadEnvFile(envPath: string): Record<string, string> {
+  if (!fs.existsSync(envPath)) return {};
+  const env: Record<string, string> = {};
+  for (const line of readFile(envPath).split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq < 0) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (key) env[key] = val;
+  }
+  return env;
 }
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
@@ -495,9 +515,49 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
     return;
   }
 
+  // .env 로드 후 Cloudflare 자격증명 확인
+  const envVars = loadEnvFile(ENV_FILE);
+
+  if (!envVars.CLOUDFLARE_ACCOUNT_ID) {
+    console.log(yellow("\n  드리즐이 Cloudflare 계정 ID를 필요로 합니다."));
+    const id = await ask("CLOUDFLARE_ACCOUNT_ID 입력", "");
+    if (!id) {
+      console.error(red("  계정 ID가 없으면 마이그레이션을 실행할 수 없습니다."));
+      closeRL();
+      process.exit(1);
+    }
+    envVars.CLOUDFLARE_ACCOUNT_ID = id;
+    let envContent = readFile(ENV_FILE);
+    envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${id}"`);
+    writeFile(ENV_FILE, envContent);
+  }
+
+  if (!envVars.CLOUDFLARE_D1_TOKEN && !envVars.CLOUDFLARE_API_TOKEN) {
+    console.log(yellow("\n  드리즐이 Cloudflare API 토큰을 필요로 합니다."));
+    console.log(`  ${cyan("wrangler의 API 토큰(CLOUDFLARE_API_TOKEN)을 사용할 수 있습니다.")}`);
+    const token = await ask("CLOUDFLARE_API_TOKEN 입력", "");
+    if (!token) {
+      console.error(red("  토큰이 없으면 마이그레이션을 실행할 수 없습니다."));
+      closeRL();
+      process.exit(1);
+    }
+    envVars.CLOUDFLARE_API_TOKEN = token;
+    let envContent = readFile(ENV_FILE);
+    envContent = envContent.replace(/^CLOUDFLARE_D1_TOKEN=".*"$/m, `CLOUDFLARE_D1_TOKEN="${token}"`);
+    writeFile(ENV_FILE, envContent);
+  }
+
+  const migrateEnv: Record<string, string> = {
+    CLOUDFLARE_ACCOUNT_ID: envVars.CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_D1_DATABASE_ID: envVars.CLOUDFLARE_D1_DATABASE_ID ?? "",
+    CLOUDFLARE_D1_PREVIEW_DATABASE_ID: envVars.CLOUDFLARE_D1_PREVIEW_DATABASE_ID ?? "",
+    ...(envVars.CLOUDFLARE_D1_TOKEN ? { CLOUDFLARE_D1_TOKEN: envVars.CLOUDFLARE_D1_TOKEN } : {}),
+    ...(envVars.CLOUDFLARE_API_TOKEN ? { CLOUDFLARE_API_TOKEN: envVars.CLOUDFLARE_API_TOKEN } : {}),
+  };
+
   // Generate migrations
-  console.log("  bun run db:generate 실행 중...");
-  const generateResult = runCommand("bun", ["run", "db:generate"], { inherit: true });
+  console.log("\n  bun run db:generate 실행 중...");
+  const generateResult = runCommand("bun", ["run", "db:generate"], { inherit: true, env: migrateEnv });
   if (!generateResult.success) {
     console.error(red("  db:generate 실패"));
     closeRL();
@@ -507,7 +567,7 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
 
   // Run production migration
   console.log("  bun run db:migrate 실행 중...");
-  const migrateResult = runCommand("bun", ["run", "db:migrate"], { inherit: true });
+  const migrateResult = runCommand("bun", ["run", "db:migrate"], { inherit: true, env: migrateEnv });
   if (!migrateResult.success) {
     console.error(red("  db:migrate 실패"));
     closeRL();
@@ -524,7 +584,10 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
 
     if (doMigratePreview) {
       console.log("  bun run db:migrate:preview 실행 중...");
-      const previewResult = runCommand("bun", ["run", "db:migrate:preview"], { inherit: true });
+      const previewResult = runCommand("bun", ["run", "db:migrate:preview"], {
+        inherit: true,
+        env: { ...migrateEnv, CLOUDFLARE_IS_PREVIEW: "true" },
+      });
       if (!previewResult.success) {
         console.error(red("  db:migrate:preview 실패"));
         closeRL();
