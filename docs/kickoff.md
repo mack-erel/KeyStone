@@ -1,7 +1,7 @@
 # IdP 프로젝트 킥오프
 
 **작성일**: 2026-04-15
-**상태**: In Progress (`M0` 완전 완료, `M1` OIDC 완전 완료, `M2` SAML 구현 완료)
+**상태**: In Progress (`M0` 완전 완료, `M1` OIDC 완전 완료, `M2` SAML 구현 완료, `M3` TOTP MFA 구현 완료)
 **오너**: jang@hyochan.site
 
 ---
@@ -38,6 +38,7 @@
 - [x] D1 마이그레이션 적용, bootstrap admin env 설정, `wrangler dev` 에서 아이디/비밀번호 로그인 수동 검증 완료
 - [x] **M1 OIDC 완전 완료 (2026-04-16)**: `IDP_SIGNING_KEY_SECRET` 기반 RSA-2048 서명 키 자동 생성(`signing_keys` 테이블), `/.well-known/openid-configuration`, `/oidc/jwks`, `/oidc/authorize`(PKCE S256), `/oidc/token`(RS256 ID Token + HMAC-SHA256 opaque access token), `/oidc/userinfo`, `/oidc/end-session` 구현 및 수동 E2E 검증 완료.
 - [x] **M2 SAML 완전 완료 (2026-04-16)**: `@peculiar/x509` X.509 cert 생성·저장(backfill 포함). `/saml/metadata`, `/saml/sso`(SP-Initiated, HTTP-Redirect→HTTP-POST), `/saml/slo` 구현. Cloudflare Access SAML SP 연동 수동 E2E 검증 완료 (`email` attribute 전달 확인). 서명 이슈 수정: xmldom `setIdAttribute` 등록, Response 컨텍스트 내 exc-c14n 서명.
+- [x] **M3 TOTP MFA 구현 완료 (2026-04-16)**: RFC 6238 TOTP (WebCrypto HMAC-SHA-1, 30초, 6자리, ±1윈도우). 백업 코드 10개 생성·SHA-256 해시 저장·일회성 소진. MFA pending 쿠키(HMAC-서명, 5분 TTL). 로그인 TOTP 분기 → `/mfa` 검증 페이지. `/account/mfa` 등록·QR·백업코드 재생성·삭제 UI. 세션 `amr` 기록(`pwd`, `pwd totp`). 스키마 변경 없음(기존 credentials enum 활용).
 
 ---
 

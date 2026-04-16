@@ -35,9 +35,21 @@
    - 검증 시 prefix 파싱 → 알고리즘 분기. 교체 시 로그인 성공 순간 재해시하여 새 포맷으로 upgrade (무중단).
 2. **SAML 서명 라이브러리**: `xmldsigjs + @xmldom/xmldom` 채택 후보 1순위. 번들 통과(2026-04-15). 런타임 검증 후 확정.
 
+## 실구현 반영 상태 (2026-04-16, 추가)
+
+- **M3 TOTP MFA 구현 완료 (2026-04-16)**:
+  - `totp.ts`: RFC 6238 TOTP (WebCrypto HMAC-SHA-1), base32, ±1 윈도우 검증
+  - `mfa.ts`: HMAC-서명 MFA pending 쿠키 (5분 TTL)
+  - 로그인 플로우 TOTP 분기, `/mfa` 검증 페이지, `/account/mfa` 등록·관리 UI
+  - 백업 코드 10개 생성·SHA-256 해시 저장, 일회성 소진
+  - 세션 `amr` 컬럼 기록 (`pwd`, `pwd totp`, `pwd swk`)
+  - `qrcode` 패키지 (클라이언트 사이드 QR 렌더링)
+  - **스키마 변경 없음**: 기존 `credentials.type` enum(`totp`, `backup_code`) 그대로 활용
+
 ## 다음 작업
 
 - ~~D1 에 최신 마이그레이션 적용 후 bootstrap admin 계정으로 수동 로그인 검증~~ → **완료 (2026-04-16)**
 - ~~`signing_keys` 테이블과 연결되는 JWKS 공개 엔드포인트(`/oidc/jwks`) 구현~~ → **완료 (2026-04-16)**
 - ~~`/poc/saml-sign` 을 `wrangler dev` 환경에서 호출하여 런타임 검증 완료~~ → **완료 (2026-04-16)** `verified: true`
+- `/account/mfa` 에서 TOTP 등록 및 로그인 E2E 수동 검증 (M3)
 - Argon2id(`hash-wasm`) 전환 시점과 롤링 업그레이드 전략을 `M5` 문서에 구체화
