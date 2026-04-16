@@ -39,16 +39,16 @@
 				class="grid grid-cols-1 gap-3 sm:grid-cols-2"
 			>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">파트명 *</label>
-					<input type="text" name="name" required placeholder="예: iOS파트" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="part-name" class="block text-xs font-medium text-gray-700">파트명 *</label>
+					<input id="part-name" type="text" name="name" required placeholder="예: iOS파트" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">코드</label>
-					<input type="text" name="code" placeholder="예: IOS" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="part-code" class="block text-xs font-medium text-gray-700">코드</label>
+					<input id="part-code" type="text" name="code" placeholder="예: IOS" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">소속 팀</label>
-					<select name="teamId" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+					<label for="part-teamId" class="block text-xs font-medium text-gray-700">소속 팀</label>
+					<select id="part-teamId" name="teamId" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
 						<option value="">없음 (독립 파트)</option>
 						{#each data.allTeams as t (t.id)}
 							<option value={t.id}>{teamLabel(t)}</option>
@@ -56,8 +56,8 @@
 					</select>
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">설명</label>
-					<input type="text" name="description" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="part-description" class="block text-xs font-medium text-gray-700">설명</label>
+					<input id="part-description" type="text" name="description" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div class="sm:col-span-2 flex justify-end">
 					<button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">추가</button>

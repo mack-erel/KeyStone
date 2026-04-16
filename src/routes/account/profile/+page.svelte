@@ -39,28 +39,28 @@
 			<h2 class="mb-4 text-sm font-semibold text-gray-700">기본 정보</h2>
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div>
-					<label class="block text-xs font-medium text-gray-700">이름 (Given Name)</label>
-					<input type="text" name="givenName" value={data.profile.givenName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="givenName" class="block text-xs font-medium text-gray-700">이름 (Given Name)</label>
+					<input id="givenName" type="text" name="givenName" value={data.profile.givenName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">성 (Family Name)</label>
-					<input type="text" name="familyName" value={data.profile.familyName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="familyName" class="block text-xs font-medium text-gray-700">성 (Family Name)</label>
+					<input id="familyName" type="text" name="familyName" value={data.profile.familyName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div class="sm:col-span-2">
-					<label class="block text-xs font-medium text-gray-700">표시 이름</label>
-					<input type="text" name="displayName" value={data.profile.displayName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="displayName" class="block text-xs font-medium text-gray-700">표시 이름</label>
+					<input id="displayName" type="text" name="displayName" value={data.profile.displayName ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">생년월일</label>
-					<input type="date" name="birthdate" value={data.profile.birthdate ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="birthdate" class="block text-xs font-medium text-gray-700">생년월일</label>
+					<input id="birthdate" type="date" name="birthdate" value={data.profile.birthdate ?? ''} class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">전화번호</label>
-					<input type="tel" name="phoneNumber" value={data.profile.phoneNumber ?? ''} placeholder="+82-10-1234-5678" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="phoneNumber" class="block text-xs font-medium text-gray-700">전화번호</label>
+					<input id="phoneNumber" type="tel" name="phoneNumber" value={data.profile.phoneNumber ?? ''} placeholder="+82-10-1234-5678" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div class="sm:col-span-2">
-					<label class="block text-xs font-medium text-gray-700">소개</label>
-					<textarea name="bio" rows="3" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none">{data.profile.bio ?? ''}</textarea>
+					<label for="bio" class="block text-xs font-medium text-gray-700">소개</label>
+					<textarea id="bio" name="bio" rows="3" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none resize-none">{data.profile.bio ?? ''}</textarea>
 				</div>
 			</div>
 		</section>
@@ -70,16 +70,16 @@
 			<h2 class="mb-4 text-sm font-semibold text-gray-700">지역 설정</h2>
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div>
-					<label class="block text-xs font-medium text-gray-700">언어</label>
-					<select name="locale" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+					<label for="locale" class="block text-xs font-medium text-gray-700">언어</label>
+					<select id="locale" name="locale" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
 						{#each LOCALE_OPTIONS as opt}
 							<option value={opt.value} selected={data.profile.locale === opt.value}>{opt.label}</option>
 						{/each}
 					</select>
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">시간대</label>
-					<select name="zoneinfo" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+					<label for="zoneinfo" class="block text-xs font-medium text-gray-700">시간대</label>
+					<select id="zoneinfo" name="zoneinfo" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
 						{#each TIMEZONE_OPTIONS as opt}
 							<option value={opt.value} selected={data.profile.zoneinfo === opt.value}>{opt.label}</option>
 						{/each}

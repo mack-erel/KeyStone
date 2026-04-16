@@ -35,16 +35,16 @@
 				class="grid grid-cols-1 gap-3 sm:grid-cols-2"
 			>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">팀명 *</label>
-					<input type="text" name="name" required placeholder="예: 백엔드팀" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="team-name" class="block text-xs font-medium text-gray-700">팀명 *</label>
+					<input id="team-name" type="text" name="name" required placeholder="예: 백엔드팀" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">코드</label>
-					<input type="text" name="code" placeholder="예: BE" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="team-code" class="block text-xs font-medium text-gray-700">코드</label>
+					<input id="team-code" type="text" name="code" placeholder="예: BE" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">소속 부서</label>
-					<select name="departmentId" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+					<label for="team-departmentId" class="block text-xs font-medium text-gray-700">소속 부서</label>
+					<select id="team-departmentId" name="departmentId" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
 						<option value="">없음 (독립 팀)</option>
 						{#each data.allDepts as dept (dept.id)}
 							<option value={dept.id}>{dept.name}</option>
@@ -52,8 +52,8 @@
 					</select>
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">설명</label>
-					<input type="text" name="description" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="team-description" class="block text-xs font-medium text-gray-700">설명</label>
+					<input id="team-description" type="text" name="description" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div class="sm:col-span-2 flex justify-end">
 					<button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">추가</button>

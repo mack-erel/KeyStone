@@ -35,16 +35,16 @@
 				class="grid grid-cols-1 gap-3 sm:grid-cols-2"
 			>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">부서명 *</label>
-					<input type="text" name="name" required placeholder="예: 개발본부" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="dept-name" class="block text-xs font-medium text-gray-700">부서명 *</label>
+					<input id="dept-name" type="text" name="name" required placeholder="예: 개발본부" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">코드</label>
-					<input type="text" name="code" placeholder="예: DEV" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="dept-code" class="block text-xs font-medium text-gray-700">코드</label>
+					<input id="dept-code" type="text" name="code" placeholder="예: DEV" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">상위 부서</label>
-					<select name="parentId" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+					<label for="dept-parentId" class="block text-xs font-medium text-gray-700">상위 부서</label>
+					<select id="dept-parentId" name="parentId" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
 						<option value="">없음 (최상위)</option>
 						{#each data.allDepts as dept (dept.id)}
 							<option value={dept.id}>{dept.name}</option>
@@ -52,12 +52,12 @@
 					</select>
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">표시 순서</label>
-					<input type="number" name="displayOrder" value="0" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="dept-displayOrder" class="block text-xs font-medium text-gray-700">표시 순서</label>
+					<input id="dept-displayOrder" type="number" name="displayOrder" value="0" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div class="sm:col-span-2">
-					<label class="block text-xs font-medium text-gray-700">설명</label>
-					<input type="text" name="description" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="dept-description" class="block text-xs font-medium text-gray-700">설명</label>
+					<input id="dept-description" type="text" name="description" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div class="sm:col-span-2 flex justify-end">
 					<button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">추가</button>

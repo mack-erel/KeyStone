@@ -36,16 +36,16 @@
 				class="grid grid-cols-1 gap-3 sm:grid-cols-3"
 			>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">직급명 *</label>
-					<input type="text" name="name" required placeholder="예: 과장" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="pos-name" class="block text-xs font-medium text-gray-700">직급명 *</label>
+					<input id="pos-name" type="text" name="name" required placeholder="예: 과장" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">코드</label>
-					<input type="text" name="code" placeholder="예: MGR" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="pos-code" class="block text-xs font-medium text-gray-700">코드</label>
+					<input id="pos-code" type="text" name="code" placeholder="예: MGR" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div>
-					<label class="block text-xs font-medium text-gray-700">레벨 (높을수록 고위)</label>
-					<input type="number" name="level" value="0" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+					<label for="pos-level" class="block text-xs font-medium text-gray-700">레벨 (높을수록 고위)</label>
+					<input id="pos-level" type="number" name="level" value="0" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
 				</div>
 				<div class="sm:col-span-3 flex justify-end">
 					<button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">추가</button>
