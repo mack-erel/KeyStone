@@ -1,12 +1,15 @@
 /**
- * M1 암호화 primitives
+ * 암호화 primitives
  *
  * - RSA-2048 서명 키 생성 (RSASSA-PKCS1-v1_5 / SHA-256)
  * - AES-256-GCM 를 이용한 private JWK 래핑/언래핑 (HKDF from IDP_SIGNING_KEY_SECRET)
  * - RS256 ID Token 서명 (signJwt)
  * - HMAC-SHA256 opaque 액세스 토큰 (generateAccessToken / verifyAccessToken)
+ * - X.509 자체 서명 인증서 생성 (@peculiar/x509, SAML KeyDescriptor 용)
  */
 
+import 'reflect-metadata'; // @peculiar/x509 → tsyringe 의존성이 Reflect.metadata 필요
+import { X509CertificateGenerator } from '@peculiar/x509';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { DB } from '$lib/server/db';
 import { signingKeys } from '$lib/server/db/schema';
@@ -85,6 +88,31 @@ export async function unwrapPrivateKey(encrypted: string, secret: string): Promi
 		false,
 		['sign']
 	);
+}
+
+// ── X.509 self-signed cert ────────────────────────────────────────────────────
+
+/**
+ * RSA-2048 키 쌍으로 자체 서명 X.509 인증서를 생성하고 PEM 으로 반환.
+ * SAML IdP Metadata 의 <KeyDescriptor> 에 사용.
+ * @param commonName 인증서 CN (보통 IDP_ISSUER_URL 의 hostname)
+ */
+export async function generateSelfSignedCert(
+	publicKey: CryptoKey,
+	privateKey: CryptoKey,
+	commonName: string
+): Promise<string> {
+	const cert = await X509CertificateGenerator.createSelfSigned(
+		{
+			keys: { publicKey, privateKey },
+			name: `CN=${commonName}`,
+			notBefore: new Date(),
+			notAfter: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000), // 10년
+			signingAlgorithm: { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }
+		},
+		crypto as unknown as Parameters<typeof X509CertificateGenerator.createSelfSigned>[1]
+	);
+	return cert.toString('pem');
 }
 
 // ── key generation ────────────────────────────────────────────────────────────
@@ -184,7 +212,7 @@ export async function getActiveSigningKey(
 	db: DB,
 	tenantId: string,
 	secret: string
-): Promise<{ kid: string; privateKey: CryptoKey; publicJwk: JsonWebKey } | null> {
+): Promise<{ kid: string; privateKey: CryptoKey; publicJwk: JsonWebKey; certPem: string | null } | null> {
 	const [row] = await db
 		.select()
 		.from(signingKeys)
@@ -198,7 +226,12 @@ export async function getActiveSigningKey(
 		.limit(1);
 	if (!row) return null;
 	const privateKey = await unwrapPrivateKey(row.privateJwkEncrypted, secret);
-	return { kid: row.kid, privateKey, publicJwk: JSON.parse(row.publicJwk) as JsonWebKey };
+	return {
+		kid: row.kid,
+		privateKey,
+		publicJwk: JSON.parse(row.publicJwk) as JsonWebKey,
+		certPem: row.certPem ?? null
+	};
 }
 
 export async function getPublicJwks(

@@ -10,7 +10,7 @@ import {
 import { hashPassword } from './password';
 import { getRuntimeConfig } from './runtime';
 import { findPasswordCredential, normalizeEmail, normalizeUsername } from './users';
-import { generateRsaSigningKey, wrapPrivateKey } from '$lib/server/crypto/keys';
+import { generateRsaSigningKey, generateSelfSignedCert, unwrapPrivateKey, wrapPrivateKey } from '$lib/server/crypto/keys';
 
 function isUniqueConstraintError(error: unknown): boolean {
 	return error instanceof Error && /unique constraint failed/i.test(error.message);
@@ -161,17 +161,47 @@ export async function ensureBootstrapAdmin(
 export async function ensureSigningKey(
 	db: DB,
 	tenant: Tenant,
-	signingKeySecret: string
+	signingKeySecret: string,
+	issuerUrl?: string
 ): Promise<void> {
+	// SAML KeyDescriptor 용 CN
+	let cn = 'idp';
+	if (issuerUrl) {
+		try {
+			cn = new URL(issuerUrl).hostname;
+		} catch {
+			cn = issuerUrl;
+		}
+	}
+
 	const [existing] = await db
-		.select({ id: signingKeys.id })
+		.select()
 		.from(signingKeys)
 		.where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true)))
 		.limit(1);
-	if (existing) return;
 
-	const { kid, privateKey, publicJwk } = await generateRsaSigningKey();
+	// 키가 있지만 cert_pem 이 없는 경우 (M1 → M2 업그레이드): backfill
+	if (existing) {
+		if (!existing.certPem) {
+			const privateKey = await unwrapPrivateKey(existing.privateJwkEncrypted, signingKeySecret);
+			const publicJwk = JSON.parse(existing.publicJwk) as JsonWebKey;
+			const publicKey = await crypto.subtle.importKey(
+				'jwk',
+				publicJwk,
+				{ name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+				true,
+				['verify']
+			);
+			const certPem = await generateSelfSignedCert(publicKey, privateKey, cn);
+			await db.update(signingKeys).set({ certPem }).where(eq(signingKeys.id, existing.id));
+		}
+		return;
+	}
+
+	const { kid, publicKey, privateKey, publicJwk } = await generateRsaSigningKey();
 	const privateJwkEncrypted = await wrapPrivateKey(privateKey, signingKeySecret);
+	const certPem = await generateSelfSignedCert(publicKey, privateKey, cn);
+
 	await db.insert(signingKeys).values({
 		id: crypto.randomUUID(),
 		tenantId: tenant.id,
@@ -180,6 +210,7 @@ export async function ensureSigningKey(
 		alg: 'RS256',
 		publicJwk: JSON.stringify(publicJwk),
 		privateJwkEncrypted,
+		certPem,
 		active: true
 	});
 }
@@ -189,7 +220,7 @@ export async function ensureAuthBaseline(db: DB, platform: App.Platform | undefi
 	const tenant = await ensureDefaultTenant(db, platform);
 	await ensureBootstrapAdmin(db, platform, tenant);
 	if (config.signingKeySecret) {
-		await ensureSigningKey(db, tenant, config.signingKeySecret);
+		await ensureSigningKey(db, tenant, config.signingKeySecret, config.issuerUrl);
 	}
 	return tenant;
 }

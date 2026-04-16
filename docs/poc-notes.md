@@ -26,7 +26,7 @@
 - 로그인 식별자를 이메일에서 **아이디(username)** 로 변경. `users.username` 컬럼 추가(`drizzle/0002_dizzy_korvac.sql`), bootstrap 시 `IDP_BOOTSTRAP_ADMIN_USERNAME` 미설정이면 email 로컬파트 자동 사용.
 - D1 마이그레이션 적용 및 `wrangler dev` 환경에서 아이디/비밀번호 로그인 수동 검증 완료 (2026-04-16). **M0 완전 완료.**
 - `IDP_SIGNING_KEY_SECRET` 설정 시 기동 시점에 `signing_keys` 테이블에 RSA-2048 키가 자동 생성되며, `/oidc/jwks` 공개 엔드포인트로 노출된다. AES-256-GCM(HKDF) 으로 private JWK 암호화 저장. **M1 완료.**
-- SAML 서명 PoC 는 코드와 빌드 기준으로는 유지되고 있으나, Workers 런타임 요청으로 실제 왕복 검증한 상태는 아직 아니다.
+- **M2 SAML 구현 완료 (2026-04-16)**: `/saml/metadata`, `/saml/sso`, `/saml/slo` 엔드포인트 구현 및 빌드 통과. `@peculiar/x509` X.509 인증서 생성, `reflect-metadata` polyfill 추가 필요. SP 등록 후 수동 E2E 검증 예정.
 
 ## 의사결정 기록
 
