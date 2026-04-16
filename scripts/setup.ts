@@ -305,40 +305,41 @@ function loadEnvFile(envPath: string): Record<string, string> {
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
-async function step0_wranglerLogin(args: Args) {
+async function step0_wranglerLogin(args: Args): Promise<string | null> {
   console.log(`\n${cyan("─── 0. wrangler 로그인 체크 ───────────────────────────────")}`);
 
-  if (checkWranglerLogin()) {
+  if (!checkWranglerLogin()) {
+    console.log(yellow("  wrangler에 로그인하지 않았습니다."));
+
+    if (args.yes) {
+      console.log(red("  DB 생성을 위해 wrangler 로그인이 필요합니다. 종료합니다."));
+      closeRL();
+      process.exit(1);
+    }
+
+    const doLogin = await confirm("로그인하시겠습니까?", false);
+    if (!doLogin) {
+      console.log(red("  DB 생성을 위해 wrangler 로그인이 필요합니다. 종료합니다."));
+      closeRL();
+      process.exit(1);
+    }
+
+    console.log("  wrangler login 실행 중...");
+    const result = runCommand("wrangler", ["login"], { inherit: true });
+    if (!result.success) {
+      console.error(red("  wrangler 로그인 실패. 종료합니다."));
+      closeRL();
+      process.exit(1);
+    }
+  }
+
+  const accountId = getWranglerAccountId();
+  if (accountId) {
+    console.log(green(`  ✓ wrangler 로그인 확인됨 (Account ID: ${accountId})`));
+  } else {
     console.log(green("  ✓ wrangler 로그인 확인됨"));
-    return;
   }
-
-  console.log(yellow("  wrangler에 로그인하지 않았습니다."));
-
-  if (args.yes) {
-    console.log(red("  DB 생성을 위해 wrangler 로그인이 필요합니다. 종료합니다."));
-    closeRL();
-    process.exit(1);
-  }
-
-  const doLogin = await confirm("로그인하시겠습니까?", false);
-
-  if (!doLogin) {
-    console.log(red("  DB 생성을 위해 wrangler 로그인이 필요합니다. 종료합니다."));
-    closeRL();
-    process.exit(1);
-  }
-
-  console.log("  wrangler login 실행 중...");
-  const result = runCommand("wrangler", ["login"], { inherit: true });
-
-  if (!result.success) {
-    console.error(red("  wrangler 로그인 실패. 종료합니다."));
-    closeRL();
-    process.exit(1);
-  }
-
-  console.log(green("  ✓ 로그인 완료"));
+  return accountId;
 }
 
 async function step1_createWranglerJsonc(args: Args) {
@@ -469,7 +470,7 @@ async function step3_dbSetup(args: Args): Promise<{
   return { dbId: db.id, dbName: db.name, previewDbId };
 }
 
-async function step4_updateFiles(dbId: string, previewDbId: string | null) {
+async function step4_updateFiles(dbId: string, previewDbId: string | null, accountId: string | null) {
   console.log(`\n${cyan("─── 4. 파일 업데이트 ──────────────────────────────────────")}`);
 
   // Update wrangler.jsonc
@@ -494,6 +495,12 @@ async function step4_updateFiles(dbId: string, previewDbId: string | null) {
 
   // Update .env
   let envContent = readFile(ENV_FILE);
+  if (accountId) {
+    envContent = envContent.replace(
+      /^CLOUDFLARE_ACCOUNT_ID=".*"$/m,
+      `CLOUDFLARE_ACCOUNT_ID="${accountId}"`
+    );
+  }
   envContent = envContent.replace(
     /^CLOUDFLARE_D1_DATABASE_ID=".*"$/m,
     `CLOUDFLARE_D1_DATABASE_ID="${dbId}"`
@@ -527,27 +534,17 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
   const envVars = loadEnvFile(ENV_FILE);
 
   if (!envVars.CLOUDFLARE_ACCOUNT_ID) {
-    // wrangler whoami에서 자동 감지 시도
-    const detected = getWranglerAccountId();
-    if (detected) {
-      console.log(green(`  ✓ wrangler에서 Account ID 자동 감지: ${detected}`));
-      envVars.CLOUDFLARE_ACCOUNT_ID = detected;
-      let envContent = readFile(ENV_FILE);
-      envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${detected}"`);
-      writeFile(ENV_FILE, envContent);
-    } else {
-      console.log(yellow("\n  Cloudflare 계정 ID를 감지할 수 없습니다."));
-      const id = await ask("CLOUDFLARE_ACCOUNT_ID 직접 입력", "");
-      if (!id) {
-        console.error(red("  계정 ID가 없으면 마이그레이션을 실행할 수 없습니다."));
-        closeRL();
-        process.exit(1);
-      }
-      envVars.CLOUDFLARE_ACCOUNT_ID = id;
-      let envContent = readFile(ENV_FILE);
-      envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${id}"`);
-      writeFile(ENV_FILE, envContent);
+    console.log(yellow("\n  Cloudflare 계정 ID를 감지할 수 없습니다."));
+    const id = await ask("CLOUDFLARE_ACCOUNT_ID 직접 입력", "");
+    if (!id) {
+      console.error(red("  계정 ID가 없으면 마이그레이션을 실행할 수 없습니다."));
+      closeRL();
+      process.exit(1);
     }
+    envVars.CLOUDFLARE_ACCOUNT_ID = id;
+    let envContent = readFile(ENV_FILE);
+    envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${id}"`);
+    writeFile(ENV_FILE, envContent);
   }
 
   if (!envVars.CLOUDFLARE_D1_TOKEN && !envVars.CLOUDFLARE_API_TOKEN) {
@@ -688,7 +685,7 @@ async function main() {
   console.log(`${C.bold}${cyan("=== Keystone 프로젝트 셋업 ===")}${C.reset}`);
 
   // Step 0: wrangler login check
-  await step0_wranglerLogin(args);
+  const accountId = await step0_wranglerLogin(args);
 
   // Step 1: wrangler.jsonc
   await step1_createWranglerJsonc(args);
@@ -700,7 +697,7 @@ async function main() {
   const { dbId, previewDbId } = await step3_dbSetup(args);
 
   // Step 4: Update files
-  await step4_updateFiles(dbId, previewDbId);
+  await step4_updateFiles(dbId, previewDbId, accountId);
 
   // Step 5: Migration
   await step5_migrate(args, previewDbId !== null);
