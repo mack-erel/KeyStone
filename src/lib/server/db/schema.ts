@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { integer, sqliteTable, text, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { type AnySQLiteColumn, integer, sqliteTable, text, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // ---------- Tenancy ----------
 
@@ -45,6 +45,16 @@ export const users = sqliteTable(
 		status: text('status', { enum: ['active', 'disabled', 'locked'] })
 			.notNull()
 			.default('active'),
+		// 프로필
+		givenName: text('given_name'),
+		familyName: text('family_name'),
+		phoneNumber: text('phone_number'),
+		phoneVerifiedAt: integer('phone_verified_at', { mode: 'timestamp_ms' }),
+		avatarUrl: text('avatar_url'),
+		locale: text('locale').default('ko-KR'),
+		zoneinfo: text('zoneinfo').default('Asia/Seoul'),
+		bio: text('bio'),
+		birthdate: text('birthdate'), // ISO 8601 날짜 문자열 (YYYY-MM-DD)
 		createdAt: integer('created_at', { mode: 'timestamp_ms' })
 			.notNull()
 			.default(sql`(unixepoch() * 1000)`),
@@ -444,6 +454,186 @@ export const auditEvents = sqliteTable(
 	]
 );
 
+// ---------- Organization ----------
+
+/**
+ * 직급 마스터. 테넌트별 독립 관리.
+ * 예: 사원(10) → 대리(20) → 과장(30) → 차장(40) → 부장(50) → 이사(60)
+ */
+export const positions = sqliteTable(
+	'positions',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => tenants.id, { onDelete: 'cascade' }),
+		name: text('name').notNull(),
+		code: text('code'),
+		level: integer('level').notNull().default(0), // 높을수록 고위직
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+		updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => [
+		index('positions_tenant_idx').on(t.tenantId),
+		uniqueIndex('positions_tenant_code_uidx').on(t.tenantId, t.code)
+	]
+);
+
+/**
+ * 부서. parentId 로 계층 구조(트리) 표현.
+ * 최상위 부서는 parentId=NULL.
+ */
+export const departments = sqliteTable(
+	'departments',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => tenants.id, { onDelete: 'cascade' }),
+		parentId: text('parent_id').references((): AnySQLiteColumn => departments.id, {
+			onDelete: 'set null'
+		}),
+		name: text('name').notNull(),
+		code: text('code'),
+		description: text('description'),
+		managerId: text('manager_id').references(() => users.id, { onDelete: 'set null' }),
+		displayOrder: integer('display_order').notNull().default(0),
+		status: text('status', { enum: ['active', 'inactive'] })
+			.notNull()
+			.default('active'),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+		updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => [
+		index('departments_tenant_idx').on(t.tenantId),
+		index('departments_parent_idx').on(t.parentId),
+		uniqueIndex('departments_tenant_code_uidx').on(t.tenantId, t.code)
+	]
+);
+
+/**
+ * 팀. 부서 하위에 속하거나(departmentId 있음), 독립적으로 존재 가능.
+ */
+export const teams = sqliteTable(
+	'teams',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => tenants.id, { onDelete: 'cascade' }),
+		departmentId: text('department_id').references(() => departments.id, {
+			onDelete: 'set null'
+		}),
+		name: text('name').notNull(),
+		code: text('code'),
+		description: text('description'),
+		leaderId: text('leader_id').references(() => users.id, { onDelete: 'set null' }),
+		status: text('status', { enum: ['active', 'inactive'] })
+			.notNull()
+			.default('active'),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+		updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => [
+		index('teams_tenant_idx').on(t.tenantId),
+		index('teams_department_idx').on(t.departmentId),
+		uniqueIndex('teams_tenant_code_uidx').on(t.tenantId, t.code)
+	]
+);
+
+/**
+ * 유저↔부서 소속 (N:M). 겸직·복수 소속 지원.
+ * isPrimary=true 인 행이 주소속 부서.
+ * endedAt=NULL 이면 현재 소속.
+ */
+export const userDepartments = sqliteTable(
+	'user_departments',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => tenants.id, { onDelete: 'cascade' }),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		departmentId: text('department_id')
+			.notNull()
+			.references(() => departments.id, { onDelete: 'cascade' }),
+		positionId: text('position_id').references(() => positions.id, { onDelete: 'set null' }),
+		jobTitle: text('job_title'), // 직책 (팀장, 파트장, 실장 …)
+		isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+		startedAt: integer('started_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+		endedAt: integer('ended_at', { mode: 'timestamp_ms' }),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => [
+		index('user_departments_user_idx').on(t.userId),
+		index('user_departments_dept_idx').on(t.departmentId),
+		index('user_departments_tenant_idx').on(t.tenantId)
+	]
+);
+
+/**
+ * 유저↔팀 소속 (N:M). 복수 팀 동시 소속 지원.
+ * isPrimary=true 인 행이 주소속 팀.
+ * endedAt=NULL 이면 현재 소속.
+ */
+export const userTeams = sqliteTable(
+	'user_teams',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		tenantId: text('tenant_id')
+			.notNull()
+			.references(() => tenants.id, { onDelete: 'cascade' }),
+		userId: text('user_id')
+			.notNull()
+			.references(() => users.id, { onDelete: 'cascade' }),
+		teamId: text('team_id')
+			.notNull()
+			.references(() => teams.id, { onDelete: 'cascade' }),
+		jobTitle: text('job_title'), // 팀 내 역할 (팀장, 멤버 …)
+		isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
+		startedAt: integer('started_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`),
+		endedAt: integer('ended_at', { mode: 'timestamp_ms' }),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.default(sql`(unixepoch() * 1000)`)
+	},
+	(t) => [
+		index('user_teams_user_idx').on(t.userId),
+		index('user_teams_team_idx').on(t.teamId),
+		index('user_teams_tenant_idx').on(t.tenantId)
+	]
+);
+
 // ---------- Types ----------
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -467,3 +657,8 @@ export type SamlSp = typeof samlSps.$inferSelect;
 export type SamlSession = typeof samlSessions.$inferSelect;
 export type SigningKey = typeof signingKeys.$inferSelect;
 export type AuditEvent = typeof auditEvents.$inferSelect;
+export type Position = typeof positions.$inferSelect;
+export type Department = typeof departments.$inferSelect;
+export type Team = typeof teams.$inferSelect;
+export type UserDepartment = typeof userDepartments.$inferSelect;
+export type UserTeam = typeof userTeams.$inferSelect;

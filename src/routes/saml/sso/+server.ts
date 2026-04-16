@@ -14,6 +14,7 @@ import { getActiveSigningKey } from '$lib/server/crypto/keys';
 import { parseAuthnRequest } from '$lib/server/saml/parse-authn-request';
 import { buildSignedSamlResponse } from '$lib/server/saml/response';
 import { findSp, recordSamlSession } from '$lib/server/saml/sp';
+import { getUserMembership } from '$lib/server/org/membership';
 
 export const GET: RequestHandler = async ({ locals, url, platform }) => {
 	const { db, tenant } = requireDbContext(locals);
@@ -74,6 +75,24 @@ export const GET: RequestHandler = async ({ locals, url, platform }) => {
 	if (user.email) attributes[attrMapping['email'] ?? 'email'] = user.email;
 	if (user.username) attributes[attrMapping['username'] ?? 'username'] = user.username;
 	if (user.displayName) attributes[attrMapping['displayName'] ?? 'displayName'] = user.displayName;
+	if (user.givenName) attributes[attrMapping['givenName'] ?? 'givenName'] = user.givenName;
+	if (user.familyName) attributes[attrMapping['familyName'] ?? 'familyName'] = user.familyName;
+	if (user.phoneNumber) attributes[attrMapping['phoneNumber'] ?? 'phoneNumber'] = user.phoneNumber;
+
+	// 조직 정보 (주소속 부서/팀/직급/직책)
+	const membership = await getUserMembership(db, user.id);
+	const primaryDept = membership.departments.find((d) => d.isPrimary) ?? membership.departments[0];
+	const primaryTeam = membership.teams.find((t) => t.isPrimary) ?? membership.teams[0];
+	if (primaryDept) {
+		attributes[attrMapping['department'] ?? 'department'] = primaryDept.name;
+		if (primaryDept.jobTitle)
+			attributes[attrMapping['jobTitle'] ?? 'jobTitle'] = primaryDept.jobTitle;
+		if (primaryDept.position)
+			attributes[attrMapping['position'] ?? 'position'] = primaryDept.position.name;
+	}
+	if (primaryTeam) {
+		attributes[attrMapping['team'] ?? 'team'] = primaryTeam.name;
+	}
 
 	// NameID 결정
 	const nameIdFormat = sp.nameIdFormat;

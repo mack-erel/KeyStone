@@ -126,6 +126,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 	}
 
 	const nowSec = Math.floor(Date.now() / 1000);
+	const scopes = new Set(grant.scope.split(' '));
 
 	// ID Token (RS256 JWT)
 	const idTokenPayload: Record<string, unknown> = {
@@ -133,11 +134,33 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		sub: user.id,
 		aud: clientId,
 		iat: nowSec,
-		exp: nowSec + ID_TOKEN_TTL_S,
-		email: user.email,
-		name: user.displayName,
-		preferred_username: user.username ?? user.email.split('@')[0]
+		exp: nowSec + ID_TOKEN_TTL_S
 	};
+
+	// email scope
+	if (scopes.has('email')) {
+		idTokenPayload.email = user.email;
+		idTokenPayload.email_verified = Boolean(user.emailVerifiedAt);
+	}
+
+	// profile scope
+	if (scopes.has('profile')) {
+		idTokenPayload.name = user.displayName;
+		idTokenPayload.given_name = user.givenName;
+		idTokenPayload.family_name = user.familyName;
+		idTokenPayload.preferred_username = user.username ?? user.email.split('@')[0];
+		idTokenPayload.picture = user.avatarUrl;
+		idTokenPayload.locale = user.locale;
+		idTokenPayload.zoneinfo = user.zoneinfo;
+		idTokenPayload.birthdate = user.birthdate;
+	}
+
+	// phone scope
+	if (scopes.has('phone')) {
+		idTokenPayload.phone_number = user.phoneNumber;
+		idTokenPayload.phone_number_verified = Boolean(user.phoneVerifiedAt);
+	}
+
 	if (grant.nonce) idTokenPayload.nonce = grant.nonce;
 	if (grant.sessionId) idTokenPayload.sid = grant.sessionId;
 

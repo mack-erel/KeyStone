@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { users } from '$lib/server/db/schema';
 import { verifyAccessToken } from '$lib/server/crypto/keys';
+import { getUserMembership } from '$lib/server/org/membership';
 
 function bearerError(code: string, description: string): Response {
 	return new Response(JSON.stringify({ error: code, error_description: description }), {
@@ -45,16 +46,55 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
 		return bearerError('invalid_token', '사용자를 찾을 수 없습니다.');
 	}
 
+	const scopes = new Set(claims.scope.split(' '));
 	const response: Record<string, unknown> = { sub: user.id };
 
-	if (claims.scope.split(' ').includes('email')) {
+	if (scopes.has('email')) {
 		response.email = user.email;
-		if (user.emailVerifiedAt) response.email_verified = true;
+		response.email_verified = Boolean(user.emailVerifiedAt);
 	}
 
-	if (claims.scope.split(' ').includes('profile')) {
+	if (scopes.has('profile')) {
 		response.name = user.displayName;
+		response.given_name = user.givenName;
+		response.family_name = user.familyName;
 		response.preferred_username = user.username ?? user.email.split('@')[0];
+		response.picture = user.avatarUrl;
+		response.locale = user.locale;
+		response.zoneinfo = user.zoneinfo;
+		response.birthdate = user.birthdate;
+		response.updated_at = user.updatedAt
+			? Math.floor(user.updatedAt.getTime() / 1000)
+			: undefined;
+	}
+
+	if (scopes.has('phone')) {
+		response.phone_number = user.phoneNumber;
+		response.phone_number_verified = Boolean(user.phoneVerifiedAt);
+	}
+
+	if (scopes.has('organization')) {
+		const membership = await getUserMembership(db, user.id);
+		response.department = membership.departments.map((d) => ({
+			id: d.id,
+			name: d.name,
+			code: d.code,
+			is_primary: d.isPrimary,
+			job_title: d.jobTitle,
+			position: d.position
+				? { id: d.position.id, name: d.position.name, code: d.position.code, level: d.position.level }
+				: null
+		}));
+		response.team = membership.teams.map((t) => ({
+			id: t.id,
+			name: t.name,
+			code: t.code,
+			department: t.departmentName,
+			is_primary: t.isPrimary,
+			job_title: t.jobTitle
+		}));
+		response.position = membership.primaryPosition?.name ?? null;
+		response.job_title = membership.primaryJobTitle ?? null;
 	}
 
 	return json(response);
