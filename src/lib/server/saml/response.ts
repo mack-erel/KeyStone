@@ -131,6 +131,10 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
 
 	// ── 3. Assertion 서명 (Response 문서 컨텍스트 안에서) ─────────────────────
 	const signedXml = new xmldsigjs.SignedXml();
+	// SignedInfo CanonicalizationMethod 을 exc-c14n 으로 교체 (기본값 standard c14n 은
+	// signxml 등 검증기에서 거부되는 경우가 있음)
+	signedXml.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm =
+		'http://www.w3.org/2001/10/xml-exc-c14n#';
 	await signedXml.Sign({ name: 'RSASSA-PKCS1-v1_5' }, params.privateKey, responseDoc, {
 		x509: [certB64],
 		references: [
@@ -166,6 +170,8 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
 		responseEl.setIdAttribute?.('ID', true);
 
 		const signedXmlResponse = new xmldsigjs.SignedXml();
+		signedXmlResponse.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm =
+			'http://www.w3.org/2001/10/xml-exc-c14n#';
 		await signedXmlResponse.Sign(
 			{ name: 'RSASSA-PKCS1-v1_5' },
 			params.privateKey,
