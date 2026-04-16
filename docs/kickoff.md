@@ -37,7 +37,7 @@
 - [x] `users.username` 컬럼 추가 (`drizzle/0002_dizzy_korvac.sql`), 로그인을 이메일 대신 아이디(username)로 변경. `IDP_BOOTSTRAP_ADMIN_USERNAME` 미설정 시 email 로컬파트 자동 사용.
 - [x] D1 마이그레이션 적용, bootstrap admin env 설정, `wrangler dev` 에서 아이디/비밀번호 로그인 수동 검증 완료
 - [x] **M1 OIDC 완전 완료 (2026-04-16)**: `IDP_SIGNING_KEY_SECRET` 기반 RSA-2048 서명 키 자동 생성(`signing_keys` 테이블), `/.well-known/openid-configuration`, `/oidc/jwks`, `/oidc/authorize`(PKCE S256), `/oidc/token`(RS256 ID Token + HMAC-SHA256 opaque access token), `/oidc/userinfo`, `/oidc/end-session` 구현 및 수동 E2E 검증 완료.
-- [x] **M2 SAML 구현 완료 (2026-04-16)**: `@peculiar/x509` 로 X.509 자체 서명 인증서 생성 및 `signing_keys.cert_pem` 저장(기존 키 backfill 지원). `/saml/metadata`(IdP 메타데이터 XML), `/saml/sso`(SP-Initiated SSO, HTTP-Redirect AuthnRequest → HTTP-POST Response), `/saml/slo`(세션 무효화) 구현. xmldsigjs `URI="#assertionId"` 방식 Assertion 서명.
+- [x] **M2 SAML 완전 완료 (2026-04-16)**: `@peculiar/x509` X.509 cert 생성·저장(backfill 포함). `/saml/metadata`, `/saml/sso`(SP-Initiated, HTTP-Redirect→HTTP-POST), `/saml/slo` 구현. Cloudflare Access SAML SP 연동 수동 E2E 검증 완료 (`email` attribute 전달 확인). 서명 이슈 수정: xmldom `setIdAttribute` 등록, Response 컨텍스트 내 exc-c14n 서명.
 
 ---
 
