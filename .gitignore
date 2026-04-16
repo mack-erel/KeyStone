@@ -23,3 +23,11 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 # SQLite
 *.db
+
+# Local AI agent state
+.claude/
+.omc/
+
+# Cloudflare Workers
+wrangler.jsonc
+worker-configuration.d.ts
