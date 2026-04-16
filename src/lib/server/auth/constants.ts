@@ -13,3 +13,7 @@ export const BACKUP_CODE_CREDENTIAL_TYPE = 'backup_code';
 export const AMR_PASSWORD = 'pwd';
 export const AMR_TOTP = 'totp';
 export const AMR_BACKUP_CODE = 'swk'; // software key (RFC 8176 유사)
+export const AMR_WEBAUTHN = 'hwk'; // hardware key (RFC 8176)
+
+// WebAuthn credential 타입
+export const WEBAUTHN_CREDENTIAL_TYPE = 'webauthn';

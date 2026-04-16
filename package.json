@@ -47,6 +47,8 @@
 	},
 	"dependencies": {
 		"@peculiar/x509": "^2.0.0",
+		"@simplewebauthn/browser": "^13.3.0",
+		"@simplewebauthn/server": "^13.3.0",
 		"@xmldom/xmldom": "^0.9.9",
 		"qrcode": "^1.5.4",
 		"reflect-metadata": "^0.2.2",
