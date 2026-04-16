@@ -19,7 +19,8 @@
 		"db:push": "drizzle-kit push",
 		"db:migrate": "drizzle-kit migrate",
 		"db:migrate:preview": "CLOUDFLARE_IS_PREVIEW=true drizzle-kit migrate",
-		"db:studio": "drizzle-kit studio"
+		"db:studio": "drizzle-kit studio",
+		"setup": "bun run scripts/setup.ts"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.0.4",
