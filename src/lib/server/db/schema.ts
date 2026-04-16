@@ -447,6 +447,14 @@ export const auditEvents = sqliteTable(
 // ---------- Types ----------
 
 export type Tenant = typeof tenants.$inferSelect;
+// ---------- Rate Limits ----------
+
+export const rateLimits = sqliteTable('rate_limits', {
+	key: text('key').primaryKey(),
+	count: integer('count').notNull().default(1),
+	expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull()
+});
+
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;
 export type Identity = typeof identities.$inferSelect;

@@ -9,6 +9,7 @@ import { createMfaPendingToken, MFA_PENDING_COOKIE } from '$lib/server/auth/mfa'
 import { AMR_PASSWORD, TOTP_CREDENTIAL_TYPE } from '$lib/server/auth/constants';
 import { getRuntimeConfig } from '$lib/server/auth/runtime';
 import { credentials } from '$lib/server/db/schema';
+import { checkRateLimit } from '$lib/server/ratelimit';
 
 function sanitizeRedirectTarget(target: string | null): string | null {
 	if (!target || !target.startsWith('/') || target.startsWith('//')) {
@@ -56,8 +57,20 @@ export const actions: Actions = {
 		}
 
 		const { db, tenant } = requireDbContext(event.locals);
-		const user = await authenticateLocalUser(db, tenant.id, username, password);
 		const requestMetadata = getRequestMetadata(event);
+
+		// 레이트 리밋: IP당 10회/15분
+		const rlKey = `login:${requestMetadata.ip ?? 'unknown'}`;
+		const rl = await checkRateLimit(db, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
+		if (!rl.allowed) {
+			return fail(429, {
+				username,
+				redirectTo,
+				error: `로그인 시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`
+			});
+		}
+
+		const user = await authenticateLocalUser(db, tenant.id, username, password);
 
 		if (!user) {
 			await recordAuditEvent(db, {

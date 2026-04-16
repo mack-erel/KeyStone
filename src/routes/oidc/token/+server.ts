@@ -4,6 +4,7 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { recordAuditEvent } from '$lib/server/audit';
 import { oidcClients, oidcGrants, users } from '$lib/server/db/schema';
+import { checkRateLimit } from '$lib/server/ratelimit';
 import {
 	b64uEncode,
 	generateAccessToken,
@@ -30,6 +31,25 @@ async function verifySha256Challenge(verifier: string, challenge: string): Promi
 export const POST: RequestHandler = async ({ locals, request, url }) => {
 	const { db, tenant } = requireDbContext(locals);
 	const { signingKeySecret, issuerUrl } = locals.runtimeConfig;
+
+	// 레이트 리밋: IP당 30회/분
+	const ip =
+		request.headers.get('cf-connecting-ip') ??
+		request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+		'unknown';
+	const rl = await checkRateLimit(db, `token:${ip}`, { windowMs: 60 * 1000, limit: 30 });
+	if (!rl.allowed) {
+		return new Response(
+			JSON.stringify({ error: 'rate_limit_exceeded', error_description: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' }),
+			{
+				status: 429,
+				headers: {
+					'Content-Type': 'application/json',
+					'Retry-After': String(Math.ceil(rl.retryAfterMs / 1000))
+				}
+			}
+		);
+	}
 
 	if (!signingKeySecret) {
 		return tokenError(
