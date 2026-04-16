@@ -547,7 +547,9 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
     writeFile(ENV_FILE, envContent);
   }
 
-  if (!envVars.CLOUDFLARE_D1_TOKEN && !envVars.CLOUDFLARE_API_TOKEN) {
+  // 토큰 확인 — CLOUDFLARE_D1_TOKEN 또는 CLOUDFLARE_API_TOKEN 중 하나
+  const hasToken = (v: string | undefined) => !!v && v.length > 0;
+  if (!hasToken(envVars.CLOUDFLARE_D1_TOKEN) && !hasToken(envVars.CLOUDFLARE_API_TOKEN)) {
     console.log(`
   ${cyan("Cloudflare API 토큰이 필요합니다.")}
   아래 URL에서 토큰을 생성하세요:
@@ -565,18 +567,24 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean) {
       closeRL();
       process.exit(1);
     }
-    envVars.CLOUDFLARE_API_TOKEN = token;
+    // CLOUDFLARE_API_TOKEN으로 통일 저장
     let envContent = readFile(ENV_FILE);
-    envContent = envContent.replace(/^CLOUDFLARE_D1_TOKEN=".*"$/m, `CLOUDFLARE_D1_TOKEN="${token}"`);
+    if (/^CLOUDFLARE_D1_TOKEN=/m.test(envContent)) {
+      envContent = envContent.replace(/^CLOUDFLARE_D1_TOKEN=".*"$/m, `CLOUDFLARE_D1_TOKEN="${token}"`);
+    } else {
+      envContent += `\nCLOUDFLARE_API_TOKEN="${token}"\n`;
+    }
     writeFile(ENV_FILE, envContent);
   }
 
+  // 파일 재로드로 최신 값 보장
+  const freshEnv = loadEnvFile(ENV_FILE);
   const migrateEnv: Record<string, string> = {
-    CLOUDFLARE_ACCOUNT_ID: envVars.CLOUDFLARE_ACCOUNT_ID,
-    CLOUDFLARE_D1_DATABASE_ID: envVars.CLOUDFLARE_D1_DATABASE_ID ?? "",
-    CLOUDFLARE_D1_PREVIEW_DATABASE_ID: envVars.CLOUDFLARE_D1_PREVIEW_DATABASE_ID ?? "",
-    ...(envVars.CLOUDFLARE_D1_TOKEN ? { CLOUDFLARE_D1_TOKEN: envVars.CLOUDFLARE_D1_TOKEN } : {}),
-    ...(envVars.CLOUDFLARE_API_TOKEN ? { CLOUDFLARE_API_TOKEN: envVars.CLOUDFLARE_API_TOKEN } : {}),
+    CLOUDFLARE_ACCOUNT_ID: freshEnv.CLOUDFLARE_ACCOUNT_ID ?? "",
+    CLOUDFLARE_D1_DATABASE_ID: freshEnv.CLOUDFLARE_D1_DATABASE_ID ?? "",
+    CLOUDFLARE_D1_PREVIEW_DATABASE_ID: freshEnv.CLOUDFLARE_D1_PREVIEW_DATABASE_ID ?? "",
+    ...(hasToken(freshEnv.CLOUDFLARE_D1_TOKEN) ? { CLOUDFLARE_D1_TOKEN: freshEnv.CLOUDFLARE_D1_TOKEN! } : {}),
+    ...(hasToken(freshEnv.CLOUDFLARE_API_TOKEN) ? { CLOUDFLARE_API_TOKEN: freshEnv.CLOUDFLARE_API_TOKEN! } : {}),
   };
 
   // Generate migrations
