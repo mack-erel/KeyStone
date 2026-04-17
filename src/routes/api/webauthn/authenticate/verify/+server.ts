@@ -5,7 +5,7 @@ import { requireDbContext } from '$lib/server/auth/guards';
 import { getRuntimeConfig } from '$lib/server/auth/runtime';
 import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit/index';
 import { createSessionRecord, setSessionCookie } from '$lib/server/auth/session';
-import { AMR_WEBAUTHN } from '$lib/server/auth/constants';
+import { AMR_WEBAUTHN, amrToAcr } from '$lib/server/auth/constants';
 import {
 	verifyChallengeCookie,
 	verifyPasskeyAuthentication,
@@ -73,7 +73,8 @@ export const POST: RequestHandler = async (event) => {
 		userId: user.id,
 		ip: requestMetadata.ip,
 		userAgent: requestMetadata.userAgent,
-		amr: [AMR_WEBAUTHN]
+		amr: [AMR_WEBAUTHN],
+		acr: amrToAcr([AMR_WEBAUTHN])
 	});
 
 	setSessionCookie(cookies, url, sessionToken, expiresAt);

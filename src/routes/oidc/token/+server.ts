@@ -164,6 +164,7 @@ export const POST: RequestHandler = async (event) => {
 
 	if (grant.nonce) idTokenPayload.nonce = grant.nonce;
 	if (grant.sessionId) idTokenPayload.sid = grant.sessionId;
+	if (grant.acr) idTokenPayload.acr = grant.acr;
 
 	const idToken = await signJwt(idTokenPayload, signingKey.privateKey, signingKey.kid);
 

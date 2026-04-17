@@ -18,6 +18,7 @@ export interface CreateGrantParams {
 	scope: string;
 	nonce: string | null;
 	state: string | null;
+	acr?: string | null;
 }
 
 export async function createGrant(db: DB, params: CreateGrantParams): Promise<void> {

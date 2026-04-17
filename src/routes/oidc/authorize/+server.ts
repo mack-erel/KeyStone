@@ -108,7 +108,8 @@ export const GET: RequestHandler = async (event) => {
 		redirectUri,
 		scope: grantedScope,
 		nonce: nonce ?? null,
-		state: state ?? null
+		state: state ?? null,
+		acr: locals.session.acr ?? null
 	});
 
 	const { userAgent } = getRequestMetadata(event);

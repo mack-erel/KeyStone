@@ -280,6 +280,7 @@ export const oidcGrants = sqliteTable(
 		scope: text('scope').notNull(),
 		nonce: text('nonce'),
 		state: text('state'),
+		acr: text('acr'),
 		expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
 		usedAt: integer('used_at', { mode: 'timestamp_ms' }),
 		createdAt: integer('created_at', { mode: 'timestamp_ms' })
