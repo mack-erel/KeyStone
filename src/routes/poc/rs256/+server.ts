@@ -1,4 +1,4 @@
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 
 /**
  * PoC: RS256 JWT 서명/검증 — Cloudflare Workers WebCrypto 네이티브.
@@ -7,6 +7,7 @@ import { json } from '@sveltejs/kit';
  * GET /poc/rs256
  */
 export const GET = async () => {
+	if (!import.meta.env.DEV) throw error(404, 'Not found');
 	const t0 = Date.now();
 
 	// 1) 키쌍 생성 (RS256)

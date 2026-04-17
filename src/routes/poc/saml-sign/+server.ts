@@ -1,4 +1,4 @@
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import * as xpath from 'xpath';
 import { setNodeDependencies } from 'xml-core';
@@ -19,6 +19,7 @@ setNodeDependencies({ DOMParser, XMLSerializer, xpath });
  * GET /poc/saml-sign
  */
 export const GET = async () => {
+	if (!import.meta.env.DEV) throw error(404, 'Not found');
 	// Workers 의 native crypto 를 xmldsigjs 엔진으로 주입.
 	// 타입은 peculiar/webcrypto Crypto 를 기대하지만, 구조가 동일하므로 캐스팅.
 	xmldsigjs.Application.setEngine('WorkersWebCrypto', crypto as unknown as Crypto);

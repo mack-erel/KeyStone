@@ -1,4 +1,4 @@
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import { hashPassword, verifyPassword } from '$lib/server/auth/password';
 
 /**
@@ -13,6 +13,7 @@ import { hashPassword, verifyPassword } from '$lib/server/auth/password';
  * GET /poc/argon2
  */
 export const GET = async () => {
+	if (!import.meta.env.DEV) throw error(404, 'Not found');
 	const password = 'correct horse battery staple';
 
 	const t0 = Date.now();
