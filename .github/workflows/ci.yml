@@ -70,7 +70,7 @@ jobs:
                         - "src/**"
                         - "static/**"
                         - "package.json"
-                        - "bun.lockb"
+                        - "bun.lock"
                         - "vite.config.*"
                         - "svelte.config.*"
                         - "tsconfig.json"
