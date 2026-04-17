@@ -70,9 +70,7 @@ export function acrSatisfies(
 	switch (requested.comparison) {
 		case 'exact':
 			// 정확히 일치하거나, 상위 ACR 이 해당 수준을 포함(subsume)하는 경우 허용
-			return requested.classRefs.some(
-				(ref) => ref === sessionAcr || acrSubsumes(sessionAcr, ref)
-			);
+			return requested.classRefs.some((ref) => ref === sessionAcr || acrSubsumes(sessionAcr, ref));
 		case 'minimum':
 			return requested.classRefs.some((ref) => level >= acrLevel(ref));
 		case 'maximum':
@@ -80,8 +78,6 @@ export function acrSatisfies(
 		case 'better':
 			return requested.classRefs.some((ref) => level > acrLevel(ref));
 		default:
-			return requested.classRefs.some(
-				(ref) => ref === sessionAcr || acrSubsumes(sessionAcr, ref)
-			);
+			return requested.classRefs.some((ref) => ref === sessionAcr || acrSubsumes(sessionAcr, ref));
 	}
 }

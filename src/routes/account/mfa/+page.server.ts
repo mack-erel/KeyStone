@@ -263,7 +263,9 @@ export const actions: Actions = {
 		const [totpCred] = await db
 			.select()
 			.from(credentials)
-			.where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+			.where(
+				and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE))
+			)
 			.limit(1);
 
 		if (!totpCred?.secret) {

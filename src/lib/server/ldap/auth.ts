@@ -6,21 +6,27 @@ function escapeLdapChar(ch: string): string {
 }
 
 function escapeLdapFilter(input: string): string {
-	return input.split('').map(ch => {
-		if (ch === '\\' || ch === '*' || ch === '(' || ch === ')' || ch.charCodeAt(0) === 0) {
-			return escapeLdapChar(ch);
-		}
-		return ch;
-	}).join('');
+	return input
+		.split('')
+		.map((ch) => {
+			if (ch === '\\' || ch === '*' || ch === '(' || ch === ')' || ch.charCodeAt(0) === 0) {
+				return escapeLdapChar(ch);
+			}
+			return ch;
+		})
+		.join('');
 }
 
 function escapeLdapDn(input: string): string {
-	return input.split('').map(ch => {
-		if ('\\,+"<>;#='.includes(ch) || ch.charCodeAt(0) === 0) {
-			return escapeLdapChar(ch);
-		}
-		return ch;
-	}).join('');
+	return input
+		.split('')
+		.map((ch) => {
+			if ('\\,+"<>;#='.includes(ch) || ch.charCodeAt(0) === 0) {
+				return escapeLdapChar(ch);
+			}
+			return ch;
+		})
+		.join('');
 }
 
 /**

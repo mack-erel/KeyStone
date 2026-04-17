@@ -92,7 +92,12 @@ export async function verifyMfaPendingToken(
 		if (!valid) return null;
 		const payload = JSON.parse(new TextDecoder().decode(b64uDecode(data))) as MfaPendingPayload;
 		if (payload.exp < Date.now()) return null;
-		return { userId: payload.uid, tenantId: payload.tid, redirectTo: payload.redir, ip: payload.ip ?? null };
+		return {
+			userId: payload.uid,
+			tenantId: payload.tid,
+			redirectTo: payload.redir,
+			ip: payload.ip ?? null
+		};
 	} catch {
 		return null;
 	}

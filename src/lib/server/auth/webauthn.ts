@@ -247,9 +247,10 @@ export async function verifyPasskeyAuthentication(
 
 	// 타이밍 누출 방지: credential 이 없거나 잘못 매칭되더라도 동일한 검증 비용을 지불한다.
 	const publicKey = valid ? b64uDecode(cred.publicKey!) : DUMMY_PUBLIC_KEY;
-	const transports = valid && cred.transports
-		? (JSON.parse(cred.transports) as AuthenticatorTransportFuture[])
-		: undefined;
+	const transports =
+		valid && cred.transports
+			? (JSON.parse(cred.transports) as AuthenticatorTransportFuture[])
+			: undefined;
 
 	let verified = false;
 	let newCounter = 0;

@@ -148,7 +148,8 @@
 		</button>
 
 		<p class="mt-6 text-center text-xs text-gray-400">
-			일반 사용자는 <a href="/login" class="text-blue-600 hover:underline">여기</a>에서 로그인하세요.
+			일반 사용자는 <a href="/login" class="text-blue-600 hover:underline">여기</a>에서
+			로그인하세요.
 		</p>
 	</div>
 </div>

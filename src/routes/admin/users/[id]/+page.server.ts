@@ -175,17 +175,26 @@ export const actions: Actions = {
 
 		if (!departmentId) return fail(400, { error: '부서를 선택해 주세요.' });
 
-		const [targetUser] = await db.select({ id: users.id }).from(users)
-			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id))).limit(1);
+		const [targetUser] = await db
+			.select({ id: users.id })
+			.from(users)
+			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)))
+			.limit(1);
 		if (!targetUser) return fail(404, { error: '사용자를 찾을 수 없습니다.' });
 
-		const [dept] = await db.select({ id: departments.id }).from(departments)
-			.where(and(eq(departments.id, departmentId), eq(departments.tenantId, tenant.id))).limit(1);
+		const [dept] = await db
+			.select({ id: departments.id })
+			.from(departments)
+			.where(and(eq(departments.id, departmentId), eq(departments.tenantId, tenant.id)))
+			.limit(1);
 		if (!dept) return fail(404, { error: '부서를 찾을 수 없습니다.' });
 
 		if (positionId) {
-			const [pos] = await db.select({ id: positions.id }).from(positions)
-				.where(and(eq(positions.id, positionId), eq(positions.tenantId, tenant.id))).limit(1);
+			const [pos] = await db
+				.select({ id: positions.id })
+				.from(positions)
+				.where(and(eq(positions.id, positionId), eq(positions.tenantId, tenant.id)))
+				.limit(1);
 			if (!pos) return fail(404, { error: '직책을 찾을 수 없습니다.' });
 		}
 
@@ -220,12 +229,18 @@ export const actions: Actions = {
 
 		if (!teamId) return fail(400, { error: '팀을 선택해 주세요.' });
 
-		const [targetUser] = await db.select({ id: users.id }).from(users)
-			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id))).limit(1);
+		const [targetUser] = await db
+			.select({ id: users.id })
+			.from(users)
+			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)))
+			.limit(1);
 		if (!targetUser) return fail(404, { error: '사용자를 찾을 수 없습니다.' });
 
-		const [team] = await db.select({ id: teams.id }).from(teams)
-			.where(and(eq(teams.id, teamId), eq(teams.tenantId, tenant.id))).limit(1);
+		const [team] = await db
+			.select({ id: teams.id })
+			.from(teams)
+			.where(and(eq(teams.id, teamId), eq(teams.tenantId, tenant.id)))
+			.limit(1);
 		if (!team) return fail(404, { error: '팀을 찾을 수 없습니다.' });
 
 		await db.insert(userTeams).values({ tenantId: tenant.id, userId, teamId, jobTitle, isPrimary });
@@ -257,12 +272,18 @@ export const actions: Actions = {
 
 		if (!partId) return fail(400, { error: '파트를 선택해 주세요.' });
 
-		const [targetUser] = await db.select({ id: users.id }).from(users)
-			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id))).limit(1);
+		const [targetUser] = await db
+			.select({ id: users.id })
+			.from(users)
+			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)))
+			.limit(1);
 		if (!targetUser) return fail(404, { error: '사용자를 찾을 수 없습니다.' });
 
-		const [part] = await db.select({ id: parts.id }).from(parts)
-			.where(and(eq(parts.id, partId), eq(parts.tenantId, tenant.id))).limit(1);
+		const [part] = await db
+			.select({ id: parts.id })
+			.from(parts)
+			.where(and(eq(parts.id, partId), eq(parts.tenantId, tenant.id)))
+			.limit(1);
 		if (!part) return fail(404, { error: '파트를 찾을 수 없습니다.' });
 
 		await db.insert(userParts).values({ tenantId: tenant.id, userId, partId, jobTitle, isPrimary });

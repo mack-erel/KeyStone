@@ -44,8 +44,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	const hasMore = rowsPlusOne.length > PAGE_SIZE;
 	const rows = hasMore ? rowsPlusOne.slice(0, PAGE_SIZE) : rowsPlusOne;
-	const nextCursor =
-		hasMore && rows.length > 0 ? rows[rows.length - 1].createdAt.getTime() : null;
+	const nextCursor = hasMore && rows.length > 0 ? rows[rows.length - 1].createdAt.getTime() : null;
 
 	// 필터 선택지용 kind 목록
 	const kindRows = await db

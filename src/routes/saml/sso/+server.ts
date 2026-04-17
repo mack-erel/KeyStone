@@ -12,7 +12,10 @@ import { getRuntimeConfig } from '$lib/server/auth/runtime';
 import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit';
 import { getActiveSigningKey } from '$lib/server/crypto/keys';
 import { acrSatisfies } from '$lib/server/auth/constants';
-import { parseAuthnRequest, verifySamlRedirectSignature } from '$lib/server/saml/parse-authn-request';
+import {
+	parseAuthnRequest,
+	verifySamlRedirectSignature
+} from '$lib/server/saml/parse-authn-request';
 import { buildSignedSamlErrorResponse, buildSignedSamlResponse } from '$lib/server/saml/response';
 import { findSp, recordSamlSession } from '$lib/server/saml/sp';
 import { getUserMembership } from '$lib/server/org/membership';
@@ -163,7 +166,9 @@ export const GET: RequestHandler = async (event) => {
 		try {
 			const parsed = JSON.parse(sp.allowedAttributes) as unknown;
 			allowedSet = new Set(
-				Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : DEFAULT_ALLOWED
+				Array.isArray(parsed)
+					? parsed.filter((v): v is string => typeof v === 'string')
+					: DEFAULT_ALLOWED
 			);
 		} catch {
 			allowedSet = new Set(DEFAULT_ALLOWED);
@@ -196,7 +201,8 @@ export const GET: RequestHandler = async (event) => {
 		allowedSet.has('position');
 	if (wantsOrg) {
 		const membership = await getUserMembership(db, user.id);
-		const primaryDept = membership.departments.find((d) => d.isPrimary) ?? membership.departments[0];
+		const primaryDept =
+			membership.departments.find((d) => d.isPrimary) ?? membership.departments[0];
 		const primaryTeam = membership.teams.find((t) => t.isPrimary) ?? membership.teams[0];
 		if (primaryDept) {
 			setAttr('department', primaryDept.name);
@@ -257,8 +263,12 @@ export const GET: RequestHandler = async (event) => {
 
 	// HTTP-POST 바인딩: auto-submit 폼 렌더링
 	function htmlEscape(s: string): string {
-		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+		return s
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
 	}
 
 	const relayStateInput = relayState

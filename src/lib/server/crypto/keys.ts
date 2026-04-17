@@ -226,7 +226,13 @@ export async function encryptSecret(
 	const salt = crypto.getRandomValues(new Uint8Array(16));
 	const iv = crypto.getRandomValues(new Uint8Array(12));
 	const enc = new TextEncoder();
-	const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(masterSecret), 'HKDF', false, ['deriveKey']);
+	const keyMaterial = await crypto.subtle.importKey(
+		'raw',
+		enc.encode(masterSecret),
+		'HKDF',
+		false,
+		['deriveKey']
+	);
 	const key = await crypto.subtle.deriveKey(
 		{ name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode(context) },
 		keyMaterial,
@@ -248,7 +254,13 @@ export async function decryptSecret(
 	if (parts.length !== 3) throw new Error('Invalid encrypted secret format');
 	const [saltB64, ivB64, ctB64] = parts;
 	const enc = new TextEncoder();
-	const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(masterSecret), 'HKDF', false, ['deriveKey']);
+	const keyMaterial = await crypto.subtle.importKey(
+		'raw',
+		enc.encode(masterSecret),
+		'HKDF',
+		false,
+		['deriveKey']
+	);
 	const key = await crypto.subtle.deriveKey(
 		{ name: 'HKDF', hash: 'SHA-256', salt: b64uDecode(saltB64), info: enc.encode(context) },
 		keyMaterial,
@@ -256,7 +268,11 @@ export async function decryptSecret(
 		false,
 		['decrypt']
 	);
-	const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64uDecode(ivB64) }, key, b64uDecode(ctB64));
+	const pt = await crypto.subtle.decrypt(
+		{ name: 'AES-GCM', iv: b64uDecode(ivB64) },
+		key,
+		b64uDecode(ctB64)
+	);
 	return new TextDecoder().decode(pt);
 }
 

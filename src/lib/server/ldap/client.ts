@@ -1,4 +1,4 @@
-import ldap from "@yrneh_jang/ldapjs";
+import ldap from '@yrneh_jang/ldapjs';
 import type { LdapProviderConfig } from './types';
 
 function buildUrl(config: LdapProviderConfig): string {

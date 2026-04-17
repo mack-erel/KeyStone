@@ -3,19 +3,20 @@
 **1. 테넌트 bypass via WebAuthn discoverable login**
 
 `verifyPasskeyAuthentication`:
+
 ```typescript
 const [cred] = await db
-  .select()
-  .from(credentials)
-  .where(and(eq(credentials.credentialId, credentialId), eq(credentials.type, 'webauthn')))
-  .limit(1);
+	.select()
+	.from(credentials)
+	.where(and(eq(credentials.credentialId, credentialId), eq(credentials.type, 'webauthn')))
+	.limit(1);
 ```
 
 **테넌트 필터 없음**. credential_id는 전역 유니크가 아닐 수 있음. 멀티테넌트인데 tenant 경계 안 걸고 credentialId 하나만 매칭. 그 후 `verify` 엔드포인트에서:
 
 ```typescript
 if (user.tenantId !== tenant.id) {
-  throw error(403, '접근 권한이 없습니다.');
+	throw error(403, '접근 권한이 없습니다.');
 }
 ```
 
@@ -29,7 +30,8 @@ if (user.tenantId !== tenant.id) {
 
 **3. `residentKey: 'required'` + discoverable login에서 username enumeration**
 
-WebAuthn authenticate options를 allowCredentials 없이 만들기 때문에 discoverable 방식. 서버는 credentialId만 받아서 유저를 역조회함. 근데 위에서 본대로 `credentialId`만으로 find → **user 존재 여부가 응답 타이밍으로 누출**. 
+WebAuthn authenticate options를 allowCredentials 없이 만들기 때문에 discoverable 방식. 서버는 credentialId만 받아서 유저를 역조회함. 근데 위에서 본대로 `credentialId`만으로 find → **user 존재 여부가 응답 타이밍으로 누출**.
+
 - 유효한 credentialId → DB hit → 서명 검증 실패 → 400
 - 무효한 credentialId → DB miss → null return → 400 ("패스키 인증에 실패")
 
@@ -52,10 +54,11 @@ SvelteKit은 기본 origin 검증(`checkOrigin`)이 있는데, **`vite.config.ts
 **모든 오리진에서 오는 cross-origin POST 요청을 전부 신뢰**한다. 주석에 "OIDC token endpoint 때문"이라고 써있지만 이건 틀린 접근:
 
 - OIDC token 엔드포인트는 **client secret 기반 인증**이라 그 자체로 CSRF 안전
-- CSRF 보호가 필요한 건 **쿠키 기반 세션을 쓰는 모든 admin 라우트, /login, /mfa, /account/***
+- CSRF 보호가 필요한 건 **쿠키 기반 세션을 쓰는 모든 admin 라우트, /login, /mfa, /account/\***
 - 지금 설정으로는 공격자가 만든 페이지에서 `fetch('https://idp.hyochan.site/admin/users?/create', {method: 'POST', credentials: 'include', body: formData})` 때리면 그대로 실행됨
 
 공격 시나리오:
+
 1. 관리자가 idp.hyochan.site에 로그인된 상태로 `evil.com/cute-cat.html` 방문
 2. evil.com에서 숨은 form으로 `POST /admin/users?/create`에 `email=attacker@evil.com&password=p&role=admin` 전송
 3. 세션 쿠키는 `sameSite: 'lax'`라 **GET엔 붙지만 POST폼은 top-level 내비게이션이어야 붙음**. Fetch CORS로 `credentials:'include'`는 Origin 헤더가 가서 SvelteKit이 차단해야 하는데 **trustedOrigins: ['*']로 무력화**. 다만 브라우저 CORS preflight에서 막힐수도. **`<form target="_blank" action="..." method="POST">` top-level 내비게이션**이면 `sameSite: 'lax'`를 우회해서 쿠키 붙음.
@@ -63,14 +66,16 @@ SvelteKit은 기본 origin 검증(`checkOrigin`)이 있는데, **`vite.config.ts
 
 SvelteKit 공식 마이그레이션 가이드는 `trustedOrigins`에 **구체 도메인 리스트**를 요구하지 `'*'`이 아니다. 주석에 "공식 마이그레이션 권장"이라 써있는데 **근거 없는 자기 합리화**다. OIDC token 엔드포인트 하나 예외 처리하려고 전체 CSRF 방어를 날린 건 완전히 트레이드오프 잘못 계산함.
 
-**단일 수정으로 가장 큰 보안 개선**: 
+**단일 수정으로 가장 큰 보안 개선**:
+
 ```js
-csrf: { 
+csrf: {
   checkOrigin: true,  // 기본값
   // 또는 토큰 엔드포인트만 예외 처리:
   trustedOrigins: []
 }
 ```
+
 그리고 `/oidc/token`, `/oidc/userinfo` 같은 서버-서버 엔드포인트는 **POST 요청을 그대로 두되, handle hook에서 해당 경로만 origin 체크를 개별 skip**하면 됨. SvelteKit 2.x부터는 `handleFetch`에서 처리 가능.
 
 ---
@@ -92,7 +97,7 @@ username은 유저 입력. 공격자가 username 필드에 **비밀번호를 실
 
 이제 프로덕션에 정말 `/poc/*`이 뜨는지 직접 확인해본다. live site에 GET 해보는건 괜찮음.아 fetch 권한 이슈. 사용자가 준 URL이니까 괜찮을텐데 — 다시 시도.내 샌드박스 네트워크 정책상 idp.hyochan.site는 화이트리스트에 없어서 실제 요청 못 날림 (`host_not_allowed`). GitHub, npm만 허용됨. 라이브 사이트에 직접 공격하는 건 본인이 직접 해야 한다. 근데 그래도 지금까지 찾은 vector로 충분히 심각. 남은 것들 마저 정리하자.### 🔥 **MFA delete에 재인증 없음**
 
-`account/mfa?/delete` 액션 — POST만 하면 **즉시 TOTP와 백업 코드 모두 삭제**. 현재 패스워드 확인도, TOTP 코드 재입력도 없다. 
+`account/mfa?/delete` 액션 — POST만 하면 **즉시 TOTP와 백업 코드 모두 삭제**. 현재 패스워드 확인도, TOTP 코드 재입력도 없다.
 
 시나리오: CSRF가 위에서 본대로 막혀있지 않으므로(`trustedOrigins: ['*']`) + sameSite=lax + top-level 내비게이션. 공격자가 희생자한테 `evil.com` 링크 보내면 그 페이지에서 자동 POST로 **희생자의 MFA 완전 제거**. 그 다음 별도 공격으로 패스워드만 알아내면 뚫림.
 
@@ -105,6 +110,7 @@ username은 유저 입력. 공격자가 username 필드에 **비밀번호를 실
 이제 마지막으로 시드 데이터, bootstrap 확인.### 🔥 **`ensureAuthBaseline`이 매 요청마다 실행됨**
 
 `hooks.server.ts`에서:
+
 ```typescript
 event.locals.tenant = await ensureAuthBaseline(db, event.platform);
 ```
@@ -131,45 +137,45 @@ DoS/nuisance 레벨이지만, **SAML/OIDC 플로우 한가운데서 로그아웃
 
 ### 🔥🔥🔥 **S급 (서비스 장악)**
 
-| # | 위치 | 이슈 |
-|---|------|------|
-| 1 | `svelte.config.js` | **`csrf: trustedOrigins: ['*']`** — 전 라우트 CSRF 방어 완전 비활성화 |
-| 2 | `saml/sso/+server.ts` | **ACS URL 미검증** — 서명된 SAML Response 공격자 서버로 POST |
-| 3 | `saml/sso/+server.ts` | **ACS URL HTML/URL context XSS** — idp 도메인에서 JS 실행 |
+| #   | 위치                  | 이슈                                                                  |
+| --- | --------------------- | --------------------------------------------------------------------- |
+| 1   | `svelte.config.js`    | **`csrf: trustedOrigins: ['*']`** — 전 라우트 CSRF 방어 완전 비활성화 |
+| 2   | `saml/sso/+server.ts` | **ACS URL 미검증** — 서명된 SAML Response 공격자 서버로 POST          |
+| 3   | `saml/sso/+server.ts` | **ACS URL HTML/URL context XSS** — idp 도메인에서 JS 실행             |
 
 ### 🔥🔥 **A급 (권한 탈취/우회)**
 
-| # | 위치 | 이슈 |
-|---|------|------|
-| 4 | `(auth)/mfa/+page.server.ts` | **MFA brute force 가능** — rate limit 부재, 5분 재사용 토큰 |
-| 5 | `routes/poc/*` | **인증 없는 고비용 엔드포인트 3개 프로덕션 노출** — DoS + 비용폭탄 |
-| 6 | `oidc/client.ts` | **client_secret 평문 저장** — DB 유출 시 전 클라이언트 장악 |
-| 7 | `admin/login` | **관리자 MFA 강제 없음** + rate limit 20회/15분 합산 가능 |
+| #   | 위치                         | 이슈                                                               |
+| --- | ---------------------------- | ------------------------------------------------------------------ |
+| 4   | `(auth)/mfa/+page.server.ts` | **MFA brute force 가능** — rate limit 부재, 5분 재사용 토큰        |
+| 5   | `routes/poc/*`               | **인증 없는 고비용 엔드포인트 3개 프로덕션 노출** — DoS + 비용폭탄 |
+| 6   | `oidc/client.ts`             | **client_secret 평문 저장** — DB 유출 시 전 클라이언트 장악        |
+| 7   | `admin/login`                | **관리자 MFA 강제 없음** + rate limit 20회/15분 합산 가능          |
 
 ### 🔥 **B급 (실제 공격 조건부)**
 
-| # | 위치 | 이슈 |
-|---|------|------|
-| 8 | `saml/slo/+server.ts` | **Open Redirect** — RelayState로 피싱 |
-| 9 | `oidc/end-session/+server.ts` | **postLogoutRedirectUris 파싱 불일치 버그** — 정상 매치 실패 + 엣지 우회 가능성 |
-| 10 | `(auth)/logout/+page.server.ts` | **GET /logout으로 CSRF 로그아웃** |
-| 11 | `account/mfa?/delete`, `account/mfa?/regenerate` | **민감 동작에 재인증 없음** — CSRF(#1) 연계 시 MFA 박탈 |
-| 12 | `hooks.server.ts` | **매 요청마다 `ensureAuthBaseline` 3~4 쿼리** — D1 quota/비용 DoS |
-| 13 | `saml/sso` | **AuthnRequest 서명 검증 없음** — SP의 인가 요구 무력화, #2와 연계 |
-| 14 | `webauthn.ts` | **credential_id 전역 조회** — 테넌트 경계 약화, 유저 존재 여부 타이밍 누출 |
-| 15 | `ratelimit/index.ts` | **SELECT→UPDATE non-atomic** — 고속 브루트포스 완화 무력 |
-| 16 | `auth/mfa.ts` + `totp.ts` + `keys.ts` | **단일 `IDP_SIGNING_KEY_SECRET`이 4개 용도 공유** — root 유출 시 전체 붕괴 |
+| #   | 위치                                             | 이슈                                                                            |
+| --- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
+| 8   | `saml/slo/+server.ts`                            | **Open Redirect** — RelayState로 피싱                                           |
+| 9   | `oidc/end-session/+server.ts`                    | **postLogoutRedirectUris 파싱 불일치 버그** — 정상 매치 실패 + 엣지 우회 가능성 |
+| 10  | `(auth)/logout/+page.server.ts`                  | **GET /logout으로 CSRF 로그아웃**                                               |
+| 11  | `account/mfa?/delete`, `account/mfa?/regenerate` | **민감 동작에 재인증 없음** — CSRF(#1) 연계 시 MFA 박탈                         |
+| 12  | `hooks.server.ts`                                | **매 요청마다 `ensureAuthBaseline` 3~4 쿼리** — D1 quota/비용 DoS               |
+| 13  | `saml/sso`                                       | **AuthnRequest 서명 검증 없음** — SP의 인가 요구 무력화, #2와 연계              |
+| 14  | `webauthn.ts`                                    | **credential_id 전역 조회** — 테넌트 경계 약화, 유저 존재 여부 타이밍 누출      |
+| 15  | `ratelimit/index.ts`                             | **SELECT→UPDATE non-atomic** — 고속 브루트포스 완화 무력                        |
+| 16  | `auth/mfa.ts` + `totp.ts` + `keys.ts`            | **단일 `IDP_SIGNING_KEY_SECRET`이 4개 용도 공유** — root 유출 시 전체 붕괴      |
 
 ### 🟡 **C급 (하드닝)**
 
-| # | 위치 | 이슈 |
-|---|------|------|
-| 17 | `hooks.server.ts` CSP | **`script-src 'unsafe-inline'`** XSS 방어 약화 |
-| 18 | `auth/password.ts` | PBKDF2 100k iter — OWASP 권장 1/6 |
-| 19 | `audit/index.ts` | **username 로그 저장** — 공격자가 user 칸에 password 실수 입력 시 평문 기록 |
-| 20 | `account/mfa?/create` | TOTP setup 쿠키에 base32 시크릿 HMAC만 서명, **암호화 안됨** |
-| 21 | `bootstrap.ts` | **ADMIN env 제거 안 하면 비밀번호 삭제 시 자동 복구 가능** (엣지) |
-| 22 | 관리자 비밀번호 정책 | 8자 이상 외 복잡도/재사용/사전 단어 검사 없음 |
+| #   | 위치                  | 이슈                                                                        |
+| --- | --------------------- | --------------------------------------------------------------------------- |
+| 17  | `hooks.server.ts` CSP | **`script-src 'unsafe-inline'`** XSS 방어 약화                              |
+| 18  | `auth/password.ts`    | PBKDF2 100k iter — OWASP 권장 1/6                                           |
+| 19  | `audit/index.ts`      | **username 로그 저장** — 공격자가 user 칸에 password 실수 입력 시 평문 기록 |
+| 20  | `account/mfa?/create` | TOTP setup 쿠키에 base32 시크릿 HMAC만 서명, **암호화 안됨**                |
+| 21  | `bootstrap.ts`        | **ADMIN env 제거 안 하면 비밀번호 삭제 시 자동 복구 가능** (엣지)           |
+| 22  | 관리자 비밀번호 정책  | 8자 이상 외 복잡도/재사용/사전 단어 검사 없음                               |
 
 ---
 
@@ -197,9 +203,9 @@ kit: {
 // 2. src/routes/saml/sso/+server.ts — ACS 검증
 const requestedAcs = authnRequest.acsUrl;
 if (requestedAcs && requestedAcs !== sp.acsUrl) {
-  throw error(400, 'AssertionConsumerServiceURL mismatch');
+	throw error(400, 'AssertionConsumerServiceURL mismatch');
 }
-const acsUrl = sp.acsUrl;  // DB 값만 사용
+const acsUrl = sp.acsUrl; // DB 값만 사용
 ```
 
 ```ts
@@ -210,11 +216,12 @@ if (!rl.allowed) return fail(429, {...});
 ```
 
 그리고 **`/routes/poc/` 전체 삭제 or 환경변수 가드**:
+
 ```ts
 import { dev } from '$app/environment';
 export const GET = async () => {
-  if (!dev) throw error(404);
-  // ...
+	if (!dev) throw error(404);
+	// ...
 };
 ```
 

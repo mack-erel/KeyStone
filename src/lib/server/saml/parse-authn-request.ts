@@ -9,12 +9,14 @@ import 'reflect-metadata';
 import { DOMParser } from '@xmldom/xmldom';
 import { X509Certificate } from '@peculiar/x509';
 
-const MAX_COMPRESSED_BYTES = 8 * 1024;   // 8 KB
+const MAX_COMPRESSED_BYTES = 8 * 1024; // 8 KB
 const MAX_DECOMPRESSED_BYTES = 64 * 1024; // 64 KB
 
 async function inflateRaw(compressed: Uint8Array<ArrayBuffer>): Promise<string> {
 	if (compressed.length > MAX_COMPRESSED_BYTES) {
-		throw new Error(`SAMLRequest 압축 데이터가 너무 큽니다 (${compressed.length} > ${MAX_COMPRESSED_BYTES})`);
+		throw new Error(
+			`SAMLRequest 압축 데이터가 너무 큽니다 (${compressed.length} > ${MAX_COMPRESSED_BYTES})`
+		);
 	}
 
 	const ds = new DecompressionStream('deflate-raw');
@@ -180,5 +182,14 @@ export async function parseAuthnRequest(
 		}
 	}
 
-	return { id, issuer, acsUrl, relayState, forceAuthn, isPassive, issueInstant, requestedAuthnContext };
+	return {
+		id,
+		issuer,
+		acsUrl,
+		relayState,
+		forceAuthn,
+		isPassive,
+		issueInstant,
+		requestedAuthnContext
+	};
 }

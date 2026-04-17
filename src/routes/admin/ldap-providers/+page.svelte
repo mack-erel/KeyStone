@@ -140,7 +140,9 @@
 
 				<!-- 인증 방식 (접이식) -->
 				<details class="rounded-lg border border-gray-200 bg-white" open>
-					<summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">
+					<summary
+						class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+					>
 						인증 방식 — Admin Bind + Search (ou가 여러 개인 경우) 또는 DN 패턴
 					</summary>
 					<div class="space-y-3 p-4">
@@ -149,7 +151,9 @@
 						</p>
 						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 							<div>
-								<label for="c-bindDN" class="block text-xs font-medium text-gray-700">Admin Bind DN</label>
+								<label for="c-bindDN" class="block text-xs font-medium text-gray-700"
+									>Admin Bind DN</label
+								>
 								<input
 									id="c-bindDN"
 									type="text"
@@ -159,7 +163,9 @@
 								/>
 							</div>
 							<div>
-								<label for="c-bindPw" class="block text-xs font-medium text-gray-700">Admin Bind 패스워드</label>
+								<label for="c-bindPw" class="block text-xs font-medium text-gray-700"
+									>Admin Bind 패스워드</label
+								>
 								<input
 									id="c-bindPw"
 									type="password"
@@ -169,7 +175,9 @@
 							</div>
 							<div>
 								<label for="c-filter" class="block text-xs font-medium text-gray-700">
-									유저 검색 필터 <span class="text-gray-400">(기본: (uid=&#123;username&#125;))</span>
+									유저 검색 필터 <span class="text-gray-400"
+										>(기본: (uid=&#123;username&#125;))</span
+									>
 								</label>
 								<input
 									id="c-filter"
@@ -197,7 +205,8 @@
 
 				<!-- 속성 매핑 (접이식) -->
 				<details class="rounded-lg border border-gray-200 bg-white">
-					<summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+					<summary
+						class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
 						>속성 매핑 (기본값: mail, cn, givenName, sn)</summary
 					>
 					<div class="grid grid-cols-2 gap-3 p-4">
@@ -386,9 +395,13 @@
 													name="tlsMode"
 													class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
 												>
-													<option value="none" selected={c.tlsMode === 'none'}>없음 (ldap://)</option>
+													<option value="none" selected={c.tlsMode === 'none'}
+														>없음 (ldap://)</option
+													>
 													<option value="tls" selected={c.tlsMode === 'tls'}>TLS (ldaps://)</option>
-													<option value="starttls" selected={c.tlsMode === 'starttls'}>STARTTLS</option>
+													<option value="starttls" selected={c.tlsMode === 'starttls'}
+														>STARTTLS</option
+													>
 												</select>
 											</div>
 											<div>
@@ -434,13 +447,18 @@
 										</div>
 
 										<details class="rounded-lg border border-gray-200 bg-white" open>
-											<summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">
+											<summary
+												class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"
+											>
 												인증 방식
 											</summary>
 											<div class="space-y-3 p-4">
 												<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 													<div>
-														<label for="e-bindDN-{provider.id}" class="block text-xs font-medium text-gray-700">Admin Bind DN</label>
+														<label
+															for="e-bindDN-{provider.id}"
+															class="block text-xs font-medium text-gray-700">Admin Bind DN</label
+														>
 														<input
 															id="e-bindDN-{provider.id}"
 															type="text"
@@ -451,7 +469,11 @@
 														/>
 													</div>
 													<div>
-														<label for="e-bindPw-{provider.id}" class="block text-xs font-medium text-gray-700">Admin Bind 패스워드</label>
+														<label
+															for="e-bindPw-{provider.id}"
+															class="block text-xs font-medium text-gray-700"
+															>Admin Bind 패스워드</label
+														>
 														<input
 															id="e-bindPw-{provider.id}"
 															type="password"
@@ -461,7 +483,10 @@
 														/>
 													</div>
 													<div>
-														<label for="e-filter-{provider.id}" class="block text-xs font-medium text-gray-700">
+														<label
+															for="e-filter-{provider.id}"
+															class="block text-xs font-medium text-gray-700"
+														>
 															유저 검색 필터
 														</label>
 														<input
@@ -474,7 +499,10 @@
 														/>
 													</div>
 													<div>
-														<label for="e-pattern-{provider.id}" class="block text-xs font-medium text-gray-700">
+														<label
+															for="e-pattern-{provider.id}"
+															class="block text-xs font-medium text-gray-700"
+														>
 															유저 DN 패턴 <span class="text-gray-400">(Admin Bind 미사용 시)</span>
 														</label>
 														<input
@@ -565,7 +593,9 @@
 													checked={provider.enabled}
 													class="h-4 w-4 rounded border-gray-300 text-blue-600"
 												/>
-												<label for="e-enabled-{provider.id}" class="text-xs text-gray-700">활성화</label>
+												<label for="e-enabled-{provider.id}" class="text-xs text-gray-700"
+													>활성화</label
+												>
 											</div>
 											<div class="flex gap-2">
 												<button

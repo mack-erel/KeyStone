@@ -71,13 +71,15 @@ export async function provisionLdapUser(
 	const [existingUser] = await db
 		.select()
 		.from(users)
-		.where(and(eq(users.tenantId, tenantId), eq(users.email, attrs.email), eq(users.status, 'active')))
+		.where(
+			and(eq(users.tenantId, tenantId), eq(users.email, attrs.email), eq(users.status, 'active'))
+		)
 		.limit(1);
 
 	if (existingUser) {
 		throw new Error(
 			`이미 동일한 이메일(${attrs.email})의 로컬 계정이 존재합니다. ` +
-			'LDAP 계정 연결은 관리자에게 문의하세요.'
+				'LDAP 계정 연결은 관리자에게 문의하세요.'
 		);
 	}
 

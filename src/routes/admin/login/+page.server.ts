@@ -143,7 +143,12 @@ export const actions: Actions = {
 		}
 
 		const mfaToken = await createMfaPendingToken(
-			{ userId: user.id, tenantId: tenant.id, redirectTo: redirectTo ?? '/admin', ip: requestMetadata.ip },
+			{
+				userId: user.id,
+				tenantId: tenant.id,
+				redirectTo: redirectTo ?? '/admin',
+				ip: requestMetadata.ip
+			},
 			config.signingKeySecret
 		);
 

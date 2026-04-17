@@ -40,7 +40,10 @@ export function parseBasicAuth(
 	}
 }
 
-export async function isValidClientSecret(client: OidcClientRecord, clientSecret: string): Promise<boolean> {
+export async function isValidClientSecret(
+	client: OidcClientRecord,
+	clientSecret: string
+): Promise<boolean> {
 	if (client.tokenEndpointAuthMethod === 'none') return true;
 	if (!client.clientSecretHash || !clientSecret) return false;
 	const result = await verifyPassword(clientSecret, client.clientSecretHash);

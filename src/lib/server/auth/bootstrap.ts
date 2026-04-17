@@ -54,7 +54,6 @@ export async function ensureDefaultTenant(
 	return tenant;
 }
 
-
 export async function ensureSigningKey(
 	db: DB,
 	tenant: Tenant,

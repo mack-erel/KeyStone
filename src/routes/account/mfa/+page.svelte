@@ -223,7 +223,7 @@
 							inputmode="numeric"
 							maxlength={6}
 							placeholder="현재 TOTP 코드 입력 후 삭제"
-							class="block w-full rounded-md border border-red-200 px-3 py-2 text-center font-mono tracking-widest text-sm focus:border-red-400 focus:outline-none"
+							class="block w-full rounded-md border border-red-200 px-3 py-2 text-center font-mono text-sm tracking-widest focus:border-red-400 focus:outline-none"
 						/>
 						<button
 							type="submit"

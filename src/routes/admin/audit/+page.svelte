@@ -50,7 +50,8 @@
 <div class="space-y-6">
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-gray-900">감사 로그</h1>
-		<span class="text-sm text-gray-500">{data.events.length}건 표시 (페이지 {data.pageSize}건)</span>
+		<span class="text-sm text-gray-500">{data.events.length}건 표시 (페이지 {data.pageSize}건)</span
+		>
 	</div>
 
 	<!-- 필터 -->

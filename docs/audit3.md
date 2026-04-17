@@ -31,6 +31,7 @@ if (existingUser) {
 ### 추가 LDAP 이슈들:
 
 **LDAP Injection 가능성:**
+
 ```typescript
 const filter = (config.userSearchFilter ?? '(uid={username})').replace('{username}', username);
 ```
@@ -40,6 +41,7 @@ const filter = (config.userSearchFilter ?? '(uid={username})').replace('{usernam
 ```
 (uid=admin)(|(uid=*)
 ```
+
 → 필터가 `(uid=admin)` + 추가 조건. LDAP search의 첫 번째 매치를 반환하는 로직이라 **첫 번째 유저 DN 반환** → 그걸로 bind 시도. bind는 패스워드 있어야 하니 즉시 account takeover는 아니지만 **존재하는 DN 열거** + **authentication bypass 시도** 여지.
 
 더 심각한 벡터: `config.userSearchFilter`가 `(&(objectClass=person)(uid={username}))` 같은 형태면, username `admin)(&(objectClass=*`로 필터 깨서 원하는 유저 반환 가능.
@@ -53,11 +55,13 @@ bind 단계에서 LDAP injection도 됨 — `userDn = config.userDnPattern.repla
 token 엔드포인트에서 grant.scope를 access_token에 담는데, **authorize에서 `openid organization` 요청 → userinfo에서 조직 정보 받음**. 이거 자체는 설계대로.
 
 근데 `parseGrantedScopes`:
+
 ```typescript
 return requestedScope.split(/[\s,]+/).filter((s) => allowedScopes.includes(s));
 ```
 
 **`openid` 강제 없음** — authorize에서만 체크:
+
 ```typescript
 if (!grantedScopes.includes('openid')) {
   authRedirectError(redirectUri, 'invalid_scope', ...);
@@ -116,6 +120,7 @@ await db.update(users).set({ ..., role, status, ... })
 - `addDept` 같은 action은 **`userId`를 URL 파라미터에서**, `departmentId`를 form에서 받음 → **cross-tenant userId 넣으면** `tenantId: tenant.id, userId: <다른 테넌트 유저>` 로 INSERT됨. users 테이블에 FK 제약이 있어야 막힘. 스키마 보자.FK는 있지만 **D1(SQLite)에서 FK는 기본적으로 OFF**. Drizzle + D1 환경에서 `PRAGMA foreign_keys = ON`을 명시적으로 안 하면 FK 제약 무시됨. setup 스크립트에서만 PRAGMA 건드림. **런타임 앱 코드에서 D1 쿼리 시작 시 PRAGMA foreign_keys=ON 설정 없음**. Cloudflare D1은 실제로 FK를 지원하지만 연결마다 enable해야 한다. Drizzle D1 어댑터가 자동으로 하는지는 확인 필요 — 기본은 off다.
 
 실전 영향:
+
 - userDepartments에 존재하지 않는 userId/departmentId 삽입 가능
 - cross-tenant 데이터 섞어 넣기 가능
 - 삭제 시 cascade 안됨 → orphan 레코드 생김
@@ -123,8 +128,9 @@ await db.update(users).set({ ..., role, status, ... })
 ### 🔥 **Cross-Tenant IDOR via userId/positionId/departmentId**
 
 `addDept` action:
+
 ```typescript
-await db.insert(userDepartments).values({ 
+await db.insert(userDepartments).values({
   tenantId: tenant.id,           // 내 테넌트
   userId,                         // URL param에서 — 검증 없음
   departmentId,                   // form에서 — 검증 없음
@@ -134,6 +140,7 @@ await db.insert(userDepartments).values({
 ```
 
 departmentId/positionId가 **다른 테넌트 소유인지 검증 안함**. URL `/admin/users/<other-tenant-user-id>?/addDept`로 POST + departmentId는 내 테넌트 거 보내면:
+
 - load는 `and(eq(users.id, userId), eq(users.tenantId, tenant.id))`로 404 뱉지만 **action은 load 거치지 않음** (SvelteKit action은 독립)
 - **다른 테넌트 유저를 내 테넌트 부서에 강제 가입**시킬 수 있음
 
@@ -158,6 +165,7 @@ LDAP config가 JSON으로 DB에 저장되는데 **bindPassword도 평문**. iden
 - `tlsMode='none'` 허용되니 TLS 없이 전송됨
 
 게다가 LDAP provision 로직에 따라 email 매칭으로 **자동 admin 승격도 가능**:
+
 1. 공격자가 LDAP 서버 세팅 → admin@hyochan.site 이메일 가진 유저 등록
 2. 공격자가 그 LDAP username/password로 idp 로그인
 3. LDAP bind 성공 → `provisionLdapUser` → 이메일 `admin@hyochan.site` 매칭 → **관리자 계정 반환**
@@ -217,11 +225,13 @@ await db.insert(departments).values({
 ### 공격 체인 시나리오 총정리
 
 **시나리오 A: 원격 관리자 계정 탈취 (현실적 최단 경로)**
+
 1. `/admin/login`은 MFA 없는 계정 노릴 수 있음(#7)
 2. 공격자가 관리자 한 명 로그인 한번 성공시키는 동안에도 CSRF(#1)로 일반 사용자들의 session도 조작 가능
 3. 관리자 세션 얻으면 → LDAP provider 하나 추가(#24) → 관리자 이메일 매칭되는 LDAP 유저 만들어두고 대기 → 다음번에 언제든 그 LDAP 계정으로 재로그인해도 관리자 권한(#23) → **지속성 백도어 완성**
 
 **시나리오 B: 권한 없는 공격자가 idp 사용자 한 명 세션 탈취**
+
 1. 희생자가 idp에 로그인된 상태
 2. 희생자가 공격자 페이지 방문
 3. 페이지에서 `<img src="https://idp.hyochan.site/logout">` (#10) — 세션 날려버림 → 재로그인 유도
@@ -229,6 +239,7 @@ await db.insert(departments).values({
 5. 또는 페이지에서 `window.open('https://idp.hyochan.site/saml/sso?SAMLRequest=<ACS=javascript:...>')` → XSS(#3) → idp 오리진에서 JS 실행 → 세션 쿠키는 httpOnly라 직접 못 훔치지만 fetch로 admin API 호출 가능
 
 **시나리오 C: 지속 공격자가 SP가 되어 SAML Assertion 탈취**
+
 1. 관리자 권한 획득 or 정상 과정으로 SP 등록
 2. AuthnRequest 조작해서 **ACS URL을 본인 도메인으로**(#2) — 로그인된 사용자를 이 URL로 유도
 3. **서명된 SAML Assertion이 공격자 도메인으로 POST됨**
@@ -284,9 +295,13 @@ const CSRF_BYPASS_ROUTES = ['/oidc/token', '/oidc/userinfo'];
 ```
 
 그리고 SvelteKit 2.x의 `csrf.trustedOrigins`는 **구체 도메인 배열**을 받지 `'*'`을 받는 게 의미 없음(그냥 off와 동일). 정 필요하면:
+
 ```js
-csrf: { checkOrigin: true }  // 기본값
+csrf: {
+	checkOrigin: true;
+} // 기본값
 ```
+
 놓고 token/userinfo 엔드포인트 핸들러에서 **서버-서버 호출은 Origin 헤더가 없음을 이용**, `request.headers.get('origin') === null` 케이스만 body auth 체크로 넘어가도록 별도 로직 짜는 게 맞다.
 
 여기까지가 코드 레벨 최대치. 실제 idp.hyochan.site / localhost:5173에 공격 PoC 날려 보는 건 본인이 직접 해봐야 한다 — 내 샌드박스에서 idp 도메인은 네트워크 차단돼있고, 실서비스에 invasive scan 돌리는건 CSRF 방어 없이 실수로 본인 세션 날려먹기 좋아서 위험하다. **위 `[지금 당장]` 5개 먼저 고치고 테스트해라**.
