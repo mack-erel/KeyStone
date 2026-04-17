@@ -111,11 +111,29 @@ export async function ensureSigningKey(
 	});
 }
 
+const BASELINE_TTL_MS = 5 * 60 * 1000; // 5분
+
+interface BaselineCache {
+	tenant: Tenant;
+	expiresAt: number;
+}
+
+// Workers isolate 레벨 캐시 — 같은 isolate 내 요청들이 공유하여 D1 쿼리를 절감한다.
+const g = globalThis as typeof globalThis & { __idpBaselineCache?: BaselineCache };
+
 export async function ensureAuthBaseline(db: DB, platform: App.Platform | undefined) {
+	const now = Date.now();
+
+	if (g.__idpBaselineCache && g.__idpBaselineCache.expiresAt > now) {
+		return g.__idpBaselineCache.tenant;
+	}
+
 	const config = getRuntimeConfig(platform);
 	const tenant = await ensureDefaultTenant(db, platform);
 	if (config.signingKeySecret) {
 		await ensureSigningKey(db, tenant, config.signingKeySecret, config.issuerUrl);
 	}
+
+	g.__idpBaselineCache = { tenant, expiresAt: now + BASELINE_TTL_MS };
 	return tenant;
 }

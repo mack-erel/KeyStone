@@ -13,11 +13,21 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.runtimeConfig = getRuntimeConfig(event.platform);
 	event.locals.runtimeError = null;
 
+	// baseline 쿼리가 불필요한 경로 (정적 메타데이터, 헬스체크)
+	const path = event.url.pathname;
+	const skipBaseline =
+		path.startsWith('/.well-known/') ||
+		path === '/api/health' ||
+		path === '/favicon.ico' ||
+		path === '/robots.txt';
+
 	try {
 		if (event.platform?.env?.DB) {
 			const db = await getDb(event.platform);
 			event.locals.db = db;
-			event.locals.tenant = await ensureAuthBaseline(db, event.platform);
+			event.locals.tenant = skipBaseline
+				? null
+				: await ensureAuthBaseline(db, event.platform);
 
 			const sessionToken = event.cookies.get(SESSION_COOKIE_NAME);
 
