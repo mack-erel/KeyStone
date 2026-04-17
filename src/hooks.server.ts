@@ -15,7 +15,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	try {
 		if (event.platform?.env?.DB) {
-			const db = getDb(event.platform);
+			const db = await getDb(event.platform);
 			event.locals.db = db;
 			event.locals.tenant = await ensureAuthBaseline(db, event.platform);
 
