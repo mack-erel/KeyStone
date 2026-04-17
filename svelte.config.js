@@ -8,10 +8,9 @@ const config = {
 	},
 	kit: {
 		adapter: adapter(),
-		// OIDC token endpoint 는 외부 서버(Cloudflare Access 등)가 서버-서버로 호출하므로
-		// Origin 헤더가 없어 SvelteKit 내장 CSRF 체크를 통과하지 못한다.
-		// trustedOrigins: ['*'] 는 checkOrigin: false 와 동일한 효과 (공식 마이그레이션 권장).
-		csrf: { trustedOrigins: ['*'] },
+		// OIDC token endpoint 는 server-to-server 호출이므로 Origin 헤더 없이 전달된다.
+		// SvelteKit CSRF 체크는 Origin 헤더가 없을 때 자동으로 통과하므로 별도 설정 불필요.
+		// trustedOrigins: ['*'] 는 전체 CSRF 비활성화와 동일하여 제거함.
 		typescript: {
 			config: (config) => ({
 				...config,
