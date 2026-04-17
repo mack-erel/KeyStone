@@ -56,8 +56,8 @@ export const POST: RequestHandler = async (event) => {
     }
 
     // 클라이언트 인증 (Basic 헤더 또는 body params)
-    let clientId = "";
-    let clientSecret = "";
+    let clientId: string;
+    let clientSecret: string;
 
     const authHeader = request.headers.get("Authorization");
     if (authHeader) {

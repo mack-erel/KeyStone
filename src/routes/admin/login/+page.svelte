@@ -30,6 +30,7 @@ async function loginWithPasskey() {
         if (!verRes.ok) throw new Error((await verRes.text()) || "인증 실패");
 
         const { redirectTo } = (await verRes.json()) as { redirectTo?: string };
+        // eslint-disable-next-line svelte/no-navigation-without-resolve
         await goto(redirectTo ?? "/admin");
     } catch (err: unknown) {
         const e = err as { name?: string; message?: string };
@@ -45,7 +46,7 @@ async function loginWithPasskey() {
 </script>
 
 <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-    <div class="w-full max-w-[420px] rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+    <div class="w-full max-w-105 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
         <div class="mb-6 space-y-2 text-center">
             <h1 class="text-2xl font-bold text-gray-900">{t("app.title")}</h1>
             <p class="text-sm leading-6 text-gray-500">관리자 로그인</p>
@@ -136,6 +137,7 @@ async function loginWithPasskey() {
         </button>
 
         <p class="mt-6 text-center text-xs text-gray-400">
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
             일반 사용자는 <a href="/login" class="text-blue-600 hover:underline">여기</a>에서 로그인하세요.
         </p>
     </div>

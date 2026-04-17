@@ -107,7 +107,7 @@ const TIMEZONE_OPTIONS = [
                 <div>
                     <label for="locale" class="block text-xs font-medium text-gray-700">언어</label>
                     <select id="locale" name="locale" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                        {#each LOCALE_OPTIONS as opt}
+                        {#each LOCALE_OPTIONS as opt (opt.value)}
                             <option value={opt.value} selected={data.user.locale === opt.value}>{opt.label}</option>
                         {/each}
                     </select>
@@ -115,7 +115,7 @@ const TIMEZONE_OPTIONS = [
                 <div>
                     <label for="zoneinfo" class="block text-xs font-medium text-gray-700">시간대</label>
                     <select id="zoneinfo" name="zoneinfo" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                        {#each TIMEZONE_OPTIONS as opt}
+                        {#each TIMEZONE_OPTIONS as opt (opt.value)}
                             <option value={opt.value} selected={data.user.zoneinfo === opt.value}>{opt.label}</option>
                         {/each}
                     </select>

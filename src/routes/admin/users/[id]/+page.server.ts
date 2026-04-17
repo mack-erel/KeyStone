@@ -190,7 +190,7 @@ export const actions: Actions = {
     },
 
     // 부서 소속 제거 (endedAt 설정)
-    removeDept: async ({ locals, params, request }) => {
+    removeDept: async ({ locals, request }) => {
         const { db, tenant } = requireDbContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");
@@ -233,7 +233,7 @@ export const actions: Actions = {
     },
 
     // 팀 소속 제거
-    removeTeam: async ({ locals, params, request }) => {
+    removeTeam: async ({ locals, request }) => {
         const { db, tenant } = requireDbContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");
@@ -276,7 +276,7 @@ export const actions: Actions = {
     },
 
     // 파트 소속 제거
-    removePart: async ({ locals, params, request }) => {
+    removePart: async ({ locals, request }) => {
         const { db, tenant } = requireDbContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");

@@ -52,6 +52,7 @@ function buildConfig(fd: FormData): LdapProviderConfig {
 async function encryptBindPassword(config: LdapProviderConfig, signingKeySecret: string | undefined): Promise<LdapProviderConfig> {
     if (!config.bindPassword || !signingKeySecret) return config;
     const enc = await encryptSecret(config.bindPassword, signingKeySecret, "idp-ldap-bind-password-v1");
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { bindPassword: _, ...rest } = config;
     return { ...rest, bindPasswordEnc: enc };
 }

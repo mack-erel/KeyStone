@@ -58,6 +58,7 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
 <div class="min-h-screen bg-gray-50 p-4">
     <div class="mx-auto max-w-lg">
         <div class="mb-6">
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
             <a href="/" class="text-sm text-gray-500 hover:underline">← 홈으로</a>
         </div>
 

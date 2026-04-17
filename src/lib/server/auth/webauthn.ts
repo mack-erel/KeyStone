@@ -199,7 +199,7 @@ export async function verifyPasskeyAuthentication(
     const publicKey = valid ? b64uDecode(cred.publicKey!) : DUMMY_PUBLIC_KEY;
     const transports = valid && cred.transports ? (JSON.parse(cred.transports) as AuthenticatorTransportFuture[]) : undefined;
 
-    let verified = false;
+    let verified: boolean;
     let newCounter = 0;
     try {
         const verification = await verifyAuthenticationResponse({

@@ -67,7 +67,7 @@ const globalErr = $derived((form as { error?: string } | null)?.error ?? null);
                 {:else}
                     {#each data.keys as key (key.id)}
                         <tr class="hover:bg-gray-50 {key.active ? '' : 'opacity-60'}">
-                            <td class="max-w-[160px] truncate px-4 py-3 font-mono text-xs text-gray-700" title={key.kid}>{key.kid}</td>
+                            <td class="max-w-40 truncate px-4 py-3 font-mono text-xs text-gray-700" title={key.kid}>{key.kid}</td>
                             <td class="px-4 py-3 text-xs text-gray-600">{key.alg}</td>
                             <td class="px-4 py-3 text-xs text-gray-600">{key.use ?? "sig"}</td>
                             <td class="px-4 py-3 text-xs">

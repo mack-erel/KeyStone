@@ -43,12 +43,12 @@ const backupCodes = $derived((form as { backupCodes?: string[] } | null)?.backup
 const formError = $derived((form as { error?: string } | null)?.error ?? null);
 
 const isSetupMode = $derived(!!otpauthUri);
-const isConfirmMode = $derived((form as { confirm?: boolean } | null)?.confirm === true && !backupCodes);
 </script>
 
 <div class="min-h-screen bg-gray-50 p-4">
     <div class="mx-auto max-w-lg">
         <div class="mb-6">
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
             <a href="/" class="text-sm text-gray-500 hover:underline">← 홈으로</a>
         </div>
 
@@ -68,7 +68,7 @@ const isConfirmMode = $derived((form as { confirm?: boolean } | null)?.confirm =
                     <h2 class="mb-2 font-semibold text-green-900">백업 코드가 생성되었습니다</h2>
                     <p class="mb-4 text-sm text-green-700">이 코드는 지금만 표시됩니다. 안전한 곳에 저장해 두세요. 코드 하나당 1회만 사용 가능합니다.</p>
                     <div class="grid grid-cols-2 gap-2">
-                        {#each backupCodes as code}
+                        {#each backupCodes as code (code)}
                             <code class="rounded-md bg-white px-3 py-1.5 text-center font-mono text-sm text-gray-800 shadow-sm">
                                 {code}
                             </code>
@@ -91,7 +91,7 @@ const isConfirmMode = $derived((form as { confirm?: boolean } | null)?.confirm =
                         {:else if qrError}
                             <p class="text-sm text-gray-500">QR 코드 생성 실패</p>
                         {:else}
-                            <div class="flex h-[200px] w-[200px] items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
+                            <div class="flex h-50 w-50 items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
                                 <span class="text-xs text-gray-400">로딩 중...</span>
                             </div>
                         {/if}

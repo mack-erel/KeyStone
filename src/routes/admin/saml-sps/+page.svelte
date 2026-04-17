@@ -226,7 +226,7 @@ const NAME_ID_OPTIONS = [
                         name="nameIdFormat"
                         bind:value={createNameIdFormat}
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-                        {#each NAME_ID_OPTIONS as opt}
+                        {#each NAME_ID_OPTIONS as opt (opt.value)}
                             <option value={opt.value}>{opt.label}</option>
                         {/each}
                     </select>
@@ -297,7 +297,7 @@ const NAME_ID_OPTIONS = [
                                 <p class="text-sm font-medium text-gray-900">{sp.name}</p>
                                 <p class="font-mono text-xs break-all text-gray-400">{sp.entityId}</p>
                             </td>
-                            <td class="max-w-[200px] px-4 py-3 text-xs break-all text-gray-500">{sp.acsUrl}</td>
+                            <td class="max-w-50 px-4 py-3 text-xs break-all text-gray-500">{sp.acsUrl}</td>
                             <td class="px-4 py-3 text-xs text-gray-500">
                                 {#if sp.signAssertion}<span class="mr-1 rounded bg-blue-50 px-1 py-0.5 text-blue-600">Assertion</span>{/if}
                                 {#if sp.signResponse}<span class="rounded bg-purple-50 px-1 py-0.5 text-purple-600">Response</span>{/if}
@@ -358,7 +358,7 @@ const NAME_ID_OPTIONS = [
                                                 id="e-nameIdFormat-{sp.id}"
                                                 name="nameIdFormat"
                                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-                                                {#each NAME_ID_OPTIONS as opt}
+                                                {#each NAME_ID_OPTIONS as opt (opt.value)}
                                                     <option value={opt.value} selected={sp.nameIdFormat === opt.value}>{opt.label}</option>
                                                 {/each}
                                             </select>
