@@ -11,6 +11,8 @@ jobs:
         if: github.event.pull_request.head.repo.full_name == github.repository
         permissions:
             contents: write
+        outputs:
+            changes-pushed: ${{ steps.commit.outputs.changes-pushed }}
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -28,9 +30,11 @@ jobs:
               run: bun run format
 
             - name: Commit and push formatted files
+              id: commit
               run: |
                   if [[ -z "$(git status --porcelain)" ]]; then
                     echo "No formatting changes"
+                    echo "changes-pushed=false" >> "$GITHUB_OUTPUT"
                     exit 0
                   fi
 
@@ -39,11 +43,13 @@ jobs:
                   git add -A
                   git commit -m "chore: auto format"
                   git push
+                  echo "changes-pushed=true" >> "$GITHUB_OUTPUT"
 
     check-changes:
         name: Check Changed Files
         runs-on: ubuntu-latest
         needs: format
+        if: needs.format.outputs.changes-pushed != 'true'
         outputs:
             build-affected: ${{ steps.filter.outputs.build-affected }}
         steps:
