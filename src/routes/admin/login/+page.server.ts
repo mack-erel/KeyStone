@@ -2,19 +2,24 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getRequestMetadata, recordAuditEvent } from '$lib/server/audit';
 import { requireDbContext } from '$lib/server/auth/guards';
-import { createSessionRecord, setSessionCookie } from '$lib/server/auth/session';
 import {
 	authenticateLocalUser,
 	hasTotpCredential,
 	normalizeUsername
 } from '$lib/server/auth/users';
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from '$lib/server/auth/mfa';
-import { AMR_PASSWORD } from '$lib/server/auth/constants';
 import { getRuntimeConfig } from '$lib/server/auth/runtime';
 import { checkRateLimit } from '$lib/server/ratelimit';
 
 function sanitizeRedirectTarget(target: string | null): string | null {
-	if (!target || !target.startsWith('/') || target.startsWith('//')) {
+	if (!target) return null;
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(target);
+	} catch {
+		return null;
+	}
+	if (!decoded.startsWith('/') || decoded.startsWith('//') || decoded.includes('\\')) {
 		return null;
 	}
 	return target;
@@ -110,52 +115,46 @@ export const actions: Actions = {
 			});
 		}
 
-		if (await hasTotpCredential(db, user.id)) {
-			const config = getRuntimeConfig(event.platform);
-			if (!config.signingKeySecret) {
-				return fail(503, {
-					username,
-					redirectTo,
-					error: 'MFA 설정 오류: IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.'
-				});
-			}
-
-			const mfaToken = await createMfaPendingToken(
-				{ userId: user.id, tenantId: tenant.id, redirectTo: redirectTo ?? '/admin' },
-				config.signingKeySecret
-			);
-
-			event.cookies.set(MFA_PENDING_COOKIE, mfaToken, {
-				path: '/',
-				httpOnly: true,
-				sameSite: 'lax',
-				secure: event.url.protocol === 'https:',
-				maxAge: 5 * 60
+		const config = getRuntimeConfig(event.platform);
+		if (!config.signingKeySecret) {
+			return fail(503, {
+				username,
+				redirectTo,
+				error: 'MFA 설정 오류: IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.'
 			});
-
-			throw redirect(303, '/mfa');
 		}
 
-		const { sessionToken, expiresAt } = await createSessionRecord(db, {
-			tenantId: tenant.id,
-			userId: user.id,
-			ip: requestMetadata.ip,
-			userAgent: requestMetadata.userAgent,
-			amr: [AMR_PASSWORD]
+		if (!(await hasTotpCredential(db, user.id))) {
+			await recordAuditEvent(db, {
+				tenantId: tenant.id,
+				userId: user.id,
+				actorId: user.id,
+				kind: 'login',
+				outcome: 'failure',
+				ip: requestMetadata.ip,
+				userAgent: requestMetadata.userAgent,
+				detail: { username, reason: 'mfa_not_configured', via: 'admin-login' }
+			});
+			return fail(403, {
+				username,
+				redirectTo,
+				error: '관리자 계정은 MFA(OTP) 설정이 필수입니다. 먼저 MFA를 등록해 주세요.'
+			});
+		}
+
+		const mfaToken = await createMfaPendingToken(
+			{ userId: user.id, tenantId: tenant.id, redirectTo: redirectTo ?? '/admin', ip: requestMetadata.ip },
+			config.signingKeySecret
+		);
+
+		event.cookies.set(MFA_PENDING_COOKIE, mfaToken, {
+			path: '/',
+			httpOnly: true,
+			sameSite: 'lax',
+			secure: event.url.protocol === 'https:',
+			maxAge: 5 * 60
 		});
 
-		setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);
-		await recordAuditEvent(db, {
-			tenantId: tenant.id,
-			userId: user.id,
-			actorId: user.id,
-			kind: 'login',
-			outcome: 'success',
-			ip: requestMetadata.ip,
-			userAgent: requestMetadata.userAgent,
-			detail: { via: 'admin-login' }
-		});
-
-		throw redirect(303, redirectTo ?? '/admin');
+		throw redirect(303, '/mfa');
 	}
 };
