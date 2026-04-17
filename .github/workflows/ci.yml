@@ -39,10 +39,6 @@ jobs:
                   git commit -m "chore: auto format"
                   git push
 
-            - name: Skip auto-push for forked pull requests
-              if: github.event.pull_request.head.repo.full_name != github.repository
-              run: echo "Forked pull request detected. Auto-push is skipped."
-
     check-changes:
         name: Check Changed Files
         runs-on: ubuntu-latest
