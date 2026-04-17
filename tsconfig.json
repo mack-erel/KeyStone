@@ -1,32 +1,29 @@
 {
-    "extends": "./.svelte-kit/tsconfig.json",
-    "compilerOptions": {
-        "rewriteRelativeImportExtensions": true,
-        "allowJs": true,
-        "checkJs": false,
-        "esModuleInterop": true,
-        "forceConsistentCasingInFileNames": true,
-        "resolveJsonModule": true,
-        "skipLibCheck": true,
-        "sourceMap": true,
-        "strict": true,
-        "moduleResolution": "bundler",
-        "types": ["./worker-configuration.d.ts"]
-    },
-    "files": [
-        "src/routes/.well-known/openid-configuration/+server.ts",
-        ".svelte-kit/types/src/routes/.well-known/openid-configuration/$types.d.ts"
-    ],
-    "exclude": [
-        "scripts/**",
-        "node_modules/**",
-        ".svelte-kit/output/**",
-        ".svelte-kit/cloudflare/**",
-        "src/service-worker.js",
-        "src/service-worker/**/*.js",
-        "src/service-worker.ts",
-        "src/service-worker/**/*.ts",
-        "src/service-worker.d.ts",
-        "src/service-worker/**/*.d.ts"
-    ]
+	"extends": "./.svelte-kit/tsconfig.json",
+	"compilerOptions": {
+		"rewriteRelativeImportExtensions": true,
+		"allowJs": true,
+		"checkJs": false,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"strict": true,
+		"moduleResolution": "bundler",
+		"types": ["./worker-configuration.d.ts"]
+	},
+	"files": ["src/routes/.well-known/openid-configuration/+server.ts", ".svelte-kit/types/src/routes/.well-known/openid-configuration/$types.d.ts"],
+	"exclude": [
+		"scripts/**",
+		"node_modules/**",
+		".svelte-kit/output/**",
+		".svelte-kit/cloudflare/**",
+		"src/service-worker.js",
+		"src/service-worker/**/*.js",
+		"src/service-worker.ts",
+		"src/service-worker/**/*.ts",
+		"src/service-worker.d.ts",
+		"src/service-worker/**/*.d.ts"
+	]
 }

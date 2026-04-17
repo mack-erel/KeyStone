@@ -6,17 +6,17 @@
 
 ```typescript
 const [cred] = await db
-    .select()
-    .from(credentials)
-    .where(and(eq(credentials.credentialId, credentialId), eq(credentials.type, "webauthn")))
-    .limit(1);
+	.select()
+	.from(credentials)
+	.where(and(eq(credentials.credentialId, credentialId), eq(credentials.type, 'webauthn')))
+	.limit(1);
 ```
 
 **테넌트 필터 없음**. credential_id는 전역 유니크가 아닐 수 있음. 멀티테넌트인데 tenant 경계 안 걸고 credentialId 하나만 매칭. 그 후 `verify` 엔드포인트에서:
 
 ```typescript
 if (user.tenantId !== tenant.id) {
-    throw error(403, "접근 권한이 없습니다.");
+	throw error(403, '접근 권한이 없습니다.');
 }
 ```
 
@@ -183,8 +183,8 @@ DoS/nuisance 레벨이지만, **SAML/OIDC 플로우 한가운데서 로그아웃
 
 1. **1단계 (정찰)**: `/.well-known/openid-configuration`, `/saml/metadata` → IDP 구성 파악. `/poc/rs256` 호출로 엔드포인트 존재 확인
 2. **2단계 (초기 접근)**: 관리자가 방문할만한 링크로 유도
-    - `evil.com`에 숨은 폼 `action=https://idp.hyochan.site/admin/users?/create method=POST`
-    - Form은 top-level submit (sameSite=lax 통과) + **CSRF 방어 없음(#1)** → 공격자 계정 생성 성공
+   - `evil.com`에 숨은 폼 `action=https://idp.hyochan.site/admin/users?/create method=POST`
+   - Form은 top-level submit (sameSite=lax 통과) + **CSRF 방어 없음(#1)** → 공격자 계정 생성 성공
 3. **3단계 (대안)**: 관리자 세션이 있으면 `saml/sso?SAMLRequest=<ACS=javascript:...>` URL 방문 유도 → **XSS(#3)** → 관리자 세션으로 직접 API 조작
 4. **4단계 (지속성)**: 생성된 공격자 admin 계정으로 로그인 → signing key 회전 → **이후 발급되는 모든 ID Token/SAML Assertion을 공격자가 서명**
 
@@ -203,7 +203,7 @@ kit: {
 // 2. src/routes/saml/sso/+server.ts — ACS 검증
 const requestedAcs = authnRequest.acsUrl;
 if (requestedAcs && requestedAcs !== sp.acsUrl) {
-    throw error(400, "AssertionConsumerServiceURL mismatch");
+	throw error(400, 'AssertionConsumerServiceURL mismatch');
 }
 const acsUrl = sp.acsUrl; // DB 값만 사용
 ```
@@ -218,10 +218,10 @@ if (!rl.allowed) return fail(429, {...});
 그리고 **`/routes/poc/` 전체 삭제 or 환경변수 가드**:
 
 ```ts
-import { dev } from "$app/environment";
+import { dev } from '$app/environment';
 export const GET = async () => {
-    if (!dev) throw error(404);
-    // ...
+	if (!dev) throw error(404);
+	// ...
 };
 ```
 

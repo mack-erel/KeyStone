@@ -31,32 +31,32 @@
 ## 의사결정 기록
 
 1. ~~패스워드 해시~~ → **확정 (2026-04-15, 수정 2026-04-16)**: MVP 는 **PBKDF2-SHA256 100k** (WebCrypto 네이티브, 번들 없음). Workers 런타임 한도로 600k → 100k 조정. M5 에서 **argon2id (`hash-wasm`)** 로 교체.
-    - `credentials.secret` 포맷: `<algo>$<params>$<salt>$<hash>` — 예: `pbkdf2$sha256:100000$<salt_b64>$<hash_b64>` / `argon2id$m=65536,t=3,p=4$<salt_b64>$<hash_b64>`
-    - 검증 시 prefix 파싱 → 알고리즘 분기. 교체 시 로그인 성공 순간 재해시하여 새 포맷으로 upgrade (무중단).
+   - `credentials.secret` 포맷: `<algo>$<params>$<salt>$<hash>` — 예: `pbkdf2$sha256:100000$<salt_b64>$<hash_b64>` / `argon2id$m=65536,t=3,p=4$<salt_b64>$<hash_b64>`
+   - 검증 시 prefix 파싱 → 알고리즘 분기. 교체 시 로그인 성공 순간 재해시하여 새 포맷으로 upgrade (무중단).
 2. **SAML 서명 라이브러리**: `xmldsigjs + @xmldom/xmldom` 채택 후보 1순위. 번들 통과(2026-04-15). 런타임 검증 후 확정.
 
 ## 실구현 반영 상태 (2026-04-16, 추가)
 
 - **M3 TOTP MFA 구현 완료 (2026-04-16)**:
-    - `totp.ts`: RFC 6238 TOTP (WebCrypto HMAC-SHA-1), base32, ±1 윈도우 검증
-    - `mfa.ts`: HMAC-서명 MFA pending 쿠키 (5분 TTL)
-    - 로그인 플로우 TOTP 분기, `/mfa` 검증 페이지, `/account/mfa` 등록·관리 UI
-    - 백업 코드 10개 생성·SHA-256 해시 저장, 일회성 소진
-    - 세션 `amr` 컬럼 기록 (`pwd`, `pwd totp`, `pwd swk`)
-    - `qrcode` 패키지 (클라이언트 사이드 QR 렌더링)
-    - **스키마 변경 없음**: 기존 `credentials.type` enum(`totp`, `backup_code`) 그대로 활용
+  - `totp.ts`: RFC 6238 TOTP (WebCrypto HMAC-SHA-1), base32, ±1 윈도우 검증
+  - `mfa.ts`: HMAC-서명 MFA pending 쿠키 (5분 TTL)
+  - 로그인 플로우 TOTP 분기, `/mfa` 검증 페이지, `/account/mfa` 등록·관리 UI
+  - 백업 코드 10개 생성·SHA-256 해시 저장, 일회성 소진
+  - 세션 `amr` 컬럼 기록 (`pwd`, `pwd totp`, `pwd swk`)
+  - `qrcode` 패키지 (클라이언트 사이드 QR 렌더링)
+  - **스키마 변경 없음**: 기존 `credentials.type` enum(`totp`, `backup_code`) 그대로 활용
 
 ## 실구현 반영 상태 (2026-04-16, M3.5)
 
 - **M3.5 WebAuthn/Passkey 구현 완료 (2026-04-16)**:
-    - `@simplewebauthn/server v13` + `@simplewebauthn/browser v13` 채택. Workers WebCrypto 전용, 외부 의존성 없음.
-    - `webauthn.ts`: HMAC-서명 챌린지 쿠키(5분 TTL), `buildRegistrationOptions`, `savePasskey`, `buildAuthenticationOptions`, `verifyPasskeyAuthentication`
-    - `residentKey: 'required'` → discoverable credential (username-less 로그인)
-    - API 라우트 4개: `/api/webauthn/register/options`, `/api/webauthn/register/verify`, `/api/webauthn/authenticate/options`, `/api/webauthn/authenticate/verify`
-    - `/account/passkeys` 페이지: passkey 목록·등록·삭제 UI (클라이언트 사이드 `@simplewebauthn/browser` dynamic import)
-    - 로그인 페이지에 "패스키로 로그인" 버튼 추가 (password-less 플로우)
-    - 세션 `amr: ['hwk']` (RFC 8176 hardware key)
-    - `bun run check && bun run build` 통과 확인
+  - `@simplewebauthn/server v13` + `@simplewebauthn/browser v13` 채택. Workers WebCrypto 전용, 외부 의존성 없음.
+  - `webauthn.ts`: HMAC-서명 챌린지 쿠키(5분 TTL), `buildRegistrationOptions`, `savePasskey`, `buildAuthenticationOptions`, `verifyPasskeyAuthentication`
+  - `residentKey: 'required'` → discoverable credential (username-less 로그인)
+  - API 라우트 4개: `/api/webauthn/register/options`, `/api/webauthn/register/verify`, `/api/webauthn/authenticate/options`, `/api/webauthn/authenticate/verify`
+  - `/account/passkeys` 페이지: passkey 목록·등록·삭제 UI (클라이언트 사이드 `@simplewebauthn/browser` dynamic import)
+  - 로그인 페이지에 "패스키로 로그인" 버튼 추가 (password-less 플로우)
+  - 세션 `amr: ['hwk']` (RFC 8176 hardware key)
+  - `bun run check && bun run build` 통과 확인
 
 ## 다음 작업
 

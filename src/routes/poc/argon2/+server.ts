@@ -1,5 +1,5 @@
-import { json, error } from "@sveltejs/kit";
-import { hashPassword, verifyPassword } from "$lib/server/auth/password";
+import { json, error } from '@sveltejs/kit';
+import { hashPassword, verifyPassword } from '$lib/server/auth/password';
 
 /**
  * PoC: 패스워드 해시 동작 확인.
@@ -13,27 +13,27 @@ import { hashPassword, verifyPassword } from "$lib/server/auth/password";
  * GET /poc/argon2
  */
 export const GET = async () => {
-    if (!import.meta.env.DEV) throw error(404, "Not found");
-    const password = "correct horse battery staple";
+	if (!import.meta.env.DEV) throw error(404, 'Not found');
+	const password = 'correct horse battery staple';
 
-    const t0 = Date.now();
-    const hash = await hashPassword(password);
-    const hashElapsed = Date.now() - t0;
+	const t0 = Date.now();
+	const hash = await hashPassword(password);
+	const hashElapsed = Date.now() - t0;
 
-    const t1 = Date.now();
-    const result = await verifyPassword(password, hash);
-    const verifyElapsed = Date.now() - t1;
+	const t1 = Date.now();
+	const result = await verifyPassword(password, hash);
+	const verifyElapsed = Date.now() - t1;
 
-    const wrongResult = await verifyPassword("wrong password", hash);
+	const wrongResult = await verifyPassword('wrong password', hash);
 
-    return json({
-        algorithm: "PBKDF2-SHA256",
-        iterations: 100_000,
-        note: "Cloudflare Workers 제약으로 argon2id(hash-wasm) 사용 불가. WebAssembly.compile() 인라인 바이트 금지.",
-        hash,
-        hash_elapsed_ms: hashElapsed,
-        verify_correct: result.valid,
-        verify_elapsed_ms: verifyElapsed,
-        verify_wrong: wrongResult.valid,
-    });
+	return json({
+		algorithm: 'PBKDF2-SHA256',
+		iterations: 100_000,
+		note: 'Cloudflare Workers 제약으로 argon2id(hash-wasm) 사용 불가. WebAssembly.compile() 인라인 바이트 금지.',
+		hash,
+		hash_elapsed_ms: hashElapsed,
+		verify_correct: result.valid,
+		verify_elapsed_ms: verifyElapsed,
+		verify_wrong: wrongResult.valid,
+	});
 };
