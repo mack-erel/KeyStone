@@ -1112,6 +1112,7 @@ function printComplete(
 	console.log(`\n${green('✓ 셋업 완료!')}`);
 
 	if (adminResult) {
+		// codeql[js/clear-text-logging] 설치 스크립트에서 초기 비밀번호를 1회 표시하는 의도된 동작
 		console.log(`
 ${cyan('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')}
   초기 관리자 계정 정보${adminResult.generated ? ' (자동 생성됨)' : ''}
