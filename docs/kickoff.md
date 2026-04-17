@@ -96,12 +96,12 @@ src/
 - **지원 Response Type**: `code`
 - **ID Token 서명**: `RS256` (MVP), `ES256` 확장
 - **엔드포인트**:
-  - `/.well-known/openid-configuration` (Discovery)
-  - `/oidc/authorize`
-  - `/oidc/token`
-  - `/oidc/userinfo`
-  - `/oidc/jwks`
-  - `/oidc/end-session` (RP-Initiated Logout)
+    - `/.well-known/openid-configuration` (Discovery)
+    - `/oidc/authorize`
+    - `/oidc/token`
+    - `/oidc/userinfo`
+    - `/oidc/jwks`
+    - `/oidc/end-session` (RP-Initiated Logout)
 - **제외(Out of Scope, MVP)**: implicit / hybrid flow, dynamic client registration, Request Object, FAPI
 
 ### 3.2 SAML 2.0
@@ -112,9 +112,9 @@ src/
 - **서명**: `RSA-SHA256`, Assertion 서명 필수 / Response 서명 선택
 - **암호화**: MVP 에선 선택(Off by default), 설정으로 on/off
 - **엔드포인트**:
-  - `/saml/metadata`
-  - `/saml/sso` (AuthnRequest 수신)
-  - `/saml/slo` (SingleLogout)
+    - `/saml/metadata`
+    - `/saml/sso` (AuthnRequest 수신)
+    - `/saml/slo` (SingleLogout)
 
 ### 3.3 공통
 

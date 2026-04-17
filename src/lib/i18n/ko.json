@@ -1,36 +1,36 @@
 {
-	"app": {
-		"title": "Identity Provider"
-	},
-	"nav": {
-		"login": "로그인",
-		"logout": "로그아웃",
-		"admin": "관리자"
-	},
-	"login": {
-		"username": "아이디",
-		"password": "비밀번호",
-		"submit": "로그인"
-	},
-	"admin": {
-		"title": "관리자 대시보드",
-		"dashboard": "대시보드",
-		"users": "사용자",
-		"oidc_clients": "OIDC 클라이언트",
-		"saml_sps": "SAML SP",
-		"signing_keys": "서명 키",
-		"audit": "감사 로그",
-		"logout": "로그아웃",
-		"org": "조직 관리",
-		"positions": "직급",
-		"departments": "부서",
-		"teams": "팀",
-		"parts": "파트",
-		"ldap_providers": "LDAP 프로바이더"
-	},
-	"account": {
-		"profile": "내 프로필",
-		"mfa": "2단계 인증",
-		"passkeys": "패스키"
-	}
+    "app": {
+        "title": "Identity Provider"
+    },
+    "nav": {
+        "login": "로그인",
+        "logout": "로그아웃",
+        "admin": "관리자"
+    },
+    "login": {
+        "username": "아이디",
+        "password": "비밀번호",
+        "submit": "로그인"
+    },
+    "admin": {
+        "title": "관리자 대시보드",
+        "dashboard": "대시보드",
+        "users": "사용자",
+        "oidc_clients": "OIDC 클라이언트",
+        "saml_sps": "SAML SP",
+        "signing_keys": "서명 키",
+        "audit": "감사 로그",
+        "logout": "로그아웃",
+        "org": "조직 관리",
+        "positions": "직급",
+        "departments": "부서",
+        "teams": "팀",
+        "parts": "파트",
+        "ldap_providers": "LDAP 프로바이더"
+    },
+    "account": {
+        "profile": "내 프로필",
+        "mfa": "2단계 인증",
+        "passkeys": "패스키"
+    }
 }

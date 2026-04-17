@@ -1,8 +1,8 @@
-import { json, error } from '@sveltejs/kit';
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
-import * as xpath from 'xpath';
-import { setNodeDependencies } from 'xml-core';
-import * as xmldsigjs from 'xmldsigjs';
+import { json, error } from "@sveltejs/kit";
+import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
+import * as xpath from "xpath";
+import { setNodeDependencies } from "xml-core";
+import * as xmldsigjs from "xmldsigjs";
 
 // Cloudflare Workers 런타임에는 DOMParser/XMLSerializer/xpath 가 전역으로 없으므로
 // @xmldom/xmldom 구현체를 xml-core 에 직접 등록.
@@ -19,71 +19,71 @@ setNodeDependencies({ DOMParser, XMLSerializer, xpath });
  * GET /poc/saml-sign
  */
 export const GET = async () => {
-	if (!import.meta.env.DEV) throw error(404, 'Not found');
-	// Workers 의 native crypto 를 xmldsigjs 엔진으로 주입.
-	// 타입은 peculiar/webcrypto Crypto 를 기대하지만, 구조가 동일하므로 캐스팅.
-	xmldsigjs.Application.setEngine('WorkersWebCrypto', crypto as unknown as Crypto);
+    if (!import.meta.env.DEV) throw error(404, "Not found");
+    // Workers 의 native crypto 를 xmldsigjs 엔진으로 주입.
+    // 타입은 peculiar/webcrypto Crypto 를 기대하지만, 구조가 동일하므로 캐스팅.
+    xmldsigjs.Application.setEngine("WorkersWebCrypto", crypto as unknown as Crypto);
 
-	const t0 = Date.now();
+    const t0 = Date.now();
 
-	const keys = await crypto.subtle.generateKey(
-		{
-			name: 'RSASSA-PKCS1-v1_5',
-			modulusLength: 2048,
-			publicExponent: new Uint8Array([1, 0, 1]),
-			hash: 'SHA-256',
-		},
-		true,
-		['sign', 'verify'],
-	);
-	const tKey = Date.now();
+    const keys = await crypto.subtle.generateKey(
+        {
+            name: "RSASSA-PKCS1-v1_5",
+            modulusLength: 2048,
+            publicExponent: new Uint8Array([1, 0, 1]),
+            hash: "SHA-256",
+        },
+        true,
+        ["sign", "verify"],
+    );
+    const tKey = Date.now();
 
-	const assertionXml =
-		'<Assertion xmlns="urn:oasis:names:tc:SAML:2.0:assertion" ID="_abc" IssueInstant="2026-04-15T00:00:00Z">' +
-		'<Issuer>https://idp.example</Issuer>' +
-		'<Subject><NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">user@example.com</NameID></Subject>' +
-		'</Assertion>';
+    const assertionXml =
+        '<Assertion xmlns="urn:oasis:names:tc:SAML:2.0:assertion" ID="_abc" IssueInstant="2026-04-15T00:00:00Z">' +
+        "<Issuer>https://idp.example</Issuer>" +
+        '<Subject><NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">user@example.com</NameID></Subject>' +
+        "</Assertion>";
 
-	const doc = xmldsigjs.Parse(assertionXml);
+    const doc = xmldsigjs.Parse(assertionXml);
 
-	const signedXml = new xmldsigjs.SignedXml();
-	await signedXml.Sign({ name: 'RSASSA-PKCS1-v1_5' }, keys.privateKey, doc, {
-		keyValue: keys.publicKey,
-		references: [
-			{
-				hash: 'SHA-256',
-				transforms: ['enveloped', 'exc-c14n'],
-			},
-		],
-	});
+    const signedXml = new xmldsigjs.SignedXml();
+    await signedXml.Sign({ name: "RSASSA-PKCS1-v1_5" }, keys.privateKey, doc, {
+        keyValue: keys.publicKey,
+        references: [
+            {
+                hash: "SHA-256",
+                transforms: ["enveloped", "exc-c14n"],
+            },
+        ],
+    });
 
-	// Sign() 은 서명 요소만 반환하므로, 문서 루트에 삽입한 뒤 직렬화.
-	const sigNode = signedXml.XmlSignature.GetXml();
-	if (sigNode) {
-		doc.documentElement.appendChild(sigNode);
-	}
-	const signedString = xmldsigjs.Stringify(doc);
-	const tSign = Date.now();
+    // Sign() 은 서명 요소만 반환하므로, 문서 루트에 삽입한 뒤 직렬화.
+    const sigNode = signedXml.XmlSignature.GetXml();
+    if (sigNode) {
+        doc.documentElement.appendChild(sigNode);
+    }
+    const signedString = xmldsigjs.Stringify(doc);
+    const tSign = Date.now();
 
-	// 검증 라운드트립
-	const parsedAgain = xmldsigjs.Parse(signedString);
-	const sigEls = parsedAgain.getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'Signature');
-	const verifier = new xmldsigjs.SignedXml(parsedAgain);
-	verifier.LoadXml(sigEls[0]);
-	const verified = await verifier.Verify();
-	const tVerify = Date.now();
+    // 검증 라운드트립
+    const parsedAgain = xmldsigjs.Parse(signedString);
+    const sigEls = parsedAgain.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
+    const verifier = new xmldsigjs.SignedXml(parsedAgain);
+    verifier.LoadXml(sigEls[0]);
+    const verified = await verifier.Verify();
+    const tVerify = Date.now();
 
-	return json({
-		verified,
-		algorithm: 'RSASSA-PKCS1-v1_5 / SHA-256',
-		canonicalization: 'exc-c14n + enveloped',
-		signedXmlLength: signedString.length,
-		signedXmlPreview: signedString.slice(0, 400) + (signedString.length > 400 ? '...' : ''),
-		timingMs: {
-			keygen: tKey - t0,
-			sign: tSign - tKey,
-			verify: tVerify - tSign,
-			total: tVerify - t0,
-		},
-	});
+    return json({
+        verified,
+        algorithm: "RSASSA-PKCS1-v1_5 / SHA-256",
+        canonicalization: "exc-c14n + enveloped",
+        signedXmlLength: signedString.length,
+        signedXmlPreview: signedString.slice(0, 400) + (signedString.length > 400 ? "..." : ""),
+        timingMs: {
+            keygen: tKey - t0,
+            sign: tSign - tKey,
+            verify: tVerify - tSign,
+            total: tVerify - t0,
+        },
+    });
 };

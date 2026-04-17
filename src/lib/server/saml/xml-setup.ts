@@ -6,18 +6,18 @@
  * 모듈 로드 시 한 번만 실행되도록 플래그로 보호.
  */
 
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
-import * as xpath from 'xpath';
-import { setNodeDependencies } from 'xml-core';
-import * as xmldsigjs from 'xmldsigjs';
+import { DOMParser, XMLSerializer } from "@xmldom/xmldom";
+import * as xpath from "xpath";
+import { setNodeDependencies } from "xml-core";
+import * as xmldsigjs from "xmldsigjs";
 
 let initialized = false;
 
 export function ensureXmlEngine(): void {
-	if (initialized) return;
-	setNodeDependencies({ DOMParser, XMLSerializer, xpath });
-	xmldsigjs.Application.setEngine('WorkersWebCrypto', crypto as unknown as Crypto);
-	initialized = true;
+    if (initialized) return;
+    setNodeDependencies({ DOMParser, XMLSerializer, xpath });
+    xmldsigjs.Application.setEngine("WorkersWebCrypto", crypto as unknown as Crypto);
+    initialized = true;
 }
 
 export { DOMParser, XMLSerializer, xmldsigjs };
