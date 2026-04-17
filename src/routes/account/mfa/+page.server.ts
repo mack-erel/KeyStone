@@ -242,12 +242,39 @@ export const actions: Actions = {
 		return { confirm: true, backupCodes: codes };
 	},
 
-	// TOTP 삭제 (백업 코드도 함께 삭제)
+	// TOTP 삭제 (백업 코드도 함께 삭제) — 현재 TOTP 코드로 재인증 필수
 	delete: async (event) => {
 		const { locals, platform } = event;
 		if (!locals.user) throw redirect(303, '/login');
 
+		const config = getRuntimeConfig(platform);
+		if (!config.signingKeySecret) {
+			return fail(503, { delete: true, error: 'IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.' });
+		}
+
+		const formData = await event.request.formData();
+		const code = String(formData.get('code') ?? '').trim();
+		if (!code) {
+			return fail(400, { delete: true, error: '현재 TOTP 코드를 입력해 주세요.' });
+		}
+
 		const { db, tenant } = requireDbContext(locals);
+
+		const [totpCred] = await db
+			.select()
+			.from(credentials)
+			.where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+			.limit(1);
+
+		if (!totpCred?.secret) {
+			return fail(400, { delete: true, error: 'TOTP 인증기가 등록되어 있지 않습니다.' });
+		}
+
+		const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret);
+		const matchedStep = await verifyTotp(code, plainSecret);
+		if (matchedStep === null) {
+			return fail(400, { delete: true, error: '인증 코드가 올바르지 않습니다.' });
+		}
 
 		await db
 			.delete(credentials)
@@ -278,7 +305,7 @@ export const actions: Actions = {
 		return { deleted: true };
 	},
 
-	// 백업 코드 재생성
+	// 백업 코드 재생성 — 현재 TOTP 코드로 재인증 필수
 	regenerate: async (event) => {
 		const { locals, platform } = event;
 		if (!locals.user) throw redirect(303, '/login');
@@ -291,19 +318,31 @@ export const actions: Actions = {
 			});
 		}
 
+		const formData = await event.request.formData();
+		const code = String(formData.get('code') ?? '').trim();
+		if (!code) {
+			return fail(400, { regenerate: true, error: '현재 TOTP 코드를 입력해 주세요.' });
+		}
+
 		const { db, tenant } = requireDbContext(locals);
 
-		// TOTP 등록 여부 확인
+		// TOTP 등록 여부 확인 및 코드 검증
 		const [totpCred] = await db
-			.select({ id: credentials.id })
+			.select()
 			.from(credentials)
 			.where(
 				and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE))
 			)
 			.limit(1);
 
-		if (!totpCred) {
+		if (!totpCred?.secret) {
 			return fail(400, { regenerate: true, error: 'TOTP 인증기가 등록되어 있지 않습니다.' });
+		}
+
+		const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret);
+		const matchedStep = await verifyTotp(code, plainSecret);
+		if (matchedStep === null) {
+			return fail(400, { regenerate: true, error: '인증 코드가 올바르지 않습니다.' });
 		}
 
 		// 기존 백업 코드 전체 삭제

@@ -187,7 +187,16 @@
 									{/if}
 								</p>
 							</div>
-							<form method="POST" action="?/regenerate" use:enhance>
+							<form method="POST" action="?/regenerate" use:enhance class="flex items-center gap-2">
+								<input
+									type="text"
+									name="code"
+									required
+									inputmode="numeric"
+									maxlength={6}
+									placeholder="TOTP 코드"
+									class="w-28 rounded-md border border-gray-300 px-2 py-1.5 text-center font-mono text-sm tracking-widest focus:border-blue-500 focus:outline-none"
+								/>
 								<button
 									type="submit"
 									class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
@@ -206,7 +215,16 @@
 					</div>
 
 					<!-- TOTP 삭제 -->
-					<form method="POST" action="?/delete" use:enhance>
+					<form method="POST" action="?/delete" use:enhance class="space-y-2">
+						<input
+							type="text"
+							name="code"
+							required
+							inputmode="numeric"
+							maxlength={6}
+							placeholder="현재 TOTP 코드 입력 후 삭제"
+							class="block w-full rounded-md border border-red-200 px-3 py-2 text-center font-mono tracking-widest text-sm focus:border-red-400 focus:outline-none"
+						/>
 						<button
 							type="submit"
 							class="flex w-full justify-center rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50"
