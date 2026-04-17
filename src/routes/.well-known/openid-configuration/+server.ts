@@ -12,7 +12,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 			userinfo_endpoint: `${issuer}/oidc/userinfo`,
 			jwks_uri: `${issuer}/oidc/jwks`,
 			end_session_endpoint: `${issuer}/oidc/end-session`,
-			scopes_supported: ['openid', 'profile', 'email'],
+			scopes_supported: ['openid', 'profile', 'email', 'organization'],
 			response_types_supported: ['code'],
 			grant_types_supported: ['authorization_code'],
 			subject_types_supported: ['public'],
@@ -29,7 +29,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 				'sid',
 				'email',
 				'name',
-				'preferred_username'
+				'preferred_username',
+				'department',
+				'team',
+				'position',
+				'title'
 			]
 		},
 		{
