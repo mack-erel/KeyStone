@@ -32,7 +32,7 @@
 		"@sveltejs/kit": "^2.57.0",
 		"@sveltejs/vite-plugin-svelte": "^7.0.0",
 		"@tailwindcss/vite": "^4.2.2",
-		"@types/node": "^24",
+		"@types/node": "^25",
 		"@types/qrcode": "^1.5.6",
 		"@xmldom/xmldom": "^0.9.9",
 		"@yrneh_jang/ldapjs": "^3.1.1",
