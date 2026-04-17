@@ -13,10 +13,7 @@
         "moduleResolution": "bundler",
         "types": ["./worker-configuration.d.ts"]
     },
-    "files": [
-        "src/routes/.well-known/openid-configuration/+server.ts",
-        ".svelte-kit/types/src/routes/.well-known/openid-configuration/$types.d.ts"
-    ],
+    "files": ["src/routes/.well-known/openid-configuration/+server.ts", ".svelte-kit/types/src/routes/.well-known/openid-configuration/$types.d.ts"],
     "exclude": [
         "scripts/**",
         "node_modules/**",
