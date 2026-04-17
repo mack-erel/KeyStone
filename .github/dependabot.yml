@@ -1,35 +1,35 @@
 version: 2
 updates:
-  - package-ecosystem: 'npm'
-    directory: '/'
-    schedule:
-      interval: 'weekly'
-      day: 'monday'
-      time: '09:00'
-      timezone: 'Asia/Seoul'
-    open-pull-requests-limit: 10
-    labels:
-      - 'dependencies'
-    groups:
-      svelte:
-        patterns:
-          - 'svelte*'
-          - '@sveltejs/*'
-      cloudflare:
-        patterns:
-          - 'wrangler'
-          - '@cloudflare/*'
-      drizzle:
-        patterns:
-          - 'drizzle*'
+    - package-ecosystem: "npm"
+      directory: "/"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+          time: "09:00"
+          timezone: "Asia/Seoul"
+      open-pull-requests-limit: 10
+      labels:
+          - "dependencies"
+      groups:
+          svelte:
+              patterns:
+                  - "svelte*"
+                  - "@sveltejs/*"
+          cloudflare:
+              patterns:
+                  - "wrangler"
+                  - "@cloudflare/*"
+          drizzle:
+              patterns:
+                  - "drizzle*"
 
-  - package-ecosystem: 'github-actions'
-    directory: '/'
-    schedule:
-      interval: 'weekly'
-      day: 'monday'
-      time: '09:00'
-      timezone: 'Asia/Seoul'
-    labels:
-      - 'dependencies'
-      - 'github-actions'
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+          time: "09:00"
+          timezone: "Asia/Seoul"
+      labels:
+          - "dependencies"
+          - "github-actions"

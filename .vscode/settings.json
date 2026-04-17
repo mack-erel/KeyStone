@@ -1,6 +1,6 @@
 {
-	"files.associations": {
-		"*.css": "tailwindcss"
-	},
-	"codeQL.runningQueries.codeQlConfigFile": ".github/codeql/codeql-config.yml"
+    "files.associations": {
+        "*.css": "tailwindcss"
+    },
+    "codeQL.runningQueries.codeQlConfigFile": ".github/codeql/codeql-config.yml"
 }

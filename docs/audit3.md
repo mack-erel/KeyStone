@@ -33,7 +33,7 @@ if (existingUser) {
 **LDAP Injection 가능성:**
 
 ```typescript
-const filter = (config.userSearchFilter ?? '(uid={username})').replace('{username}', username);
+const filter = (config.userSearchFilter ?? "(uid={username})").replace("{username}", username);
 ```
 
 `authenticateLdap`에서 username을 **LDAP filter에 raw로 삽입**. LDAP special chars (`()&|!*\\`) escape 없음. 예: username에 `admin)(|(uid=*` 넣으면:
@@ -289,7 +289,7 @@ await db.insert(departments).values({
 
 ```ts
 // hooks.server.ts에 수동 CSRF bypass 로직
-const CSRF_BYPASS_ROUTES = ['/oidc/token', '/oidc/userinfo'];
+const CSRF_BYPASS_ROUTES = ["/oidc/token", "/oidc/userinfo"];
 // 이 루트들은 별도의 client_secret 또는 Bearer 토큰 인증으로 보호되므로
 // Origin 헤더 기반 CSRF 체크가 부적절/불필요
 ```
@@ -298,7 +298,7 @@ const CSRF_BYPASS_ROUTES = ['/oidc/token', '/oidc/userinfo'];
 
 ```js
 csrf: {
-	checkOrigin: true;
+    checkOrigin: true;
 } // 기본값
 ```
 
