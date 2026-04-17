@@ -145,7 +145,7 @@ ${cyan("옵션:")}
   --admin-username <id>     초기 관리자 아이디
   --admin-email <email>     초기 관리자 이메일
   --admin-name <name>       초기 관리자 표시 이름
-  --admin-password <pass>   초기 관리자 비밀번호
+  --admin-password <pass>   초기 관리자 비밀번호 (생략 시 자동 생성)
   --issuer-url <url>        IDP Issuer URL (배포 도메인)
   -y, --yes                 모든 확인 프롬프트 자동 승인
   -h, --help                도움말 출력
@@ -864,36 +864,147 @@ async function step5_migrate(
   }
 }
 
-async function step5b_bootstrapConfig(args: Args) {
-  console.log(`\n${cyan("─── 5b. 초기 관리자 및 테넌트 설정 ──────────────────────────")}`);
+// ─── Password Hashing (same format as src/lib/server/auth/password.ts) ────────
 
-  if (!fs.existsSync(ENV_FILE)) {
-    console.log(yellow("  .env 파일이 없어 건너뜁니다."));
-    return;
+async function hashPasswordForSetup(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(password),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const derived = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 },
+    keyMaterial,
+    256
+  );
+  const saltB64 = btoa(String.fromCharCode(...salt));
+  const hashB64 = btoa(String.fromCharCode(...new Uint8Array(derived)));
+  return `pbkdf2:sha256:100000:${saltB64}:${hashB64}`;
+}
+
+function generateRandomPassword(length = 20): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
+  const bytes = crypto.getRandomValues(new Uint8Array(length));
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
+// ─── Admin Seeding ────────────────────────────────────────────────────────────
+
+interface AdminSeedData {
+  tenantName: string;
+  email: string;
+  username: string;
+  displayName: string;
+  hashedPassword: string;
+}
+
+async function seedAdminToDb(
+  dbName: string,
+  data: AdminSeedData,
+  env: Record<string, string>,
+  isPreview = false
+): Promise<boolean> {
+  const now = Date.now();
+  const tenantId = crypto.randomUUID();
+  const userId = crypto.randomUUID();
+  const credId = crypto.randomUUID();
+  const identityId = crypto.randomUUID();
+
+  const esc = (s: string) => s.replace(/'/g, "''");
+
+  const sql = [
+    // 테넌트 생성 (이미 존재하면 이름만 업데이트)
+    `INSERT INTO tenants (id, slug, name, status, created_at, updated_at) VALUES ('${tenantId}', 'default', '${esc(data.tenantName)}', 'active', ${now}, ${now}) ON CONFLICT(slug) DO UPDATE SET name = excluded.name;`,
+    // 동일 이메일 admin이 없을 때만 삽입
+    `INSERT INTO users (id, tenant_id, email, username, display_name, role, status, created_at, updated_at) SELECT '${userId}', t.id, '${esc(data.email)}', '${esc(data.username)}', '${esc(data.displayName)}', 'admin', 'active', ${now}, ${now} FROM tenants t WHERE t.slug = 'default' AND NOT EXISTS (SELECT 1 FROM users WHERE email = '${esc(data.email)}' AND tenant_id = t.id);`,
+    // 비밀번호 credential (user INSERT가 성공한 경우에만)
+    `INSERT INTO credentials (id, user_id, type, secret, label, created_at) SELECT '${credId}', '${userId}', 'password', '${esc(data.hashedPassword)}', '비밀번호', ${now} WHERE EXISTS (SELECT 1 FROM users WHERE id = '${userId}') AND NOT EXISTS (SELECT 1 FROM credentials WHERE user_id = '${userId}' AND type = 'password');`,
+    // local identity
+    `INSERT INTO identities (id, tenant_id, user_id, provider, subject, email, linked_at) SELECT '${identityId}', t.id, '${userId}', 'local', '${esc(data.email)}', '${esc(data.email)}', ${now} FROM tenants t WHERE t.slug = 'default' AND NOT EXISTS (SELECT 1 FROM identities WHERE user_id = '${userId}' AND provider = 'local');`,
+  ].join("\n");
+
+  const tmpFile = path.join(os.tmpdir(), `idp_seed_${Date.now()}.sql`);
+  writeFile(tmpFile, sql);
+
+  const actualEnv = isPreview ? { ...env, CLOUDFLARE_IS_PREVIEW: "true" } : env;
+  const label = `관리자 계정 생성 중 (${dbName}${isPreview ? " preview" : ""})...`;
+
+  try {
+    const result = await runWithSpinner(label, "wrangler", [
+      "d1", "execute", dbName, "--remote", "--file", tmpFile,
+    ], { env: actualEnv });
+
+    if (!result.success) {
+      console.error(red(`  관리자 계정 생성 실패:\n${result.stderr}`));
+      return false;
+    }
+    return true;
+  } finally {
+    try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
   }
+}
+
+async function step5b_bootstrapConfig(
+  args: Args,
+  dbName: string,
+  previewDbName: string | null
+): Promise<{ email: string; password: string; generated: boolean } | null> {
+  console.log(`\n${cyan("─── 5b. 초기 관리자 계정 생성 ─────────────────────────────────")}`);
 
   const tenantName = args.tenantName ?? await ask("조직(테넌트) 이름", "My Organization");
   const username = args.adminUsername ?? await ask("초기 관리자 아이디", "admin");
   const email = args.adminEmail ?? await ask("초기 관리자 이메일", "admin@example.com");
   const displayName = args.adminName ?? await ask("초기 관리자 표시 이름", "관리자");
-
-  let password = args.adminPassword ?? "";
-  while (!password) {
-    password = await ask("초기 관리자 비밀번호 (⚠️ 배포 후 변경 권장)");
-    if (!password) console.log(red("  비밀번호는 필수입니다."));
-  }
-
   const issuerUrl = args.issuerUrl ?? await ask("IDP Issuer URL", "http://localhost:5173");
 
-  let envContent = readFile(ENV_FILE);
-  envContent = envContent.replace(/^IDP_DEFAULT_TENANT_NAME=".*"$/m, `IDP_DEFAULT_TENANT_NAME="${tenantName}"`);
-  envContent = envContent.replace(/^IDP_BOOTSTRAP_ADMIN_USERNAME=".*"$/m, `IDP_BOOTSTRAP_ADMIN_USERNAME="${username}"`);
-  envContent = envContent.replace(/^IDP_BOOTSTRAP_ADMIN_EMAIL=".*"$/m, `IDP_BOOTSTRAP_ADMIN_EMAIL="${email}"`);
-  envContent = envContent.replace(/^IDP_BOOTSTRAP_ADMIN_PASSWORD=".*"$/m, `IDP_BOOTSTRAP_ADMIN_PASSWORD="${password}"`);
-  envContent = envContent.replace(/^IDP_BOOTSTRAP_ADMIN_NAME=".*"$/m, `IDP_BOOTSTRAP_ADMIN_NAME="${displayName}"`);
-  envContent = envContent.replace(/^IDP_ISSUER_URL=".*"$/m, `IDP_ISSUER_URL="${issuerUrl}"`);
-  writeFile(ENV_FILE, envContent);
-  console.log(green("  ✓ .env 업데이트 완료"));
+  let password: string;
+  let generated = false;
+  if (args.adminPassword) {
+    password = args.adminPassword;
+  } else {
+    const input = await ask("초기 관리자 비밀번호 (엔터: 자동 생성)", "");
+    if (input === "") {
+      password = generateRandomPassword(20);
+      generated = true;
+    } else {
+      password = input;
+    }
+  }
+
+  console.log("  비밀번호 해싱 중...");
+  const hashedPassword = await hashPasswordForSetup(password);
+
+  // .env에 민감하지 않은 값만 저장
+  if (fs.existsSync(ENV_FILE)) {
+    let envContent = readFile(ENV_FILE);
+    envContent = envContent.replace(/^IDP_DEFAULT_TENANT_NAME=".*"$/m, `IDP_DEFAULT_TENANT_NAME="${tenantName}"`);
+    envContent = envContent.replace(/^IDP_ISSUER_URL=".*"$/m, `IDP_ISSUER_URL="${issuerUrl}"`);
+    writeFile(ENV_FILE, envContent);
+    console.log(green("  ✓ .env 업데이트 완료 (테넌트 이름, Issuer URL)"));
+  }
+
+  const envVars = loadEnvFile(ENV_FILE);
+  const wranglerEnv: Record<string, string> = {
+    CLOUDFLARE_ACCOUNT_ID: envVars.CLOUDFLARE_ACCOUNT_ID ?? "",
+    ...(envVars.CLOUDFLARE_D1_TOKEN ? { CLOUDFLARE_D1_TOKEN: envVars.CLOUDFLARE_D1_TOKEN } : {}),
+    ...(envVars.CLOUDFLARE_API_TOKEN ? { CLOUDFLARE_API_TOKEN: envVars.CLOUDFLARE_API_TOKEN } : {}),
+  };
+
+  const data: AdminSeedData = { tenantName, email, username, displayName, hashedPassword };
+  const ok = await seedAdminToDb(dbName, data, wranglerEnv, false);
+  if (!ok) return null;
+
+  if (previewDbName) {
+    const doPreview = args.yes || await confirm("프리뷰 DB에도 관리자 계정을 생성하시겠습니까?", true);
+    if (doPreview) {
+      await seedAdminToDb(previewDbName, data, wranglerEnv, true);
+    }
+  }
+
+  return { email, password, generated };
 }
 
 async function step6_signingKey(args: Args) {
@@ -931,11 +1042,23 @@ async function step6_signingKey(args: Args) {
   console.log(green("  ✓ IDP_SIGNING_KEY_SECRET .env 업데이트 완료"));
 }
 
-function printComplete() {
-  console.log(`
-${green("✓ 셋업 완료!")}
+function printComplete(adminResult?: { email: string; password: string; generated: boolean } | null) {
+  console.log(`\n${green("✓ 셋업 완료!")}`);
 
-로컬 개발 서버 시작:
+  if (adminResult) {
+    console.log(`
+${cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")}
+  초기 관리자 계정 정보${adminResult.generated ? " (자동 생성됨)" : ""}
+
+  이메일  : ${yellow(adminResult.email)}
+  비밀번호: ${yellow(adminResult.password)}
+${adminResult.generated ? `
+  ${red("⚠️  이 비밀번호는 다시 표시되지 않습니다. 반드시 저장하세요.")}` : ""}
+${cyan("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")}
+`);
+  }
+
+  console.log(`로컬 개발 서버 시작:
   ${cyan("bun run dev")}
 
 프로덕션 배포:
@@ -974,15 +1097,15 @@ async function main() {
   // Step 5: Migration
   await step5_migrate(args, previewDbId !== null, dbName, previewDbName);
 
-  // Step 5b: Bootstrap admin & tenant config
-  await step5b_bootstrapConfig(args);
+  // Step 5b: Bootstrap admin directly in D1
+  const adminResult = await step5b_bootstrapConfig(args, dbName, previewDbName);
 
   // Step 6: Signing key
   await step6_signingKey(args);
 
   // Done
   closeRL();
-  printComplete();
+  printComplete(adminResult);
 }
 
 main().catch((err) => {
