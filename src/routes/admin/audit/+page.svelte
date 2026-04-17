@@ -13,7 +13,6 @@
 
 	let kindFilter = $state(untrack(() => data.filters.kind ?? ''));
 	let outcomeFilter = $state(untrack(() => data.filters.outcome ?? ''));
-	let limitFilter = $state(untrack(() => String(data.filters.limit)));
 
 	function applyFilters() {
 		const params = new URLSearchParams(page.url.searchParams);
@@ -21,15 +20,21 @@
 		else params.delete('kind');
 		if (outcomeFilter) params.set('outcome', outcomeFilter);
 		else params.delete('outcome');
-		params.set('limit', limitFilter);
+		params.delete('cursor');
 		goto(`?${params.toString()}`, { replaceState: true });
 	}
 
 	function resetFilters() {
 		kindFilter = '';
 		outcomeFilter = '';
-		limitFilter = '100';
 		goto('?', { replaceState: true });
+	}
+
+	function goNext() {
+		if (data.nextCursor === null) return;
+		const params = new URLSearchParams(page.url.searchParams);
+		params.set('cursor', String(data.nextCursor));
+		goto(`?${params.toString()}`);
 	}
 
 	function formatDetail(detailJson: string | null): string {
@@ -45,7 +50,7 @@
 <div class="space-y-6">
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-bold text-gray-900">감사 로그</h1>
-		<span class="text-sm text-gray-500">{data.events.length}건 표시</span>
+		<span class="text-sm text-gray-500">{data.events.length}건 표시 (페이지 {data.pageSize}건)</span>
 	</div>
 
 	<!-- 필터 -->
@@ -74,19 +79,6 @@
 					<option value="">전체</option>
 					<option value="success">성공</option>
 					<option value="failure">실패</option>
-				</select>
-			</div>
-			<div>
-				<label for="f-limit" class="block text-xs font-medium text-gray-600">표시 건수</label>
-				<select
-					id="f-limit"
-					bind:value={limitFilter}
-					class="mt-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
-				>
-					<option value="50">50</option>
-					<option value="100">100</option>
-					<option value="200">200</option>
-					<option value="500">500</option>
 				</select>
 			</div>
 			<div class="flex gap-2">
@@ -170,4 +162,16 @@
 			</tbody>
 		</table>
 	</div>
+
+	{#if data.nextCursor !== null}
+		<div class="flex justify-end">
+			<button
+				type="button"
+				onclick={goNext}
+				class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+			>
+				다음 페이지 →
+			</button>
+		</div>
+	{/if}
 </div>
