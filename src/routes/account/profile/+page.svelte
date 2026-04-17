@@ -99,7 +99,7 @@ const TIMEZONE_OPTIONS = [
                 <div>
                     <label for="locale" class="block text-xs font-medium text-gray-700">언어</label>
                     <select id="locale" name="locale" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                        {#each LOCALE_OPTIONS as opt}
+                        {#each LOCALE_OPTIONS as opt (opt.value)}
                             <option value={opt.value} selected={data.profile.locale === opt.value}>{opt.label}</option>
                         {/each}
                     </select>
@@ -107,7 +107,7 @@ const TIMEZONE_OPTIONS = [
                 <div>
                     <label for="zoneinfo" class="block text-xs font-medium text-gray-700">시간대</label>
                     <select id="zoneinfo" name="zoneinfo" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
-                        {#each TIMEZONE_OPTIONS as opt}
+                        {#each TIMEZONE_OPTIONS as opt (opt.value)}
                             <option value={opt.value} selected={data.profile.zoneinfo === opt.value}>{opt.label}</option>
                         {/each}
                     </select>
@@ -120,7 +120,7 @@ const TIMEZONE_OPTIONS = [
             <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
                 <h2 class="mb-4 text-sm font-semibold text-gray-700">조직 소속</h2>
                 <div class="space-y-3">
-                    {#each data.membership.departments as dept}
+                    {#each data.membership.departments as dept (dept.name)}
                         <div class="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm">
                             <span class="font-medium text-gray-900">{dept.name}</span>
                             {#if dept.isPrimary}<span class="rounded-full bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">주소속</span>{/if}
@@ -128,7 +128,7 @@ const TIMEZONE_OPTIONS = [
                             {#if dept.position}<span class="text-gray-400">({dept.position.name})</span>{/if}
                         </div>
                     {/each}
-                    {#each data.membership.teams as team}
+                    {#each data.membership.teams as team (team.name)}
                         <div class="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm">
                             <span class="text-xs text-gray-500">팀</span>
                             <span class="font-medium text-gray-900">{team.name}</span>
@@ -137,7 +137,7 @@ const TIMEZONE_OPTIONS = [
                             {#if team.jobTitle}<span class="text-gray-500">/ {team.jobTitle}</span>{/if}
                         </div>
                     {/each}
-                    {#each data.membership.parts as part}
+                    {#each data.membership.parts as part (part.name)}
                         <div class="flex items-center gap-3 rounded-lg bg-gray-50 px-4 py-2.5 text-sm">
                             <span class="text-xs text-gray-500">파트</span>
                             <span class="font-medium text-gray-900">{part.name}</span>

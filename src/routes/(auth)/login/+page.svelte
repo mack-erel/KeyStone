@@ -33,6 +33,7 @@ async function loginWithPasskey() {
         if (!verRes.ok) throw new Error((await verRes.text()) || "인증 실패");
 
         const { redirectTo } = (await verRes.json()) as { redirectTo?: string };
+        // eslint-disable-next-line svelte/no-navigation-without-resolve
         await goto(redirectTo ?? "/");
     } catch (err: unknown) {
         const e = err as { name?: string; message?: string };
@@ -48,7 +49,7 @@ async function loginWithPasskey() {
 </script>
 
 <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-    <div class="w-full max-w-[420px] rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+    <div class="w-full max-w-105 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
         <div class="mb-6 space-y-2 text-center">
             <h1 class="text-2xl font-bold text-gray-900">{t("app.title")}</h1>
             <p class="text-sm leading-6 text-gray-500">M0 관리자 진입용 로컬 계정 로그인입니다.</p>

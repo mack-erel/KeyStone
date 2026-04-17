@@ -15,25 +15,30 @@ let kindFilter = $state(untrack(() => data.filters.kind ?? ""));
 let outcomeFilter = $state(untrack(() => data.filters.outcome ?? ""));
 
 function applyFilters() {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const params = new URLSearchParams(page.url.searchParams);
     if (kindFilter) params.set("kind", kindFilter);
     else params.delete("kind");
     if (outcomeFilter) params.set("outcome", outcomeFilter);
     else params.delete("outcome");
     params.delete("cursor");
+    // eslint-disable-next-line svelte/no-navigation-without-resolve
     goto(`?${params.toString()}`, { replaceState: true });
 }
 
 function resetFilters() {
     kindFilter = "";
     outcomeFilter = "";
+    // eslint-disable-next-line svelte/no-navigation-without-resolve
     goto("?", { replaceState: true });
 }
 
 function goNext() {
     if (data.nextCursor === null) return;
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const params = new URLSearchParams(page.url.searchParams);
     params.set("cursor", String(data.nextCursor));
+    // eslint-disable-next-line svelte/no-navigation-without-resolve
     goto(`?${params.toString()}`);
 }
 
@@ -60,7 +65,7 @@ function formatDetail(detailJson: string | null): string {
                 <label for="f-kind" class="block text-xs font-medium text-gray-600">이벤트 종류</label>
                 <select id="f-kind" bind:value={kindFilter} class="mt-1 rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
                     <option value="">전체</option>
-                    {#each data.kinds as k}
+                    {#each data.kinds as k (k)}
                         <option value={k}>{k}</option>
                     {/each}
                 </select>
@@ -110,7 +115,7 @@ function formatDetail(detailJson: string | null): string {
                                 </span>
                             </td>
                             <td class="px-4 py-3 font-mono text-xs text-gray-400">{ev.ip ?? "—"}</td>
-                            <td class="max-w-[280px] truncate px-4 py-3 font-mono text-xs text-gray-500" title={ev.detailJson ?? ""}>
+                            <td class="max-w-70 truncate px-4 py-3 font-mono text-xs text-gray-500" title={ev.detailJson ?? ""}>
                                 {formatDetail(ev.detailJson)}
                             </td>
                         </tr>

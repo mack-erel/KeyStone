@@ -23,7 +23,7 @@ async function handleEndSession(locals: App.Locals, url: URL, cookies: Parameter
             .limit(1);
 
         if (client?.postLogoutRedirectUris) {
-            let allowed: string[] = [];
+            let allowed: string[];
             try {
                 allowed = JSON.parse(client.postLogoutRedirectUris) as string[];
             } catch {

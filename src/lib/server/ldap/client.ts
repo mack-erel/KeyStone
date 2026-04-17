@@ -106,7 +106,7 @@ export async function ldapFetchEntry(config: LdapProviderConfig, bindDn: string,
                 res.on("searchEntry", (e: ldap.SearchEntry) => {
                     const obj: Record<string, string> = {};
                     for (const attr of e.attributes) {
-                        obj[attr.type] = Array.isArray(attr.values) ? (attr.values[0] ?? "") : "";
+                        obj[attr.type] = Array.isArray(attr.vals) ? (attr.vals[0] ?? "") : "";
                     }
                     entry = obj;
                 });

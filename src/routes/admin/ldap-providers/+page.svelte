@@ -149,7 +149,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                     id="c-filter"
                                     type="text"
                                     name="userSearchFilter"
-                                    placeholder="(uid={'{'}username{'}'}})"
+                                    placeholder="(uid=&#123;username&#125;)"
                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                             </div>
                             <div>
@@ -160,7 +160,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                     id="c-pattern2"
                                     type="text"
                                     name="userDnPattern"
-                                    placeholder="uid={'{'}username{'}'},dc=example,dc=com"
+                                    placeholder="uid=&#123;username&#125;,dc=example,dc=com"
                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                             </div>
                         </div>
@@ -371,7 +371,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                             type="text"
                                                             name="userSearchFilter"
                                                             value={c.userSearchFilter ?? ""}
-                                                            placeholder="(uid={'{'}username{'}'}})"
+                                                            placeholder="(uid=&#123;username&#125;)"
                                                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                                     </div>
                                                     <div>
@@ -383,7 +383,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                             type="text"
                                                             name="userDnPattern"
                                                             value={c.userDnPattern ?? ""}
-                                                            placeholder="uid={'{'}username{'}'},dc=example,dc=com"
+                                                            placeholder="uid=&#123;username&#125;,dc=example,dc=com"
                                                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                                     </div>
                                                 </div>
