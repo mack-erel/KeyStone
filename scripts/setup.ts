@@ -1118,14 +1118,17 @@ function printComplete(
 	console.log(`\n${green('✓ 셋업 완료!')}`);
 
 	if (adminResult) {
-		const passwordLine = yellow(adminResult.password);
 		console.log(`
 ${cyan('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')}
   초기 관리자 계정 정보${adminResult.generated ? ' (자동 생성됨)' : ''}
 
-  이메일  : ${yellow(adminResult.email)}`);
-		console.log(`  비밀번호: ${passwordLine}`);
-		console.log(`${adminResult.generated ? `${red('⚠️  이 비밀번호는 다시 표시되지 않습니다. 반드시 저장하세요.')}` : ''}
+  이메일  : ${yellow(adminResult.email)}
+  비밀번호: ${yellow(adminResult.password)}
+${adminResult.generated
+				? `
+  ${red('⚠️  이 비밀번호는 다시 표시되지 않습니다. 반드시 저장하세요.')}`
+				: ''
+			}
 ${cyan('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')}
 `);
 	}
