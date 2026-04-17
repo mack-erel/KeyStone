@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: "0 1 * * 1" # 매주 월요일 오전 10시 (KST)
+    - cron: '0 1 * * 1' # 매주 월요일 오전 10시 (KST)
 
 jobs:
   analyze:
@@ -39,4 +39,4 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:${{ matrix.language }}"
+          category: '/language:${{ matrix.language }}'

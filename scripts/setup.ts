@@ -365,15 +365,26 @@ function writeFile(filePath: string, content: string) {
 }
 
 /** mkdtempSync으로 안전한 임시 파일 생성 (symlink attack 방지) */
-function createTempFile(prefix: string, content: string): { filePath: string; cleanup: () => void } {
+function createTempFile(
+	prefix: string,
+	content: string
+): { filePath: string; cleanup: () => void } {
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 	const filePath = path.join(tmpDir, 'content.sql');
 	fs.writeFileSync(filePath, content, { mode: 0o600 });
 	return {
 		filePath,
 		cleanup: () => {
-			try { fs.unlinkSync(filePath); } catch { /* ignore */ }
-			try { fs.rmdirSync(tmpDir); } catch { /* ignore */ }
+			try {
+				fs.unlinkSync(filePath);
+			} catch {
+				/* ignore */
+			}
+			try {
+				fs.rmdirSync(tmpDir);
+			} catch {
+				/* ignore */
+			}
 		}
 	};
 }
@@ -765,7 +776,10 @@ async function handleMigrationConflicts(
 	// Option 2: 필터링된 SQL + drizzle tracking
 	const combinedSQL =
 		buildFilteredMigrationSQL(new Set(conflicts)) + '\n' + buildDrizzleTrackingSQL();
-	const { filePath: filteredTmpFile, cleanup: filteredCleanup } = createTempFile('idp-migrate-', combinedSQL);
+	const { filePath: filteredTmpFile, cleanup: filteredCleanup } = createTempFile(
+		'idp-migrate-',
+		combinedSQL
+	);
 	try {
 		const runResult = await runWithSpinner(
 			`필터링된 마이그레이션 실행 중 (${dbName})...`,
@@ -1124,11 +1138,12 @@ ${cyan('━━━━━━━━━━━━━━━━━━━━━━━━
 
   이메일  : ${yellow(adminResult.email)}
   비밀번호: ${yellow(adminResult.password)}
-${adminResult.generated
-				? `
+${
+	adminResult.generated
+		? `
   ${red('⚠️  이 비밀번호는 다시 표시되지 않습니다. 반드시 저장하세요.')}`
-				: ''
-			}
+		: ''
+}
 ${cyan('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')}
 `);
 	}

@@ -25,9 +25,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		if (event.platform?.env?.DB) {
 			const db = await getDb(event.platform);
 			event.locals.db = db;
-			event.locals.tenant = skipBaseline
-				? null
-				: await ensureAuthBaseline(db, event.platform);
+			event.locals.tenant = skipBaseline ? null : await ensureAuthBaseline(db, event.platform);
 
 			const sessionToken = event.cookies.get(SESSION_COOKIE_NAME);
 
