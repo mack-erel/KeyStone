@@ -1,9 +1,10 @@
 import { error, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireDbContext } from '$lib/server/auth/guards';
-import { recordAuditEvent } from '$lib/server/audit';
+import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit';
 import { findOidcClient, isAllowedRedirectUri, parseGrantedScopes } from '$lib/server/oidc/client';
 import { createGrant } from '$lib/server/oidc/grant';
+import { checkRateLimit } from '$lib/server/ratelimit';
 
 /** redirect_uri 가 확정된 이후에만 사용. 그 전 오류는 throw error() 로 직접 응답. */
 function authRedirectError(
@@ -19,8 +20,19 @@ function authRedirectError(
 	throw redirect(302, dest.toString());
 }
 
-export const GET: RequestHandler = async ({ locals, url }) => {
+export const GET: RequestHandler = async (event) => {
+	const { locals, url } = event;
 	const { db, tenant } = requireDbContext(locals);
+
+	// IP당 60회/분 제한 — grant INSERT DoS 방지
+	const { ip } = getRequestMetadata(event);
+	const rl = await checkRateLimit(db, `oidc-authorize:${ip ?? 'unknown'}`, {
+		windowMs: 60 * 1000,
+		limit: 60
+	});
+	if (!rl.allowed) {
+		throw error(429, '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.');
+	}
 
 	const clientId = url.searchParams.get('client_id');
 	const redirectUri = url.searchParams.get('redirect_uri');
@@ -99,6 +111,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		state: state ?? null
 	});
 
+	const { userAgent } = getRequestMetadata(event);
 	await recordAuditEvent(db, {
 		tenantId: tenant.id,
 		userId: locals.user.id,
@@ -106,6 +119,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 		spOrClientId: clientId,
 		kind: 'oidc_authorize',
 		outcome: 'success',
+		ip,
+		userAgent,
 		detail: { clientId, scope: grantedScope }
 	});
 
