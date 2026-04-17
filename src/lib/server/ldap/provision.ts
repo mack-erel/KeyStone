@@ -65,7 +65,9 @@ export async function provisionLdapUser(
 		return user;
 	}
 
-	// 2. 동일 이메일 로컬 유저 확인 → LDAP identity 연결
+	// 2. 동일 이메일 로컬 유저가 있을 경우 자동 연결하지 않음 (계정 탈취 방지)
+	// LDAP 제공자가 이메일을 조작해 기존 계정(관리자 포함)을 하이재킹할 수 있으므로
+	// 기존 로컬 계정과의 연결은 관리자가 직접 수행해야 한다.
 	const [existingUser] = await db
 		.select()
 		.from(users)
@@ -73,16 +75,10 @@ export async function provisionLdapUser(
 		.limit(1);
 
 	if (existingUser) {
-		await db.insert(identities).values({
-			tenantId,
-			userId: existingUser.id,
-			provider,
-			subject: attrs.dn,
-			email: attrs.email,
-			rawProfileJson: JSON.stringify(attrs),
-			lastLoginAt: new Date()
-		});
-		return existingUser;
+		throw new Error(
+			`이미 동일한 이메일(${attrs.email})의 로컬 계정이 존재합니다. ` +
+			'LDAP 계정 연결은 관리자에게 문의하세요.'
+		);
 	}
 
 	// 3. 완전 신규 유저 생성
@@ -105,7 +101,6 @@ export async function provisionLdapUser(
 		tenantId,
 		username,
 		email: attrs.email,
-		emailVerifiedAt: new Date(), // LDAP 인증 성공 = 이메일 인증 완료로 간주
 		displayName: attrs.displayName,
 		givenName: attrs.givenName,
 		familyName: attrs.familyName,

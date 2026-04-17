@@ -1,6 +1,28 @@
 import { ldapBind, ldapFetchEntry, ldapSearchDn } from './client';
 import type { LdapProviderConfig, LdapUserAttrs } from './types';
 
+function escapeLdapChar(ch: string): string {
+	return '\\' + ch.charCodeAt(0).toString(16).padStart(2, '0');
+}
+
+function escapeLdapFilter(input: string): string {
+	return input.split('').map(ch => {
+		if (ch === '\\' || ch === '*' || ch === '(' || ch === ')' || ch.charCodeAt(0) === 0) {
+			return escapeLdapChar(ch);
+		}
+		return ch;
+	}).join('');
+}
+
+function escapeLdapDn(input: string): string {
+	return input.split('').map(ch => {
+		if ('\\,+"<>;#='.includes(ch) || ch.charCodeAt(0) === 0) {
+			return escapeLdapChar(ch);
+		}
+		return ch;
+	}).join('');
+}
+
 /**
  * LDAP 인증 + 속성 조회.
  *
@@ -20,7 +42,7 @@ export async function authenticateLdap(
 		// Search 방식: admin bind → uid 검색으로 실제 DN 확정
 		const filter = (config.userSearchFilter ?? '(uid={username})').replace(
 			'{username}',
-			username
+			escapeLdapFilter(username)
 		);
 		const found = await ldapSearchDn(config, config.bindDN, config.bindPassword, filter);
 		if (!found) return null; // 유저 없음
@@ -28,7 +50,7 @@ export async function authenticateLdap(
 	} else {
 		// Pattern 방식: userDnPattern 으로 DN 직접 조합
 		if (!config.userDnPattern) return null;
-		userDn = config.userDnPattern.replace('{username}', username);
+		userDn = config.userDnPattern.replace('{username}', escapeLdapDn(username));
 	}
 
 	// 유저 bind — 비밀번호 검증

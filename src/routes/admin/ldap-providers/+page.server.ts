@@ -3,6 +3,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { Actions, PageServerLoad } from './$types';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { getRequestMetadata, recordAuditEvent } from '$lib/server/audit';
+import { getRuntimeConfig } from '$lib/server/auth/runtime';
+import { encryptSecret } from '$lib/server/crypto/keys';
 import { identityProviders } from '$lib/server/db/schema';
 import type { LdapProviderConfig } from '$lib/server/ldap/types';
 
@@ -47,6 +49,16 @@ function buildConfig(fd: FormData): LdapProviderConfig {
 	return config;
 }
 
+async function encryptBindPassword(
+	config: LdapProviderConfig,
+	signingKeySecret: string | undefined
+): Promise<LdapProviderConfig> {
+	if (!config.bindPassword || !signingKeySecret) return config;
+	const enc = await encryptSecret(config.bindPassword, signingKeySecret, 'idp-ldap-bind-password-v1');
+	const { bindPassword: _, ...rest } = config;
+	return { ...rest, bindPasswordEnc: enc };
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
 	const { db, tenant } = requireDbContext(locals);
 
@@ -77,7 +89,8 @@ export const actions: Actions = {
 				error: 'Admin Bind DN 또는 유저 DN 패턴 중 하나는 필수입니다.'
 			});
 
-		const config = buildConfig(fd);
+		const { signingKeySecret } = getRuntimeConfig(event.platform);
+		const config = await encryptBindPassword(buildConfig(fd), signingKeySecret);
 
 		await db.insert(identityProviders).values({
 			tenantId: tenant.id,
@@ -111,7 +124,8 @@ export const actions: Actions = {
 
 		if (!id || !name) return fail(400, { error: '잘못된 요청입니다.' });
 
-		const config = buildConfig(fd);
+		const { signingKeySecret } = getRuntimeConfig(event.platform);
+		const config = await encryptBindPassword(buildConfig(fd), signingKeySecret);
 
 		await db
 			.update(identityProviders)

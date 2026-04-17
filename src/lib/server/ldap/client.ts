@@ -1,9 +1,18 @@
-import ldap from 'ldapjs';
+import ldap from "@yrneh_jang/ldapjs";
 import type { LdapProviderConfig } from './types';
 
 function buildUrl(config: LdapProviderConfig): string {
 	const scheme = config.tlsMode === 'tls' ? 'ldaps' : 'ldap';
 	return `${scheme}://${config.host}:${config.port}`;
+}
+
+function createLdapClient(config: LdapProviderConfig): ldap.Client {
+	return ldap.createClient({
+		url: buildUrl(config),
+		connectTimeout: 5000,
+		timeout: 5000,
+		...(config.tlsMode === 'tls' ? { tlsOptions: { rejectUnauthorized: true } } : {})
+	});
 }
 
 /** DN + 패스워드로 LDAP bind. 실패 시 throw. */
@@ -13,11 +22,7 @@ export async function ldapBind(
 	password: string
 ): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const client = ldap.createClient({
-			url: buildUrl(config),
-			connectTimeout: 5000,
-			timeout: 5000
-		});
+		const client = createLdapClient(config);
 
 		client.on('error', (err: Error) => {
 			reject(err);
@@ -42,11 +47,7 @@ export async function ldapSearchDn(
 	filter: string
 ): Promise<string | null> {
 	return new Promise((resolve, reject) => {
-		const client = ldap.createClient({
-			url: buildUrl(config),
-			connectTimeout: 5000,
-			timeout: 5000
-		});
+		const client = createLdapClient(config);
 
 		client.on('error', (err: Error) => {
 			reject(err);
@@ -99,11 +100,7 @@ export async function ldapFetchEntry(
 	attributes: string[]
 ): Promise<Record<string, string> | null> {
 	return new Promise((resolve, reject) => {
-		const client = ldap.createClient({
-			url: buildUrl(config),
-			connectTimeout: 5000,
-			timeout: 5000
-		});
+		const client = createLdapClient(config);
 
 		client.on('error', (err: Error) => {
 			reject(err);
