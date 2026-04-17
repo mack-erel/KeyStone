@@ -15,12 +15,14 @@ export interface MfaPendingClaims {
 	userId: string;
 	tenantId: string;
 	redirectTo: string | null;
+	ip: string | null;
 }
 
 interface MfaPendingPayload {
 	uid: string;
 	tid: string;
 	redir: string | null;
+	ip: string | null;
 	exp: number;
 }
 
@@ -62,6 +64,7 @@ export async function createMfaPendingToken(
 		uid: claims.userId,
 		tid: claims.tenantId,
 		redir: claims.redirectTo,
+		ip: claims.ip,
 		exp: Date.now() + MFA_PENDING_TTL_MS
 	};
 	const data = b64uEncode(enc.encode(JSON.stringify(payload)));
@@ -89,7 +92,7 @@ export async function verifyMfaPendingToken(
 		if (!valid) return null;
 		const payload = JSON.parse(new TextDecoder().decode(b64uDecode(data))) as MfaPendingPayload;
 		if (payload.exp < Date.now()) return null;
-		return { userId: payload.uid, tenantId: payload.tid, redirectTo: payload.redir };
+		return { userId: payload.uid, tenantId: payload.tid, redirectTo: payload.redir, ip: payload.ip ?? null };
 	} catch {
 		return null;
 	}

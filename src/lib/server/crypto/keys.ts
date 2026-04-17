@@ -212,6 +212,54 @@ export async function verifyAccessToken(
 	}
 }
 
+// ── generic secret encryption (AES-256-GCM + HKDF) ───────────────────────────
+
+/**
+ * 임의의 문자열을 AES-256-GCM 으로 암호화한다.
+ * 형식: `<salt_b64u>.<iv_b64u>.<ciphertext_b64u>`
+ */
+export async function encryptSecret(
+	plaintext: string,
+	masterSecret: string,
+	context = 'idp-secret-v1'
+): Promise<string> {
+	const salt = crypto.getRandomValues(new Uint8Array(16));
+	const iv = crypto.getRandomValues(new Uint8Array(12));
+	const enc = new TextEncoder();
+	const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(masterSecret), 'HKDF', false, ['deriveKey']);
+	const key = await crypto.subtle.deriveKey(
+		{ name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode(context) },
+		keyMaterial,
+		{ name: 'AES-GCM', length: 256 },
+		false,
+		['encrypt']
+	);
+	const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(plaintext));
+	return `${b64uEncode(salt)}.${b64uEncode(iv)}.${b64uEncode(new Uint8Array(ct))}`;
+}
+
+/** `encryptSecret` 역연산. */
+export async function decryptSecret(
+	encrypted: string,
+	masterSecret: string,
+	context = 'idp-secret-v1'
+): Promise<string> {
+	const parts = encrypted.split('.');
+	if (parts.length !== 3) throw new Error('Invalid encrypted secret format');
+	const [saltB64, ivB64, ctB64] = parts;
+	const enc = new TextEncoder();
+	const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(masterSecret), 'HKDF', false, ['deriveKey']);
+	const key = await crypto.subtle.deriveKey(
+		{ name: 'HKDF', hash: 'SHA-256', salt: b64uDecode(saltB64), info: enc.encode(context) },
+		keyMaterial,
+		{ name: 'AES-GCM', length: 256 },
+		false,
+		['decrypt']
+	);
+	const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64uDecode(ivB64) }, key, b64uDecode(ctB64));
+	return new TextDecoder().decode(pt);
+}
+
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
 export async function getActiveSigningKey(

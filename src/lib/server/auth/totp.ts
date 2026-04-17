@@ -88,16 +88,24 @@ export async function generateTotpCode(base32Secret: string, stepOffset = 0): Pr
 
 /**
  * TOTP 코드를 검증한다. 시간 드리프트를 고려해 ±1 윈도우(±30초)를 허용한다.
+ * lastUsedStep 을 지정하면 해당 스텝 이하는 거부하여 재사용 공격을 방지한다.
+ * 검증 성공 시 매칭된 스텝을 반환하고, 실패 시 null 을 반환한다.
  */
-export async function verifyTotp(code: string, base32Secret: string): Promise<boolean> {
-	if (!/^\d{6}$/.test(code)) return false;
+export async function verifyTotp(
+	code: string,
+	base32Secret: string,
+	lastUsedStep?: number
+): Promise<number | null> {
+	if (!/^\d{6}$/.test(code)) return null;
 	const key = base32Decode(base32Secret);
 	const t = Math.floor(Date.now() / 30_000);
 	for (const offset of [-1, 0, 1]) {
-		const expected = await hotp(key, t + offset);
-		if (String(expected).padStart(6, '0') === code) return true;
+		const step = t + offset;
+		if (lastUsedStep !== undefined && step <= lastUsedStep) continue;
+		const expected = await hotp(key, step);
+		if (String(expected).padStart(6, '0') === code) return step;
 	}
-	return false;
+	return null;
 }
 
 // ── TOTP 시크릿 암호화/복호화 ──────────────────────────────────────────────────
@@ -226,8 +234,14 @@ export async function hashBackupCode(code: string): Promise<string> {
 
 /**
  * 입력한 코드가 저장된 해시와 일치하는지 검증.
+ * XOR 기반 상수 시간 비교로 타이밍 공격을 방지한다.
  */
 export async function verifyBackupCode(code: string, storedHash: string): Promise<boolean> {
 	const hash = await hashBackupCode(code);
-	return hash === storedHash;
+	if (hash.length !== storedHash.length) return false;
+	let diff = 0;
+	for (let i = 0; i < hash.length; i++) {
+		diff |= hash.charCodeAt(i) ^ storedHash.charCodeAt(i);
+	}
+	return diff === 0;
 }
