@@ -64,21 +64,17 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
 
         <div class="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
             <h1 class="mb-1 text-2xl font-bold text-gray-900">패스키 관리</h1>
-            <p class="mb-6 text-sm text-gray-500">
-                지문, Face ID, 보안 키 등으로 비밀번호 없이 로그인할 수 있습니다.
-            </p>
+            <p class="mb-6 text-sm text-gray-500">지문, Face ID, 보안 키 등으로 비밀번호 없이 로그인할 수 있습니다.</p>
 
             <!-- 에러 -->
             {#if formError}
-                <div
-                    class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {formError}
                 </div>
             {/if}
 
             {#if registerError}
-                <div
-                    class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {registerError}
                 </div>
             {/if}
@@ -87,14 +83,9 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
             {#if data.passkeys.length > 0}
                 <div class="mb-6 space-y-2">
                     {#each data.passkeys as pk (pk.id)}
-                        <div
-                            class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
+                        <div class="flex items-center justify-between rounded-xl border border-gray-200 px-4 py-3">
                             <div class="flex items-center gap-3">
-                                <svg
-                                    class="h-5 w-5 shrink-0 text-gray-400"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24">
+                                <svg class="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
@@ -108,9 +99,7 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                                     <p class="text-xs text-gray-400">
                                         등록: {new Date(pk.createdAt).toLocaleDateString("ko-KR")}
                                         {#if pk.lastUsedAt}
-                                            · 마지막 사용: {new Date(
-                                                pk.lastUsedAt,
-                                            ).toLocaleDateString("ko-KR")}
+                                            · 마지막 사용: {new Date(pk.lastUsedAt).toLocaleDateString("ko-KR")}
                                         {/if}
                                     </p>
                                 </div>
@@ -122,8 +111,7 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                                     type="submit"
                                     class="text-sm text-red-500 hover:text-red-700"
                                     onclick={(e) => {
-                                        if (!confirm("이 패스키를 삭제하시겠습니까?"))
-                                            e.preventDefault();
+                                        if (!confirm("이 패스키를 삭제하시겠습니까?")) e.preventDefault();
                                     }}>
                                     삭제
                                 </button>
@@ -140,9 +128,7 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
             <!-- 새 패스키 등록 -->
             <div class="space-y-3">
                 <div>
-                    <label for="passkey-label" class="block text-sm font-medium text-gray-700">
-                        패스키 이름 (선택)
-                    </label>
+                    <label for="passkey-label" class="block text-sm font-medium text-gray-700"> 패스키 이름 (선택) </label>
                     <input
                         type="text"
                         id="passkey-label"
@@ -159,17 +145,8 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                     class="flex w-full items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60">
                     {#if registering}
                         <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                            <circle
-                                class="opacity-25"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                stroke-width="4"></circle>
-                            <path
-                                class="opacity-75"
-                                fill="currentColor"
-                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                         </svg>
                         등록 중...
                     {:else}

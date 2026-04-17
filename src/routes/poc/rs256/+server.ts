@@ -46,23 +46,12 @@ export const GET = async () => {
         }),
     );
     const signingInput = `${header}.${payload}`;
-    const sigBytes = new Uint8Array(
-        await crypto.subtle.sign(
-            { name: "RSASSA-PKCS1-v1_5" },
-            keyPair.privateKey,
-            new TextEncoder().encode(signingInput),
-        ),
-    );
+    const sigBytes = new Uint8Array(await crypto.subtle.sign({ name: "RSASSA-PKCS1-v1_5" }, keyPair.privateKey, new TextEncoder().encode(signingInput)));
     const jwt = `${signingInput}.${b64url(sigBytes)}`;
     const tSign = Date.now();
 
     // 4) 검증
-    const ok = await crypto.subtle.verify(
-        { name: "RSASSA-PKCS1-v1_5" },
-        keyPair.publicKey,
-        sigBytes,
-        new TextEncoder().encode(signingInput),
-    );
+    const ok = await crypto.subtle.verify({ name: "RSASSA-PKCS1-v1_5" }, keyPair.publicKey, sigBytes, new TextEncoder().encode(signingInput));
     const tVerify = Date.now();
 
     return json({

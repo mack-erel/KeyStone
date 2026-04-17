@@ -11,10 +11,7 @@ export const load: LayoutServerLoad = async ({ locals, url }) => {
     requireDbContext(locals);
 
     if (!locals.user) {
-        throw redirect(
-            303,
-            `/admin/login?redirectTo=${encodeURIComponent(url.pathname + url.search)}`,
-        );
+        throw redirect(303, `/admin/login?redirectTo=${encodeURIComponent(url.pathname + url.search)}`);
     }
 
     if (locals.user.role !== "admin") {

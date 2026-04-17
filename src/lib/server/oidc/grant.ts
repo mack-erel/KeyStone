@@ -29,25 +29,12 @@ export async function createGrant(db: DB, params: CreateGrantParams): Promise<vo
     });
 }
 
-export async function findGrant(
-    db: DB,
-    tenantId: string,
-    clientId: string,
-    code: string,
-): Promise<OidcGrantRecord | null> {
+export async function findGrant(db: DB, tenantId: string, clientId: string, code: string): Promise<OidcGrantRecord | null> {
     const now = new Date();
     const [grant] = await db
         .select()
         .from(oidcGrants)
-        .where(
-            and(
-                eq(oidcGrants.code, code),
-                eq(oidcGrants.tenantId, tenantId),
-                eq(oidcGrants.clientId, clientId),
-                isNull(oidcGrants.usedAt),
-                gt(oidcGrants.expiresAt, now),
-            ),
-        )
+        .where(and(eq(oidcGrants.code, code), eq(oidcGrants.tenantId, tenantId), eq(oidcGrants.clientId, clientId), isNull(oidcGrants.usedAt), gt(oidcGrants.expiresAt, now)))
         .limit(1);
     return grant ?? null;
 }
@@ -60,25 +47,12 @@ export async function consumeGrant(db: DB, grantId: string): Promise<void> {
  * grant 를 원자적으로 조회 + 소진한다.
  * UPDATE ... WHERE usedAt IS NULL RETURNING 으로 경쟁 조건 없이 1회만 사용 가능.
  */
-export async function findAndConsumeGrant(
-    db: DB,
-    tenantId: string,
-    clientId: string,
-    code: string,
-): Promise<OidcGrantRecord | null> {
+export async function findAndConsumeGrant(db: DB, tenantId: string, clientId: string, code: string): Promise<OidcGrantRecord | null> {
     const now = new Date();
     const [grant] = await db
         .update(oidcGrants)
         .set({ usedAt: now })
-        .where(
-            and(
-                eq(oidcGrants.code, code),
-                eq(oidcGrants.tenantId, tenantId),
-                eq(oidcGrants.clientId, clientId),
-                isNull(oidcGrants.usedAt),
-                gt(oidcGrants.expiresAt, now),
-            ),
-        )
+        .where(and(eq(oidcGrants.code, code), eq(oidcGrants.tenantId, tenantId), eq(oidcGrants.clientId, clientId), isNull(oidcGrants.usedAt), gt(oidcGrants.expiresAt, now)))
         .returning();
     return grant ?? null;
 }

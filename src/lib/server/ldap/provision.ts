@@ -11,25 +11,14 @@ import type { LdapUserAttrs } from "./types";
  * 2. 같은 이메일의 로컬 유저 존재 → identity 연결 후 반환
  * 3. 완전 신규 → users + identities 생성
  */
-export async function provisionLdapUser(
-    db: DB,
-    tenantId: string,
-    providerId: string,
-    attrs: LdapUserAttrs,
-): Promise<User> {
+export async function provisionLdapUser(db: DB, tenantId: string, providerId: string, attrs: LdapUserAttrs): Promise<User> {
     const provider = `ldap:${providerId}`;
 
     // 1. 기존 LDAP identity 확인
     const [existingIdentity] = await db
         .select({ userId: identities.userId })
         .from(identities)
-        .where(
-            and(
-                eq(identities.tenantId, tenantId),
-                eq(identities.provider, provider),
-                eq(identities.subject, attrs.dn),
-            ),
-        )
+        .where(and(eq(identities.tenantId, tenantId), eq(identities.provider, provider), eq(identities.subject, attrs.dn)))
         .limit(1);
 
     if (existingIdentity) {
@@ -47,13 +36,7 @@ export async function provisionLdapUser(
         await db
             .update(identities)
             .set({ email: attrs.email, lastLoginAt: new Date() })
-            .where(
-                and(
-                    eq(identities.tenantId, tenantId),
-                    eq(identities.provider, provider),
-                    eq(identities.subject, attrs.dn),
-                ),
-            );
+            .where(and(eq(identities.tenantId, tenantId), eq(identities.provider, provider), eq(identities.subject, attrs.dn)));
 
         const [user] = await db
             .select()
@@ -71,20 +54,11 @@ export async function provisionLdapUser(
     const [existingUser] = await db
         .select()
         .from(users)
-        .where(
-            and(
-                eq(users.tenantId, tenantId),
-                eq(users.email, attrs.email),
-                eq(users.status, "active"),
-            ),
-        )
+        .where(and(eq(users.tenantId, tenantId), eq(users.email, attrs.email), eq(users.status, "active")))
         .limit(1);
 
     if (existingUser) {
-        throw new Error(
-            `이미 동일한 이메일(${attrs.email})의 로컬 계정이 존재합니다. ` +
-                "LDAP 계정 연결은 관리자에게 문의하세요.",
-        );
+        throw new Error(`이미 동일한 이메일(${attrs.email})의 로컬 계정이 존재합니다. ` + "LDAP 계정 연결은 관리자에게 문의하세요.");
     }
 
     // 3. 완전 신규 유저 생성

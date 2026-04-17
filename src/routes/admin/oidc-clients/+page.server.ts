@@ -60,16 +60,12 @@ export const actions: Actions = {
         const redirectUrisRaw = String(fd.get("redirectUris") ?? "").trim();
         const postLogoutUrisRaw = String(fd.get("postLogoutRedirectUris") ?? "").trim();
         const scopes = String(fd.get("scopes") ?? "openid").trim();
-        const tokenMethod = String(fd.get("tokenEndpointAuthMethod") ?? "client_secret_basic") as
-            | "client_secret_basic"
-            | "client_secret_post"
-            | "none";
+        const tokenMethod = String(fd.get("tokenEndpointAuthMethod") ?? "client_secret_basic") as "client_secret_basic" | "client_secret_post" | "none";
         // public client(none)는 PKCE 필수
         const requirePkce = tokenMethod === "none" ? true : fd.get("requirePkce") === "true";
 
         if (!name) return fail(400, { create: true, error: "이름은 필수입니다." });
-        if (!redirectUrisRaw)
-            return fail(400, { create: true, error: "Redirect URI 는 필수입니다." });
+        if (!redirectUrisRaw) return fail(400, { create: true, error: "Redirect URI 는 필수입니다." });
 
         const clientId = generateClientId();
         const clientSecret = tokenMethod !== "none" ? generateClientSecret() : null;
@@ -187,9 +183,7 @@ export const actions: Actions = {
         const id = String(fd.get("id") ?? "");
         if (!id) return fail(400, { error: "잘못된 요청입니다." });
 
-        await db
-            .delete(oidcClients)
-            .where(and(eq(oidcClients.id, id), eq(oidcClients.tenantId, tenant.id)));
+        await db.delete(oidcClients).where(and(eq(oidcClients.id, id), eq(oidcClients.tenantId, tenant.id)));
 
         const requestMetadata = getRequestMetadata(event);
         await recordAuditEvent(db, {

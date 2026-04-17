@@ -62,9 +62,7 @@ function parseSpMetadata() {
         if (nameIdEl?.textContent) createNameIdFormat = nameIdEl.textContent.trim();
 
         // 서명용 인증서
-        const certEl =
-            doc.querySelector("KeyDescriptor[use='signing'] X509Certificate") ??
-            doc.querySelector("X509Certificate");
+        const certEl = doc.querySelector("KeyDescriptor[use='signing'] X509Certificate") ?? doc.querySelector("X509Certificate");
         if (certEl?.textContent) {
             const raw = certEl.textContent.trim().replace(/\s/g, "");
             const lines = raw.match(/.{1,64}/g)?.join("\n") ?? raw;
@@ -99,11 +97,7 @@ function resetCreateForm() {
     metaParseError = null;
 }
 
-const createErr = $derived(
-    (form as { create?: boolean; error?: string } | null)?.create
-        ? ((form as { error?: string } | null)?.error ?? null)
-        : null,
-);
+const createErr = $derived((form as { create?: boolean; error?: string } | null)?.create ? ((form as { error?: string } | null)?.error ?? null) : null);
 const globalErr = $derived(createErr ? null : ((form as { error?: string } | null)?.error ?? null));
 
 function formatAllowedAttributes(raw: string | null): string {
@@ -153,12 +147,10 @@ const NAME_ID_OPTIONS = [
             <!-- 메타데이터 붙여넣기 -->
             <div class="space-y-2 rounded-lg border border-blue-200 bg-white p-4">
                 <p class="text-xs font-medium text-gray-700">
-                    SP 메타데이터 XML로 자동 입력 <span class="font-normal text-gray-400"
-                        >(선택)</span>
+                    SP 메타데이터 XML로 자동 입력 <span class="font-normal text-gray-400">(선택)</span>
                 </p>
                 {#if metaParseError}
-                    <div
-                        class="rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600">
+                    <div class="rounded border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-600">
                         {metaParseError}
                     </div>
                 {/if}
@@ -166,19 +158,12 @@ const NAME_ID_OPTIONS = [
                     bind:value={metadataXml}
                     rows="4"
                     placeholder="<md:EntityDescriptor ...> 를 붙여넣으세요"
-                    class="block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"
-                ></textarea>
-                <button
-                    type="button"
-                    onclick={parseSpMetadata}
-                    class="rounded-md bg-gray-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800">
-                    메타데이터 파싱 →
-                </button>
+                    class="block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"></textarea>
+                <button type="button" onclick={parseSpMetadata} class="rounded-md bg-gray-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-800"> 메타데이터 파싱 → </button>
             </div>
 
             {#if createErr}
-                <div
-                    class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     {createErr}
                 </div>
             {/if}
@@ -196,8 +181,7 @@ const NAME_ID_OPTIONS = [
                     }}
                 class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                    <label for="s-name" class="block text-xs font-medium text-gray-700"
-                        >이름 *</label>
+                    <label for="s-name" class="block text-xs font-medium text-gray-700">이름 *</label>
                     <input
                         id="s-name"
                         type="text"
@@ -207,8 +191,7 @@ const NAME_ID_OPTIONS = [
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
-                    <label for="s-entityId" class="block text-xs font-medium text-gray-700"
-                        >Entity ID *</label>
+                    <label for="s-entityId" class="block text-xs font-medium text-gray-700">Entity ID *</label>
                     <input
                         id="s-entityId"
                         type="text"
@@ -218,8 +201,7 @@ const NAME_ID_OPTIONS = [
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div class="sm:col-span-2">
-                    <label for="s-acsUrl" class="block text-xs font-medium text-gray-700"
-                        >ACS URL *</label>
+                    <label for="s-acsUrl" class="block text-xs font-medium text-gray-700">ACS URL *</label>
                     <input
                         id="s-acsUrl"
                         type="url"
@@ -229,8 +211,7 @@ const NAME_ID_OPTIONS = [
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div class="sm:col-span-2">
-                    <label for="s-sloUrl" class="block text-xs font-medium text-gray-700"
-                        >SLO URL</label>
+                    <label for="s-sloUrl" class="block text-xs font-medium text-gray-700">SLO URL</label>
                     <input
                         id="s-sloUrl"
                         type="url"
@@ -239,8 +220,7 @@ const NAME_ID_OPTIONS = [
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
-                    <label for="s-nameIdFormat" class="block text-xs font-medium text-gray-700"
-                        >NameID Format</label>
+                    <label for="s-nameIdFormat" class="block text-xs font-medium text-gray-700">NameID Format</label>
                     <select
                         id="s-nameIdFormat"
                         name="nameIdFormat"
@@ -253,57 +233,30 @@ const NAME_ID_OPTIONS = [
                 </div>
                 <div class="flex flex-col gap-2 pt-4">
                     <div class="flex items-center gap-2">
-                        <input
-                            id="s-signAssertion"
-                            type="checkbox"
-                            name="signAssertion"
-                            value="true"
-                            bind:checked={createSignAssertion}
-                            class="h-4 w-4 rounded border-gray-300" />
-                        <label for="s-signAssertion" class="text-xs text-gray-700"
-                            >Assertion 서명</label>
+                        <input id="s-signAssertion" type="checkbox" name="signAssertion" value="true" bind:checked={createSignAssertion} class="h-4 w-4 rounded border-gray-300" />
+                        <label for="s-signAssertion" class="text-xs text-gray-700">Assertion 서명</label>
                     </div>
                     <div class="flex items-center gap-2">
-                        <input
-                            id="s-signResponse"
-                            type="checkbox"
-                            name="signResponse"
-                            value="true"
-                            bind:checked={createSignResponse}
-                            class="h-4 w-4 rounded border-gray-300" />
-                        <label for="s-signResponse" class="text-xs text-gray-700"
-                            >Response 서명</label>
+                        <input id="s-signResponse" type="checkbox" name="signResponse" value="true" bind:checked={createSignResponse} class="h-4 w-4 rounded border-gray-300" />
+                        <label for="s-signResponse" class="text-xs text-gray-700">Response 서명</label>
                     </div>
                     <div class="flex items-center gap-2">
-                        <input
-                            id="s-wantSigned"
-                            type="checkbox"
-                            name="wantAuthnRequestsSigned"
-                            value="true"
-                            bind:checked={createWantSigned}
-                            class="h-4 w-4 rounded border-gray-300" />
-                        <label for="s-wantSigned" class="text-xs text-gray-700"
-                            >AuthnRequest 서명 요구</label>
+                        <input id="s-wantSigned" type="checkbox" name="wantAuthnRequestsSigned" value="true" bind:checked={createWantSigned} class="h-4 w-4 rounded border-gray-300" />
+                        <label for="s-wantSigned" class="text-xs text-gray-700">AuthnRequest 서명 요구</label>
                     </div>
                 </div>
                 <div class="sm:col-span-2">
-                    <label for="s-cert" class="block text-xs font-medium text-gray-700"
-                        >SP 인증서 (PEM, 선택)</label>
+                    <label for="s-cert" class="block text-xs font-medium text-gray-700">SP 인증서 (PEM, 선택)</label>
                     <textarea
                         id="s-cert"
                         name="cert"
                         rows="4"
                         bind:value={createCert}
                         placeholder="-----BEGIN CERTIFICATE-----"
-                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"
-                    ></textarea>
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"></textarea>
                 </div>
                 <div class="sm:col-span-2">
-                    <label
-                        for="s-allowedAttributes"
-                        class="block text-xs font-medium text-gray-700">
-                        허용 속성 (콤마 구분, 비우면 email,username,displayName 만 전송)
-                    </label>
+                    <label for="s-allowedAttributes" class="block text-xs font-medium text-gray-700"> 허용 속성 (콤마 구분, 비우면 email,username,displayName 만 전송) </label>
                     <input
                         id="s-allowedAttributes"
                         type="text"
@@ -313,10 +266,7 @@ const NAME_ID_OPTIONS = [
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div class="flex justify-end sm:col-span-2">
-                    <button
-                        type="submit"
-                        class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-                        >추가</button>
+                    <button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">추가</button>
                 </div>
             </form>
         </div>
@@ -327,31 +277,18 @@ const NAME_ID_OPTIONS = [
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
-                    <th
-                        class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
-                        >이름 / Entity ID</th>
-                    <th
-                        class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
-                        >ACS URL</th>
-                    <th
-                        class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
-                        >서명</th>
-                    <th
-                        class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
-                        >상태</th>
-                    <th
-                        class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
-                        >생성</th>
-                    <th
-                        class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase"
-                        >작업</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">이름 / Entity ID</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">ACS URL</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">서명</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">상태</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">생성</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">작업</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-200">
                 {#if data.sps.length === 0}
                     <tr>
-                        <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500"
-                            >등록된 SAML SP 가 없습니다.</td>
+                        <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500">등록된 SAML SP 가 없습니다.</td>
                     </tr>
                 {:else}
                     {#each data.sps as sp (sp.id)}
@@ -362,35 +299,20 @@ const NAME_ID_OPTIONS = [
                                     {sp.entityId}
                                 </p>
                             </td>
-                            <td class="max-w-50 px-4 py-3 text-xs break-all text-gray-500"
-                                >{sp.acsUrl}</td>
+                            <td class="max-w-50 px-4 py-3 text-xs break-all text-gray-500">{sp.acsUrl}</td>
                             <td class="px-4 py-3 text-xs text-gray-500">
-                                {#if sp.signAssertion}<span
-                                        class="mr-1 rounded bg-blue-50 px-1 py-0.5 text-blue-600"
-                                        >Assertion</span
-                                    >{/if}
-                                {#if sp.signResponse}<span
-                                        class="rounded bg-purple-50 px-1 py-0.5 text-purple-600"
-                                        >Response</span
-                                    >{/if}
+                                {#if sp.signAssertion}<span class="mr-1 rounded bg-blue-50 px-1 py-0.5 text-blue-600">Assertion</span>{/if}
+                                {#if sp.signResponse}<span class="rounded bg-purple-50 px-1 py-0.5 text-purple-600">Response</span>{/if}
                             </td>
                             <td class="px-4 py-3">
-                                <span
-                                    class="rounded-full px-2 py-0.5 text-xs font-medium {sp.enabled
-                                        ? 'bg-green-100 text-green-700'
-                                        : 'bg-gray-100 text-gray-500'}">
+                                <span class="rounded-full px-2 py-0.5 text-xs font-medium {sp.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
                                     {sp.enabled ? "활성" : "비활성"}
                                 </span>
                             </td>
-                            <td class="px-4 py-3 text-xs text-gray-400"
-                                >{dateFormatter.format(sp.createdAt)}</td>
+                            <td class="px-4 py-3 text-xs text-gray-400">{dateFormatter.format(sp.createdAt)}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onclick={() =>
-                                            (editingId = editingId === sp.id ? null : sp.id)}
-                                        class="text-xs text-blue-500 hover:text-blue-700">
+                                    <button type="button" onclick={() => (editingId = editingId === sp.id ? null : sp.id)} class="text-xs text-blue-500 hover:text-blue-700">
                                         {editingId === sp.id ? "접기" : "편집"}
                                     </button>
                                     <form method="POST" action="?/delete" use:enhance>
@@ -399,8 +321,7 @@ const NAME_ID_OPTIONS = [
                                             type="submit"
                                             class="text-xs text-red-400 hover:text-red-600"
                                             onclick={(e) => {
-                                                if (!confirm("SP를 삭제하시겠습니까?"))
-                                                    e.preventDefault();
+                                                if (!confirm("SP를 삭제하시겠습니까?")) e.preventDefault();
                                             }}>
                                             삭제
                                         </button>
@@ -424,10 +345,7 @@ const NAME_ID_OPTIONS = [
                                         class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                         <input type="hidden" name="id" value={sp.id} />
                                         <div>
-                                            <label
-                                                for="e-name-{sp.id}"
-                                                class="block text-xs font-medium text-gray-700"
-                                                >이름 *</label>
+                                            <label for="e-name-{sp.id}" class="block text-xs font-medium text-gray-700">이름 *</label>
                                             <input
                                                 id="e-name-{sp.id}"
                                                 type="text"
@@ -437,27 +355,18 @@ const NAME_ID_OPTIONS = [
                                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                         </div>
                                         <div>
-                                            <label
-                                                for="e-nameIdFormat-{sp.id}"
-                                                class="block text-xs font-medium text-gray-700"
-                                                >NameID Format</label>
+                                            <label for="e-nameIdFormat-{sp.id}" class="block text-xs font-medium text-gray-700">NameID Format</label>
                                             <select
                                                 id="e-nameIdFormat-{sp.id}"
                                                 name="nameIdFormat"
                                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
                                                 {#each NAME_ID_OPTIONS as opt (opt.value)}
-                                                    <option
-                                                        value={opt.value}
-                                                        selected={sp.nameIdFormat === opt.value}
-                                                        >{opt.label}</option>
+                                                    <option value={opt.value} selected={sp.nameIdFormat === opt.value}>{opt.label}</option>
                                                 {/each}
                                             </select>
                                         </div>
                                         <div class="sm:col-span-2">
-                                            <label
-                                                for="e-acsUrl-{sp.id}"
-                                                class="block text-xs font-medium text-gray-700"
-                                                >ACS URL *</label>
+                                            <label for="e-acsUrl-{sp.id}" class="block text-xs font-medium text-gray-700">ACS URL *</label>
                                             <input
                                                 id="e-acsUrl-{sp.id}"
                                                 type="url"
@@ -467,10 +376,7 @@ const NAME_ID_OPTIONS = [
                                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                         </div>
                                         <div class="sm:col-span-2">
-                                            <label
-                                                for="e-sloUrl-{sp.id}"
-                                                class="block text-xs font-medium text-gray-700"
-                                                >SLO URL</label>
+                                            <label for="e-sloUrl-{sp.id}" class="block text-xs font-medium text-gray-700">SLO URL</label>
                                             <input
                                                 id="e-sloUrl-{sp.id}"
                                                 type="url"
@@ -487,23 +393,11 @@ const NAME_ID_OPTIONS = [
                                                     value="true"
                                                     checked={sp.signAssertion}
                                                     class="h-4 w-4 rounded border-gray-300" />
-                                                <label
-                                                    for="e-signAssertion-{sp.id}"
-                                                    class="text-xs text-gray-700"
-                                                    >Assertion 서명</label>
+                                                <label for="e-signAssertion-{sp.id}" class="text-xs text-gray-700">Assertion 서명</label>
                                             </div>
                                             <div class="flex items-center gap-2">
-                                                <input
-                                                    id="e-signResponse-{sp.id}"
-                                                    type="checkbox"
-                                                    name="signResponse"
-                                                    value="true"
-                                                    checked={sp.signResponse}
-                                                    class="h-4 w-4 rounded border-gray-300" />
-                                                <label
-                                                    for="e-signResponse-{sp.id}"
-                                                    class="text-xs text-gray-700"
-                                                    >Response 서명</label>
+                                                <input id="e-signResponse-{sp.id}" type="checkbox" name="signResponse" value="true" checked={sp.signResponse} class="h-4 w-4 rounded border-gray-300" />
+                                                <label for="e-signResponse-{sp.id}" class="text-xs text-gray-700">Response 서명</label>
                                             </div>
                                             <div class="flex items-center gap-2">
                                                 <input
@@ -513,29 +407,15 @@ const NAME_ID_OPTIONS = [
                                                     value="true"
                                                     checked={sp.wantAuthnRequestsSigned}
                                                     class="h-4 w-4 rounded border-gray-300" />
-                                                <label
-                                                    for="e-wantSigned-{sp.id}"
-                                                    class="text-xs text-gray-700"
-                                                    >AuthnRequest 서명 요구</label>
+                                                <label for="e-wantSigned-{sp.id}" class="text-xs text-gray-700">AuthnRequest 서명 요구</label>
                                             </div>
                                             <div class="flex items-center gap-2">
-                                                <input
-                                                    id="e-enabled-{sp.id}"
-                                                    type="checkbox"
-                                                    name="enabled"
-                                                    value="true"
-                                                    checked={sp.enabled}
-                                                    class="h-4 w-4 rounded border-gray-300" />
-                                                <label
-                                                    for="e-enabled-{sp.id}"
-                                                    class="text-xs text-gray-700">활성</label>
+                                                <input id="e-enabled-{sp.id}" type="checkbox" name="enabled" value="true" checked={sp.enabled} class="h-4 w-4 rounded border-gray-300" />
+                                                <label for="e-enabled-{sp.id}" class="text-xs text-gray-700">활성</label>
                                             </div>
                                         </div>
                                         <div class="sm:col-span-2">
-                                            <label
-                                                for="e-cert-{sp.id}"
-                                                class="block text-xs font-medium text-gray-700"
-                                                >SP 인증서 (PEM)</label>
+                                            <label for="e-cert-{sp.id}" class="block text-xs font-medium text-gray-700">SP 인증서 (PEM)</label>
                                             <textarea
                                                 id="e-cert-{sp.id}"
                                                 name="cert"
@@ -544,32 +424,21 @@ const NAME_ID_OPTIONS = [
                                                 >{sp.cert ?? ""}</textarea>
                                         </div>
                                         <div class="sm:col-span-2">
-                                            <label
-                                                for="e-allowedAttributes-{sp.id}"
-                                                class="block text-xs font-medium text-gray-700">
-                                                허용 속성 (콤마 구분, 비우면
-                                                email,username,displayName 만 전송)
+                                            <label for="e-allowedAttributes-{sp.id}" class="block text-xs font-medium text-gray-700">
+                                                허용 속성 (콤마 구분, 비우면 email,username,displayName 만 전송)
                                             </label>
                                             <input
                                                 id="e-allowedAttributes-{sp.id}"
                                                 type="text"
                                                 name="allowedAttributes"
-                                                value={formatAllowedAttributes(
-                                                    sp.allowedAttributes,
-                                                )}
+                                                value={formatAllowedAttributes(sp.allowedAttributes)}
                                                 placeholder="email,username,displayName"
                                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none" />
                                         </div>
                                         <div class="flex justify-end gap-2 sm:col-span-2">
-                                            <button
-                                                type="button"
-                                                onclick={() => (editingId = null)}
-                                                class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
+                                            <button type="button" onclick={() => (editingId = null)} class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
                                                 >취소</button>
-                                            <button
-                                                type="submit"
-                                                class="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-                                                >저장</button>
+                                            <button type="submit" class="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">저장</button>
                                         </div>
                                     </form>
                                 </td>

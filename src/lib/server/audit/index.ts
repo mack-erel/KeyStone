@@ -16,10 +16,7 @@ export interface AuditEventInput {
 
 export function getRequestMetadata(event: RequestEvent) {
     const forwardedFor = event.request.headers.get("x-forwarded-for");
-    const ip =
-        event.request.headers.get("cf-connecting-ip") ??
-        forwardedFor?.split(",")[0]?.trim() ??
-        null;
+    const ip = event.request.headers.get("cf-connecting-ip") ?? forwardedFor?.split(",")[0]?.trim() ?? null;
 
     return {
         ip,

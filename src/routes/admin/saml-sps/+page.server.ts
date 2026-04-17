@@ -32,19 +32,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     return { sps: rows };
 };
 
-const ATTRIBUTE_KEYS = [
-    "email",
-    "username",
-    "displayName",
-    "givenName",
-    "familyName",
-    "surName",
-    "phoneNumber",
-    "department",
-    "team",
-    "jobTitle",
-    "position",
-] as const;
+const ATTRIBUTE_KEYS = ["email", "username", "displayName", "givenName", "familyName", "surName", "phoneNumber", "department", "team", "jobTitle", "position"] as const;
 
 function parseAllowedAttributes(raw: string): string | null {
     const trimmed = raw.trim();
@@ -53,9 +41,7 @@ function parseAllowedAttributes(raw: string): string | null {
         .split(",")
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
-        .filter((s): s is (typeof ATTRIBUTE_KEYS)[number] =>
-            (ATTRIBUTE_KEYS as readonly string[]).includes(s),
-        );
+        .filter((s): s is (typeof ATTRIBUTE_KEYS)[number] => (ATTRIBUTE_KEYS as readonly string[]).includes(s));
     if (parts.length === 0) return null;
     return JSON.stringify([...new Set(parts)]);
 }
@@ -71,9 +57,7 @@ export const actions: Actions = {
         const entityId = String(fd.get("entityId") ?? "").trim();
         const acsUrl = String(fd.get("acsUrl") ?? "").trim();
         const sloUrl = String(fd.get("sloUrl") ?? "").trim();
-        const nameIdFormat = String(
-            fd.get("nameIdFormat") ?? "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
-        ).trim();
+        const nameIdFormat = String(fd.get("nameIdFormat") ?? "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress").trim();
         const cert = String(fd.get("cert") ?? "").trim();
         const signAssertion = fd.get("signAssertion") === "true";
         const signResponse = fd.get("signResponse") === "true";

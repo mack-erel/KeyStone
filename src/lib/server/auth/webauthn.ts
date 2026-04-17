@@ -6,17 +6,8 @@
  * - residentKey: 'required' → username-less(discoverable) 로그인 지원
  */
 
-import {
-    generateRegistrationOptions,
-    verifyRegistrationResponse,
-    generateAuthenticationOptions,
-    verifyAuthenticationResponse,
-} from "@simplewebauthn/server";
-import type {
-    AuthenticatorTransportFuture,
-    AuthenticationResponseJSON,
-    RegistrationResponseJSON,
-} from "@simplewebauthn/server";
+import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from "@simplewebauthn/server";
+import type { AuthenticatorTransportFuture, AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
 import type { DB } from "$lib/server/db";
 import { credentials, users, webauthnChallenges } from "$lib/server/db/schema";
 import { eq, and, isNull, gt, sql } from "drizzle-orm";
@@ -51,19 +42,10 @@ interface ChallengeCookiePayload {
 }
 
 async function importHmacKey(secret: string, usage: "sign" | "verify"): Promise<CryptoKey> {
-    return crypto.subtle.importKey(
-        "raw",
-        new TextEncoder().encode(secret),
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        [usage],
-    );
+    return crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [usage]);
 }
 
-export async function createChallengeCookie(
-    payload: Omit<ChallengeCookiePayload, "exp">,
-    signingKeySecret: string,
-): Promise<string> {
+export async function createChallengeCookie(payload: Omit<ChallengeCookiePayload, "exp">, signingKeySecret: string): Promise<string> {
     const enc = new TextEncoder();
     const full: ChallengeCookiePayload = { ...payload, exp: Date.now() + CHALLENGE_TTL_MS };
     const data = b64uEncode(enc.encode(JSON.stringify(full)));
@@ -72,11 +54,7 @@ export async function createChallengeCookie(
     return `${data}.${b64uEncode(new Uint8Array(sig))}`;
 }
 
-export async function verifyChallengeCookie(
-    token: string,
-    signingKeySecret: string,
-    expectedType: "register" | "authenticate",
-): Promise<ChallengeCookiePayload | null> {
+export async function verifyChallengeCookie(token: string, signingKeySecret: string, expectedType: "register" | "authenticate"): Promise<ChallengeCookiePayload | null> {
     try {
         const lastDot = token.lastIndexOf(".");
         if (lastDot === -1) return null;
@@ -84,16 +62,9 @@ export async function verifyChallengeCookie(
         const sigPart = token.slice(lastDot + 1);
         const enc = new TextEncoder();
         const key = await importHmacKey(signingKeySecret, "verify");
-        const valid = await crypto.subtle.verify(
-            "HMAC",
-            key,
-            b64uDecode(sigPart),
-            enc.encode(data),
-        );
+        const valid = await crypto.subtle.verify("HMAC", key, b64uDecode(sigPart), enc.encode(data));
         if (!valid) return null;
-        const payload = JSON.parse(
-            new TextDecoder().decode(b64uDecode(data)),
-        ) as ChallengeCookiePayload;
+        const payload = JSON.parse(new TextDecoder().decode(b64uDecode(data))) as ChallengeCookiePayload;
         if (payload.exp < Date.now()) return null;
         if (payload.type !== expectedType) return null;
         return payload;
@@ -114,23 +85,14 @@ export function getWebAuthnConfig(url: URL) {
 
 // ── 등록 (Registration) ────────────────────────────────────────────────────────
 
-export async function buildRegistrationOptions(
-    db: DB,
-    userId: string,
-    userEmail: string,
-    userDisplayName: string | null,
-    rpID: string,
-    rpName: string,
-) {
+export async function buildRegistrationOptions(db: DB, userId: string, userEmail: string, userDisplayName: string | null, rpID: string, rpName: string) {
     // 이미 등록된 passkeys → excludeCredentials 에 포함(중복 방지)
     const existing = await db
         .select({ credentialId: credentials.credentialId })
         .from(credentials)
         .where(and(eq(credentials.userId, userId), eq(credentials.type, "webauthn")));
 
-    const excludeCredentials = existing
-        .filter((c) => c.credentialId !== null)
-        .map((c) => ({ id: c.credentialId! }));
+    const excludeCredentials = existing.filter((c) => c.credentialId !== null).map((c) => ({ id: c.credentialId! }));
 
     return generateRegistrationOptions({
         rpID,
@@ -147,12 +109,7 @@ export async function buildRegistrationOptions(
     });
 }
 
-export async function savePasskey(
-    db: DB,
-    userId: string,
-    label: string,
-    verificationResult: Awaited<ReturnType<typeof verifyRegistrationResponse>>,
-): Promise<void> {
+export async function savePasskey(db: DB, userId: string, label: string, verificationResult: Awaited<ReturnType<typeof verifyRegistrationResponse>>): Promise<void> {
     const info = verificationResult.registrationInfo;
     if (!info) throw new Error("registrationInfo 가 없습니다");
     const { credential } = info;
@@ -198,22 +155,14 @@ export async function consumeChallenge(db: DB, challenge: string): Promise<boole
     const rows = await db
         .update(webauthnChallenges)
         .set({ usedAt: now })
-        .where(
-            and(
-                eq(webauthnChallenges.challenge, challenge),
-                isNull(webauthnChallenges.usedAt),
-                gt(webauthnChallenges.expiresAt, now),
-            ),
-        )
+        .where(and(eq(webauthnChallenges.challenge, challenge), isNull(webauthnChallenges.usedAt), gt(webauthnChallenges.expiresAt, now)))
         .returning({ id: webauthnChallenges.id });
     return rows.length > 0;
 }
 
 /** 만료된 챌린지 정리 (필요 시 주기적 호출). */
 export async function purgeExpiredChallenges(db: DB): Promise<void> {
-    await db
-        .delete(webauthnChallenges)
-        .where(sql`${webauthnChallenges.expiresAt} <= ${Date.now()}`);
+    await db.delete(webauthnChallenges).where(sql`${webauthnChallenges.expiresAt} <= ${Date.now()}`);
 }
 
 export interface PasskeyVerifyResult {
@@ -240,13 +189,7 @@ export async function verifyPasskeyAuthentication(
         })
         .from(credentials)
         .innerJoin(users, eq(credentials.userId, users.id))
-        .where(
-            and(
-                eq(credentials.credentialId, credentialId),
-                eq(credentials.type, "webauthn"),
-                eq(users.tenantId, tenantId),
-            ),
-        )
+        .where(and(eq(credentials.credentialId, credentialId), eq(credentials.type, "webauthn"), eq(users.tenantId, tenantId)))
         .limit(1);
 
     const cred = row?.cred ?? null;
@@ -254,10 +197,7 @@ export async function verifyPasskeyAuthentication(
 
     // 타이밍 누출 방지: credential 이 없거나 잘못 매칭되더라도 동일한 검증 비용을 지불한다.
     const publicKey = valid ? b64uDecode(cred.publicKey!) : DUMMY_PUBLIC_KEY;
-    const transports =
-        valid && cred.transports
-            ? (JSON.parse(cred.transports) as AuthenticatorTransportFuture[])
-            : undefined;
+    const transports = valid && cred.transports ? (JSON.parse(cred.transports) as AuthenticatorTransportFuture[]) : undefined;
 
     let verified: boolean;
     let newCounter = 0;
@@ -282,10 +222,7 @@ export async function verifyPasskeyAuthentication(
 
     if (!valid || !verified) return null;
 
-    await db
-        .update(credentials)
-        .set({ counter: newCounter, lastUsedAt: new Date() })
-        .where(eq(credentials.id, cred.id));
+    await db.update(credentials).set({ counter: newCounter, lastUsedAt: new Date() }).where(eq(credentials.id, cred.id));
 
     return { userId: cred.userId, credentialDbId: cred.id, newCounter };
 }

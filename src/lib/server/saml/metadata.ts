@@ -15,28 +15,14 @@ function pemToBase64(pem: string): string {
 }
 
 function xmlEscape(str: string): string {
-    return str
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export async function generateIdpMetadataXml(
-    db: DB,
-    tenantId: string,
-    issuerUrl: string,
-): Promise<string> {
+export async function generateIdpMetadataXml(db: DB, tenantId: string, issuerUrl: string): Promise<string> {
     const [keyRow] = await db
         .select({ certPem: signingKeys.certPem })
         .from(signingKeys)
-        .where(
-            and(
-                eq(signingKeys.tenantId, tenantId),
-                eq(signingKeys.active, true),
-                isNull(signingKeys.rotatedAt),
-            ),
-        )
+        .where(and(eq(signingKeys.tenantId, tenantId), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)))
         .limit(1);
 
     const ssoUrl = `${issuerUrl}/saml/sso`;

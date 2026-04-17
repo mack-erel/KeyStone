@@ -2,16 +2,7 @@ import { fail, error } from "@sveltejs/kit";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
-import {
-    departments,
-    parts,
-    positions,
-    teams,
-    userDepartments,
-    userParts,
-    userTeams,
-    users,
-} from "$lib/server/db/schema";
+import { departments, parts, positions, teams, userDepartments, userParts, userTeams, users } from "$lib/server/db/schema";
 
 export const load: PageServerLoad = async ({ locals, params }) => {
     const { db, tenant } = requireDbContext(locals);
@@ -96,11 +87,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         .where(and(eq(parts.tenantId, tenant.id), eq(parts.status, "active")))
         .orderBy(asc(teams.name), asc(parts.name));
 
-    const allPositions = await db
-        .select({ id: positions.id, name: positions.name, level: positions.level })
-        .from(positions)
-        .where(eq(positions.tenantId, tenant.id))
-        .orderBy(asc(positions.level));
+    const allPositions = await db.select({ id: positions.id, name: positions.name, level: positions.level }).from(positions).where(eq(positions.tenantId, tenant.id)).orderBy(asc(positions.level));
 
     return {
         user,
@@ -198,9 +185,7 @@ export const actions: Actions = {
             if (!pos) return fail(404, { error: "직책을 찾을 수 없습니다." });
         }
 
-        await db
-            .insert(userDepartments)
-            .values({ tenantId: tenant.id, userId, departmentId, positionId, jobTitle, isPrimary });
+        await db.insert(userDepartments).values({ tenantId: tenant.id, userId, departmentId, positionId, jobTitle, isPrimary });
         return { addedDept: true };
     },
 
@@ -214,9 +199,7 @@ export const actions: Actions = {
         await db
             .update(userDepartments)
             .set({ endedAt: new Date() })
-            .where(
-                and(eq(userDepartments.id, membershipId), eq(userDepartments.tenantId, tenant.id)),
-            );
+            .where(and(eq(userDepartments.id, membershipId), eq(userDepartments.tenantId, tenant.id)));
         return { removedDept: true };
     },
 
@@ -245,9 +228,7 @@ export const actions: Actions = {
             .limit(1);
         if (!team) return fail(404, { error: "팀을 찾을 수 없습니다." });
 
-        await db
-            .insert(userTeams)
-            .values({ tenantId: tenant.id, userId, teamId, jobTitle, isPrimary });
+        await db.insert(userTeams).values({ tenantId: tenant.id, userId, teamId, jobTitle, isPrimary });
         return { addedTeam: true };
     },
 
@@ -290,9 +271,7 @@ export const actions: Actions = {
             .limit(1);
         if (!part) return fail(404, { error: "파트를 찾을 수 없습니다." });
 
-        await db
-            .insert(userParts)
-            .values({ tenantId: tenant.id, userId, partId, jobTitle, isPrimary });
+        await db.insert(userParts).values({ tenantId: tenant.id, userId, partId, jobTitle, isPrimary });
         return { addedPart: true };
     },
 

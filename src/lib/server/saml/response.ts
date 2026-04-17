@@ -11,12 +11,7 @@
 import { ensureXmlEngine, xmldsigjs } from "./xml-setup";
 
 function xmlEscape(str: string): string {
-    return str
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&apos;");
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 function toIso(d: Date): string {
@@ -120,10 +115,7 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
     const responseDoc = xmldsigjs.Parse(fullXml);
 
     // Assertion 엘리먼트 찾기
-    const assertionEls = responseDoc.getElementsByTagNameNS(
-        "urn:oasis:names:tc:SAML:2.0:assertion",
-        "Assertion",
-    );
+    const assertionEls = responseDoc.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:assertion", "Assertion");
     const assertionEl = assertionEls[0] as Element & {
         setIdAttribute?: (name: string, flag: boolean) => void;
     };
@@ -135,8 +127,7 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
     const signedXml = new xmldsigjs.SignedXml();
     // SignedInfo CanonicalizationMethod 을 exc-c14n 으로 교체 (기본값 standard c14n 은
     // signxml 등 검증기에서 거부되는 경우가 있음)
-    signedXml.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm =
-        "http://www.w3.org/2001/10/xml-exc-c14n#";
+    signedXml.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm = "http://www.w3.org/2001/10/xml-exc-c14n#";
     await signedXml.Sign({ name: "RSASSA-PKCS1-v1_5" }, params.privateKey, responseDoc, {
         x509: [certB64],
         references: [
@@ -151,10 +142,7 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
     // ── 4. Signature 를 Assertion 의 <saml:Issuer> 바로 뒤에 삽입 ────────────
     const sigNode = signedXml.XmlSignature.GetXml();
     if (sigNode) {
-        const issuerEls = assertionEl.getElementsByTagNameNS(
-            "urn:oasis:names:tc:SAML:2.0:assertion",
-            "Issuer",
-        );
+        const issuerEls = assertionEl.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:assertion", "Issuer");
         const issuerEl = issuerEls[0];
         if (issuerEl?.nextSibling) {
             assertionEl.insertBefore(sigNode, issuerEl.nextSibling);
@@ -172,30 +160,22 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
         responseEl.setIdAttribute?.("ID", true);
 
         const signedXmlResponse = new xmldsigjs.SignedXml();
-        signedXmlResponse.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm =
-            "http://www.w3.org/2001/10/xml-exc-c14n#";
-        await signedXmlResponse.Sign(
-            { name: "RSASSA-PKCS1-v1_5" },
-            params.privateKey,
-            responseDoc,
-            {
-                x509: [certB64],
-                references: [
-                    {
-                        uri: `#${responseId}`,
-                        hash: "SHA-256",
-                        transforms: ["enveloped", "exc-c14n"],
-                    },
-                ],
-            },
-        );
+        signedXmlResponse.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm = "http://www.w3.org/2001/10/xml-exc-c14n#";
+        await signedXmlResponse.Sign({ name: "RSASSA-PKCS1-v1_5" }, params.privateKey, responseDoc, {
+            x509: [certB64],
+            references: [
+                {
+                    uri: `#${responseId}`,
+                    hash: "SHA-256",
+                    transforms: ["enveloped", "exc-c14n"],
+                },
+            ],
+        });
 
         const responseSigNode = signedXmlResponse.XmlSignature.GetXml();
         if (responseSigNode) {
             // Response 의 직계 자식 <saml:Issuer> 바로 뒤에 삽입
-            const directIssuer = Array.from(responseDoc.documentElement.childNodes).find(
-                (n) => n.nodeType === 1 && (n as Element).localName === "Issuer",
-            ) as Element | undefined;
+            const directIssuer = Array.from(responseDoc.documentElement.childNodes).find((n) => n.nodeType === 1 && (n as Element).localName === "Issuer") as Element | undefined;
             if (directIssuer?.nextSibling) {
                 responseDoc.documentElement.insertBefore(responseSigNode, directIssuer.nextSibling);
             } else {
@@ -227,9 +207,7 @@ export interface BuildSamlErrorResponseParams {
  * SAML 오류 Response 를 서명하여 base64 인코딩한다.
  * Assertion 없이 Status 만 포함하며, Response 요소를 서명한다.
  */
-export async function buildSignedSamlErrorResponse(
-    params: BuildSamlErrorResponseParams,
-): Promise<string> {
+export async function buildSignedSamlErrorResponse(params: BuildSamlErrorResponseParams): Promise<string> {
     ensureXmlEngine();
 
     const responseId = `_r${crypto.randomUUID().replace(/-/g, "")}`;
@@ -258,20 +236,15 @@ export async function buildSignedSamlErrorResponse(
     responseEl.setIdAttribute?.("ID", true);
 
     const signedXml = new xmldsigjs.SignedXml();
-    signedXml.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm =
-        "http://www.w3.org/2001/10/xml-exc-c14n#";
+    signedXml.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm = "http://www.w3.org/2001/10/xml-exc-c14n#";
     await signedXml.Sign({ name: "RSASSA-PKCS1-v1_5" }, params.privateKey, responseDoc, {
         x509: [certB64],
-        references: [
-            { uri: `#${responseId}`, hash: "SHA-256", transforms: ["enveloped", "exc-c14n"] },
-        ],
+        references: [{ uri: `#${responseId}`, hash: "SHA-256", transforms: ["enveloped", "exc-c14n"] }],
     });
 
     const sigNode = signedXml.XmlSignature.GetXml();
     if (sigNode) {
-        const issuerEl = Array.from(responseDoc.documentElement.childNodes).find(
-            (n) => n.nodeType === 1 && (n as Element).localName === "Issuer",
-        ) as Element | undefined;
+        const issuerEl = Array.from(responseDoc.documentElement.childNodes).find((n) => n.nodeType === 1 && (n as Element).localName === "Issuer") as Element | undefined;
         if (issuerEl?.nextSibling) {
             responseDoc.documentElement.insertBefore(sigNode, issuerEl.nextSibling);
         } else {

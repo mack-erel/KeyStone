@@ -39,13 +39,7 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
     const [user] = await db
         .select()
         .from(users)
-        .where(
-            and(
-                eq(users.id, claims.sub),
-                eq(users.tenantId, tenant.id),
-                eq(users.status, "active"),
-            ),
-        )
+        .where(and(eq(users.id, claims.sub), eq(users.tenantId, tenant.id), eq(users.status, "active")))
         .limit(1);
 
     if (!user) {
@@ -69,9 +63,7 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         response.locale = user.locale;
         response.zoneinfo = user.zoneinfo;
         response.birthdate = user.birthdate;
-        response.updated_at = user.updatedAt
-            ? Math.floor(user.updatedAt.getTime() / 1000)
-            : undefined;
+        response.updated_at = user.updatedAt ? Math.floor(user.updatedAt.getTime() / 1000) : undefined;
     }
 
     if (scopes.has("phone")) {

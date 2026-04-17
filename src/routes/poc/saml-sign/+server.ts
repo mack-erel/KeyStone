@@ -67,10 +67,7 @@ export const GET = async () => {
 
     // 검증 라운드트립
     const parsedAgain = xmldsigjs.Parse(signedString);
-    const sigEls = parsedAgain.getElementsByTagNameNS(
-        "http://www.w3.org/2000/09/xmldsig#",
-        "Signature",
-    );
+    const sigEls = parsedAgain.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
     const verifier = new xmldsigjs.SignedXml(parsedAgain);
     verifier.LoadXml(sigEls[0]);
     const verified = await verifier.Verify();

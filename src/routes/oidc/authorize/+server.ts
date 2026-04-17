@@ -7,12 +7,7 @@ import { createGrant } from "$lib/server/oidc/grant";
 import { checkRateLimit } from "$lib/server/ratelimit";
 
 /** redirect_uri 가 확정된 이후에만 사용. 그 전 오류는 throw error() 로 직접 응답. */
-function authRedirectError(
-    redirectUri: string,
-    errorCode: string,
-    description: string,
-    state?: string | null,
-): never {
+function authRedirectError(redirectUri: string, errorCode: string, description: string, state?: string | null): never {
     const dest = new URL(redirectUri);
     dest.searchParams.set("error", errorCode);
     dest.searchParams.set("error_description", description);
@@ -63,20 +58,10 @@ export const GET: RequestHandler = async (event) => {
     // PKCE 검증
     if (client.requirePkce) {
         if (!codeChallenge) {
-            authRedirectError(
-                redirectUri,
-                "invalid_request",
-                "PKCE code_challenge 가 필요합니다.",
-                state,
-            );
+            authRedirectError(redirectUri, "invalid_request", "PKCE code_challenge 가 필요합니다.", state);
         }
         if (codeChallengeMethod !== "S256") {
-            authRedirectError(
-                redirectUri,
-                "invalid_request",
-                "code_challenge_method=S256 만 지원합니다.",
-                state,
-            );
+            authRedirectError(redirectUri, "invalid_request", "code_challenge_method=S256 만 지원합니다.", state);
         }
     }
 

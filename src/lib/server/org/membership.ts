@@ -1,14 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
-import {
-    departments,
-    parts,
-    positions,
-    teams,
-    userDepartments,
-    userParts,
-    userTeams,
-} from "$lib/server/db/schema";
+import { departments, parts, positions, teams, userDepartments, userParts, userTeams } from "$lib/server/db/schema";
 
 export interface DepartmentMembership {
     id: string;
@@ -90,10 +82,7 @@ export async function getUserMembership(db: DB, userId: string): Promise<UserMem
         code: r.deptCode,
         isPrimary: Boolean(r.isPrimary),
         jobTitle: r.jobTitle,
-        position:
-            r.posId != null
-                ? { id: r.posId, name: r.posName!, code: r.posCode, level: r.posLevel! }
-                : null,
+        position: r.posId != null ? { id: r.posId, name: r.posName!, code: r.posCode, level: r.posLevel! } : null,
     }));
 
     const mappedTeams: TeamMembership[] = teamRows.map((r) => ({

@@ -12,10 +12,7 @@ import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
 import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { acrSatisfies } from "$lib/server/auth/constants";
-import {
-    parseAuthnRequest,
-    verifySamlRedirectSignature,
-} from "$lib/server/saml/parse-authn-request";
+import { parseAuthnRequest, verifySamlRedirectSignature } from "$lib/server/saml/parse-authn-request";
 import { buildSignedSamlErrorResponse, buildSignedSamlResponse } from "$lib/server/saml/response";
 import { findSp, recordSamlSession } from "$lib/server/saml/sp";
 import { getUserMembership } from "$lib/server/org/membership";
@@ -83,9 +80,7 @@ export const GET: RequestHandler = async (event) => {
             certPem: signingKey.certPem,
             privateKey: signingKey.privateKey,
         });
-        const relayStateInput = authnRequest.relayState
-            ? `<input type="hidden" name="RelayState" value="${htmlEscape(authnRequest.relayState)}">`
-            : "";
+        const relayStateInput = authnRequest.relayState ? `<input type="hidden" name="RelayState" value="${htmlEscape(authnRequest.relayState)}">` : "";
         return new Response(
             `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>SSO 리다이렉트 중...</title></head>` +
                 `<body onload="document.getElementById('samlForm').submit()">` +
@@ -113,10 +108,7 @@ export const GET: RequestHandler = async (event) => {
     }
 
     // RequestedAuthnContext: 세션 ACR 이 SP 요구 수준을 만족하는지 검사한다.
-    if (
-        authnRequest.requestedAuthnContext &&
-        !acrSatisfies(locals.session.acr, authnRequest.requestedAuthnContext)
-    ) {
+    if (authnRequest.requestedAuthnContext && !acrSatisfies(locals.session.acr, authnRequest.requestedAuthnContext)) {
         // 세션이 issueInstant 이후에 생성됐다면 재인증을 이미 거쳤으나 ACR 이 여전히 부족한 것.
         // (예: MFA 미설정 사용자가 refeds/mfa 를 요구받은 경우) → NoAuthnContext 오류 반환.
         const isPostReauth = locals.session.createdAt >= authnRequest.issueInstant;
@@ -129,9 +121,7 @@ export const GET: RequestHandler = async (event) => {
                 certPem: signingKey.certPem,
                 privateKey: signingKey.privateKey,
             });
-            const relayStateInput = authnRequest.relayState
-                ? `<input type="hidden" name="RelayState" value="${htmlEscape(authnRequest.relayState)}">`
-                : "";
+            const relayStateInput = authnRequest.relayState ? `<input type="hidden" name="RelayState" value="${htmlEscape(authnRequest.relayState)}">` : "";
             return new Response(
                 `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>SSO 리다이렉트 중...</title></head>` +
                     `<body onload="document.getElementById('samlForm').submit()">` +
@@ -165,11 +155,7 @@ export const GET: RequestHandler = async (event) => {
     if (sp.allowedAttributes) {
         try {
             const parsed = JSON.parse(sp.allowedAttributes) as unknown;
-            allowedSet = new Set(
-                Array.isArray(parsed)
-                    ? parsed.filter((v): v is string => typeof v === "string")
-                    : DEFAULT_ALLOWED,
-            );
+            allowedSet = new Set(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : DEFAULT_ALLOWED);
         } catch {
             allowedSet = new Set(DEFAULT_ALLOWED);
         }
@@ -194,15 +180,10 @@ export const GET: RequestHandler = async (event) => {
     setAttr("phoneNumber", user.phoneNumber);
 
     // 조직 정보는 SP 가 명시적으로 허용한 경우에만 포함한다.
-    const wantsOrg =
-        allowedSet.has("department") ||
-        allowedSet.has("team") ||
-        allowedSet.has("jobTitle") ||
-        allowedSet.has("position");
+    const wantsOrg = allowedSet.has("department") || allowedSet.has("team") || allowedSet.has("jobTitle") || allowedSet.has("position");
     if (wantsOrg) {
         const membership = await getUserMembership(db, user.id);
-        const primaryDept =
-            membership.departments.find((d) => d.isPrimary) ?? membership.departments[0];
+        const primaryDept = membership.departments.find((d) => d.isPrimary) ?? membership.departments[0];
         const primaryTeam = membership.teams.find((t) => t.isPrimary) ?? membership.teams[0];
         if (primaryDept) {
             setAttr("department", primaryDept.name);
@@ -216,10 +197,7 @@ export const GET: RequestHandler = async (event) => {
 
     // NameID 결정
     const nameIdFormat = sp.nameIdFormat;
-    const nameId =
-        nameIdFormat === "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
-            ? user.id
-            : (user.email ?? user.id);
+    const nameId = nameIdFormat === "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent" ? user.id : (user.email ?? user.id);
 
     const sessionIndex = `_si${crypto.randomUUID().replace(/-/g, "")}`;
 
@@ -263,17 +241,10 @@ export const GET: RequestHandler = async (event) => {
 
     // HTTP-POST 바인딩: auto-submit 폼 렌더링
     function htmlEscape(s: string): string {
-        return s
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
-    const relayStateInput = relayState
-        ? `<input type="hidden" name="RelayState" value="${htmlEscape(relayState)}">`
-        : "";
+    const relayStateInput = relayState ? `<input type="hidden" name="RelayState" value="${htmlEscape(relayState)}">` : "";
 
     const html = `<!DOCTYPE html>
 <html lang="ko">

@@ -49,16 +49,9 @@ function buildConfig(fd: FormData): LdapProviderConfig {
     return config;
 }
 
-async function encryptBindPassword(
-    config: LdapProviderConfig,
-    signingKeySecret: string | undefined,
-): Promise<LdapProviderConfig> {
+async function encryptBindPassword(config: LdapProviderConfig, signingKeySecret: string | undefined): Promise<LdapProviderConfig> {
     if (!config.bindPassword || !signingKeySecret) return config;
-    const enc = await encryptSecret(
-        config.bindPassword,
-        signingKeySecret,
-        "idp-ldap-bind-password-v1",
-    );
+    const enc = await encryptSecret(config.bindPassword, signingKeySecret, "idp-ldap-bind-password-v1");
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { bindPassword: _, ...rest } = config;
     return { ...rest, bindPasswordEnc: enc };
@@ -147,9 +140,7 @@ export const actions: Actions = {
 
         if (!id) return fail(400, { error: "잘못된 요청입니다." });
 
-        await db
-            .delete(identityProviders)
-            .where(and(eq(identityProviders.id, id), eq(identityProviders.tenantId, tenant.id)));
+        await db.delete(identityProviders).where(and(eq(identityProviders.id, id), eq(identityProviders.tenantId, tenant.id)));
 
         const meta = getRequestMetadata(event);
         await recordAuditEvent(db, {

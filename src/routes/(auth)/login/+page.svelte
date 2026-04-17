@@ -56,31 +56,25 @@ async function loginWithPasskey() {
         </div>
 
         {#if !data.dbReady && data.runtimeError}
-            <div
-                class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 {data.runtimeError}
             </div>
         {/if}
 
         {#if form?.error}
-            <div
-                class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {form.error}
             </div>
         {/if}
 
         {#if passkeyError}
-            <div
-                class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {passkeyError}
             </div>
         {/if}
 
         <form method="POST" class="space-y-4">
-            <input
-                type="hidden"
-                name="redirectTo"
-                value={form?.redirectTo ?? data.redirectTo ?? ""} />
+            <input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ""} />
 
             <div>
                 <label for="username" class="block text-sm font-medium text-gray-700">
@@ -129,25 +123,12 @@ async function loginWithPasskey() {
             class="mt-4 flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60">
             {#if passkeyLoading}
                 <svg class="h-4 w-4 animate-spin text-gray-500" fill="none" viewBox="0 0 24 24">
-                    <circle
-                        class="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        stroke-width="4"></circle>
-                    <path
-                        class="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
                 인증 중...
             {:else}
-                <svg
-                    class="h-4 w-4 text-gray-500"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24">
+                <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
