@@ -364,6 +364,20 @@ function writeFile(filePath: string, content: string) {
 	fs.writeFileSync(filePath, content, 'utf-8');
 }
 
+/** mkdtempSync으로 안전한 임시 파일 생성 (symlink attack 방지) */
+function createTempFile(prefix: string, content: string): { filePath: string; cleanup: () => void } {
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+	const filePath = path.join(tmpDir, 'content.sql');
+	fs.writeFileSync(filePath, content, { mode: 0o600 });
+	return {
+		filePath,
+		cleanup: () => {
+			try { fs.unlinkSync(filePath); } catch { /* ignore */ }
+			try { fs.rmdirSync(tmpDir); } catch { /* ignore */ }
+		}
+	};
+}
+
 function replaceAll(content: string, search: string, replacement: string): string {
 	return content.split(search).join(replacement);
 }
@@ -728,13 +742,12 @@ async function handleMigrationConflicts(
 			'PRAGMA foreign_keys = ON;'
 		].join('\n');
 
-		const tmpFile = path.join(os.tmpdir(), `keystone_drop_${Date.now()}.sql`);
-		writeFile(tmpFile, dropSQL);
+		const { filePath: dropTmpFile, cleanup: dropCleanup } = createTempFile('idp-drop-', dropSQL);
 		try {
 			const dropResult = await runWithSpinner(
 				`겹치는 테이블 삭제 중 (${dbName})...`,
 				'wrangler',
-				['d1', 'execute', dbName, '--remote', '--file', tmpFile],
+				['d1', 'execute', dbName, '--remote', '--file', dropTmpFile],
 				{ env }
 			);
 			if (!dropResult.success) {
@@ -743,7 +756,7 @@ async function handleMigrationConflicts(
 				process.exit(1);
 			}
 		} finally {
-			fs.unlinkSync(tmpFile);
+			dropCleanup();
 		}
 		console.log(green(`  ✓ ${conflicts.length}개 테이블 삭제 완료 → 전체 마이그레이션 진행`));
 		return 'proceed';
@@ -752,13 +765,12 @@ async function handleMigrationConflicts(
 	// Option 2: 필터링된 SQL + drizzle tracking
 	const combinedSQL =
 		buildFilteredMigrationSQL(new Set(conflicts)) + '\n' + buildDrizzleTrackingSQL();
-	const tmpFile = path.join(os.tmpdir(), `keystone_filtered_${Date.now()}.sql`);
-	writeFile(tmpFile, combinedSQL);
+	const { filePath: filteredTmpFile, cleanup: filteredCleanup } = createTempFile('idp-migrate-', combinedSQL);
 	try {
 		const runResult = await runWithSpinner(
 			`필터링된 마이그레이션 실행 중 (${dbName})...`,
 			'wrangler',
-			['d1', 'execute', dbName, '--remote', '--file', tmpFile],
+			['d1', 'execute', dbName, '--remote', '--file', filteredTmpFile],
 			{ env }
 		);
 		if (!runResult.success) {
@@ -767,7 +779,7 @@ async function handleMigrationConflicts(
 			process.exit(1);
 		}
 	} finally {
-		fs.unlinkSync(tmpFile);
+		filteredCleanup();
 	}
 	console.log(green(`  ✓ 필터링된 마이그레이션 완료 (drizzle tracking 업데이트됨)`));
 	return 'done';
@@ -979,9 +991,7 @@ async function seedAdminToDb(
 		`INSERT INTO identities (id, tenant_id, user_id, provider, subject, email, linked_at) SELECT '${identityId}', t.id, '${userId}', 'local', '${esc(data.email)}', '${esc(data.email)}', ${now} FROM tenants t WHERE t.slug = 'default' AND NOT EXISTS (SELECT 1 FROM identities WHERE user_id = '${userId}' AND provider = 'local');`
 	].join('\n');
 
-	const tmpFile = path.join(os.tmpdir(), `idp_seed_${Date.now()}.sql`);
-	writeFile(tmpFile, sql);
-
+	const { filePath: seedTmpFile, cleanup: seedCleanup } = createTempFile('idp-seed-', sql);
 	const actualEnv = isPreview ? { ...env, CLOUDFLARE_IS_PREVIEW: 'true' } : env;
 	const label = `관리자 계정 생성 중 (${dbName}${isPreview ? ' preview' : ''})...`;
 
@@ -989,7 +999,7 @@ async function seedAdminToDb(
 		const result = await runWithSpinner(
 			label,
 			'wrangler',
-			['d1', 'execute', dbName, '--remote', '--file', tmpFile],
+			['d1', 'execute', dbName, '--remote', '--file', seedTmpFile],
 			{ env: actualEnv }
 		);
 
@@ -999,11 +1009,7 @@ async function seedAdminToDb(
 		}
 		return true;
 	} finally {
-		try {
-			fs.unlinkSync(tmpFile);
-		} catch {
-			/* ignore */
-		}
+		seedCleanup();
 	}
 }
 
