@@ -23,7 +23,7 @@ jobs:
                         - "src/**"
                         - "static/**"
                         - "package.json"
-                        - "bun.lock"
+                        - "bun.lockb"
                         - "vite.config.*"
                         - "svelte.config.*"
                         - "tsconfig.json"
