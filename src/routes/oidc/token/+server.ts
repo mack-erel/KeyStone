@@ -2,14 +2,14 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { findActiveUserById } from '$lib/server/auth/users';
-import { recordAuditEvent } from '$lib/server/audit';
+import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit';
 import { checkRateLimit } from '$lib/server/ratelimit';
 import { findOidcClient, isValidClientSecret, parseBasicAuth } from '$lib/server/oidc/client';
-import { consumeGrant, findGrant } from '$lib/server/oidc/grant';
+import { findAndConsumeGrant } from '$lib/server/oidc/grant';
 import { verifyPkce } from '$lib/server/oidc/pkce';
 import { generateAccessToken, getActiveSigningKey, signJwt } from '$lib/server/crypto/keys';
 
-const ACCESS_TOKEN_TTL_S = 3600; // 1시간
+const ACCESS_TOKEN_TTL_S = 300; // 5분
 const ID_TOKEN_TTL_S = 600; // 10분
 
 function tokenError(code: string, description: string, status = 400): Response {
@@ -19,16 +19,15 @@ function tokenError(code: string, description: string, status = 400): Response {
 	});
 }
 
-export const POST: RequestHandler = async ({ locals, request, url }) => {
+export const POST: RequestHandler = async (event) => {
+	const { locals, request, url } = event;
 	const { db, tenant } = requireDbContext(locals);
 	const { signingKeySecret, issuerUrl } = locals.runtimeConfig;
 
 	// 레이트 리밋: IP당 30회/분
-	const ip =
-		request.headers.get('cf-connecting-ip') ??
-		request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-		'unknown';
-	const rl = await checkRateLimit(db, `token:${ip}`, { windowMs: 60 * 1000, limit: 30 });
+	const { ip, userAgent } = getRequestMetadata(event);
+	const ipKey = ip ?? 'unknown';
+	const rl = await checkRateLimit(db, `token:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
 	if (!rl.allowed) {
 		return new Response(
 			JSON.stringify({
@@ -80,7 +79,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		return tokenError('invalid_client', '등록되지 않은 클라이언트입니다.', 401);
 	}
 
-	if (!isValidClientSecret(client, clientSecret)) {
+	if (!(await isValidClientSecret(client, clientSecret))) {
 		return tokenError('invalid_client', '클라이언트 인증에 실패했습니다.', 401);
 	}
 
@@ -92,7 +91,8 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		return tokenError('invalid_request', 'code 와 redirect_uri 는 필수입니다.');
 	}
 
-	const grant = await findGrant(db, tenant.id, clientId, code);
+	// 조회와 소진을 원자적으로 처리 (replay 방지)
+	const grant = await findAndConsumeGrant(db, tenant.id, clientId, code);
 	if (!grant) {
 		return tokenError('invalid_grant', '유효하지 않거나 만료된 authorization code 입니다.');
 	}
@@ -115,9 +115,6 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 			return tokenError('invalid_grant', 'code_verifier 검증에 실패했습니다.');
 		}
 	}
-
-	// code 소진 처리 (replay 방지)
-	await consumeGrant(db, grant.id);
 
 	const user = await findActiveUserById(db, grant.userId);
 	if (!user) {
@@ -190,6 +187,8 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 		spOrClientId: clientId,
 		kind: 'oidc_token',
 		outcome: 'success',
+		ip,
+		userAgent,
 		detail: { clientId, scope: grant.scope }
 	});
 

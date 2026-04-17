@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { DB } from '$lib/server/db';
 import { oidcClients } from '$lib/server/db/schema';
+import { verifyPassword } from '$lib/server/auth/password';
 
 export type OidcClientRecord = typeof oidcClients.$inferSelect;
 
@@ -29,18 +30,21 @@ export function parseBasicAuth(
 	if (!authHeader.startsWith('Basic ')) return null;
 	const decoded = atob(authHeader.slice(6));
 	const sep = decoded.indexOf(':');
-	return {
-		clientId: sep > -1 ? decoded.slice(0, sep) : decoded,
-		clientSecret: sep > -1 ? decoded.slice(sep + 1) : ''
-	};
+	try {
+		return {
+			clientId: decodeURIComponent(sep > -1 ? decoded.slice(0, sep) : decoded),
+			clientSecret: decodeURIComponent(sep > -1 ? decoded.slice(sep + 1) : '')
+		};
+	} catch {
+		return null;
+	}
 }
 
-/** M1: 평문 비교 — M2 에서 해시 비교로 전환 예정 */
-export function isValidClientSecret(client: OidcClientRecord, clientSecret: string): boolean {
+export async function isValidClientSecret(client: OidcClientRecord, clientSecret: string): Promise<boolean> {
 	if (client.tokenEndpointAuthMethod === 'none') return true;
-	return Boolean(
-		client.clientSecretHash && clientSecret && clientSecret === client.clientSecretHash
-	);
+	if (!client.clientSecretHash || !clientSecret) return false;
+	const result = await verifyPassword(clientSecret, client.clientSecretHash);
+	return result.valid;
 }
 
 export function parseRedirectUris(client: OidcClientRecord): string[] {

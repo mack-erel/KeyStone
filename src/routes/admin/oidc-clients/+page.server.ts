@@ -4,6 +4,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit/index';
 import { oidcClients } from '$lib/server/db/schema';
+import { hashPassword } from '$lib/server/auth/password';
 
 function generateClientId(): string {
 	return crypto.randomUUID().replace(/-/g, '').slice(0, 20);
@@ -63,19 +64,21 @@ export const actions: Actions = {
 			| 'client_secret_basic'
 			| 'client_secret_post'
 			| 'none';
-		const requirePkce = fd.get('requirePkce') === 'true';
+		// public client(none)는 PKCE 필수
+		const requirePkce = tokenMethod === 'none' ? true : fd.get('requirePkce') === 'true';
 
 		if (!name) return fail(400, { create: true, error: '이름은 필수입니다.' });
 		if (!redirectUrisRaw) return fail(400, { create: true, error: 'Redirect URI 는 필수입니다.' });
 
 		const clientId = generateClientId();
 		const clientSecret = tokenMethod !== 'none' ? generateClientSecret() : null;
+		const clientSecretHashed = clientSecret ? await hashPassword(clientSecret) : null;
 
 		await db.insert(oidcClients).values({
 			id: crypto.randomUUID(),
 			tenantId: tenant.id,
 			clientId,
-			clientSecretHash: clientSecret, // 현재 평문 저장 (M5에서 해시 전환)
+			clientSecretHash: clientSecretHashed,
 			name,
 			redirectUris: parseUris(redirectUrisRaw),
 			postLogoutRedirectUris: postLogoutUrisRaw ? parseUris(postLogoutUrisRaw) : null,
@@ -130,6 +133,17 @@ export const actions: Actions = {
 			})
 			.where(and(eq(oidcClients.id, id), eq(oidcClients.tenantId, tenant.id)));
 
+		const requestMetadata = getRequestMetadata(event);
+		await recordAuditEvent(db, {
+			tenantId: tenant.id,
+			actorId: locals.user!.id,
+			kind: 'oidc_client_updated',
+			outcome: 'success',
+			ip: requestMetadata.ip,
+			userAgent: requestMetadata.userAgent,
+			detail: { clientDbId: id, name, enabled }
+		});
+
 		return { update: true };
 	},
 
@@ -143,9 +157,10 @@ export const actions: Actions = {
 		if (!id) return fail(400, { error: '잘못된 요청입니다.' });
 
 		const newSecret = generateClientSecret();
+		const newSecretHashed = await hashPassword(newSecret);
 		await db
 			.update(oidcClients)
-			.set({ clientSecretHash: newSecret, updatedAt: new Date() })
+			.set({ clientSecretHash: newSecretHashed, updatedAt: new Date() })
 			.where(and(eq(oidcClients.id, id), eq(oidcClients.tenantId, tenant.id)));
 
 		const requestMetadata = getRequestMetadata(event);

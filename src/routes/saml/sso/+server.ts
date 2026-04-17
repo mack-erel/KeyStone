@@ -9,14 +9,15 @@ import { error, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { getRuntimeConfig } from '$lib/server/auth/runtime';
-import { recordAuditEvent } from '$lib/server/audit';
+import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit';
 import { getActiveSigningKey } from '$lib/server/crypto/keys';
-import { parseAuthnRequest } from '$lib/server/saml/parse-authn-request';
-import { buildSignedSamlResponse } from '$lib/server/saml/response';
+import { parseAuthnRequest, verifySamlRedirectSignature } from '$lib/server/saml/parse-authn-request';
+import { buildSignedSamlErrorResponse, buildSignedSamlResponse } from '$lib/server/saml/response';
 import { findSp, recordSamlSession } from '$lib/server/saml/sp';
 import { getUserMembership } from '$lib/server/org/membership';
 
-export const GET: RequestHandler = async ({ locals, url, platform }) => {
+export const GET: RequestHandler = async (event) => {
+	const { locals, url, platform } = event;
 	const { db, tenant } = requireDbContext(locals);
 	const config = getRuntimeConfig(platform);
 
@@ -43,6 +44,54 @@ export const GET: RequestHandler = async ({ locals, url, platform }) => {
 		throw error(403, `등록되지 않은 SP 입니다: ${authnRequest.issuer}`);
 	}
 
+	// AuthnRequest 서명 검증: SP 가 서명을 요구하거나 Signature 파라미터가 있는 경우
+	const hasSig = url.searchParams.has('Signature');
+	if (sp.wantAuthnRequestsSigned || hasSig) {
+		if (!sp.cert) {
+			throw error(400, 'SP 인증서가 등록되지 않아 AuthnRequest 서명을 검증할 수 없습니다.');
+		}
+		const rawQuery = url.search.slice(1);
+		const sigValid = await verifySamlRedirectSignature(rawQuery, sp.cert);
+		if (!sigValid) {
+			throw error(400, 'AuthnRequest 서명 검증에 실패했습니다.');
+		}
+	}
+
+	// ACS URL: AuthnRequest 에 명시된 경우 반드시 등록된 SP의 ACS URL 과 일치해야 한다.
+	// 다른 URL 을 허용하면 공격자가 서명된 Assertion 을 자신의 서버로 가로챌 수 있다.
+	if (authnRequest.acsUrl && authnRequest.acsUrl !== sp.acsUrl) {
+		throw error(400, 'AuthnRequest의 ACS URL이 등록된 SP ACS URL과 일치하지 않습니다.');
+	}
+	const acsUrl = sp.acsUrl;
+
+	const signingKey = await getActiveSigningKey(db, tenant.id, config.signingKeySecret);
+	if (!signingKey || !signingKey.certPem) {
+		throw error(503, '서명 키가 없습니다. 서버를 재시작하여 키를 생성하세요.');
+	}
+
+	// isPassive: 사용자 인터랙션 없이 처리해야 하므로, 세션이 없으면 NoPassive 오류를 ACS 로 반환.
+	if (authnRequest.isPassive && (!locals.user || !locals.session)) {
+		const errorB64 = await buildSignedSamlErrorResponse({
+			inResponseTo: authnRequest.id,
+			acsUrl,
+			issuerUrl: config.issuerUrl,
+			subStatusCode: 'urn:oasis:names:tc:SAML:2.0:status:NoPassive',
+			certPem: signingKey.certPem,
+			privateKey: signingKey.privateKey
+		});
+		const relayStateInput = authnRequest.relayState
+			? `<input type="hidden" name="RelayState" value="${htmlEscape(authnRequest.relayState)}">`
+			: '';
+		return new Response(
+			`<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>SSO 리다이렉트 중...</title></head>` +
+				`<body onload="document.getElementById('samlForm').submit()">` +
+				`<form id="samlForm" method="POST" action="${htmlEscape(acsUrl)}">` +
+				`<input type="hidden" name="SAMLResponse" value="${errorB64}">${relayStateInput}` +
+				`</form></body></html>`,
+			{ headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+		);
+	}
+
 	// 로그인 여부 확인 → 미로그인 시 로그인 페이지로
 	if (!locals.user || !locals.session) {
 		const loginUrl = new URL('/login', url);
@@ -50,12 +99,13 @@ export const GET: RequestHandler = async ({ locals, url, platform }) => {
 		throw redirect(302, loginUrl.toString());
 	}
 
-	// ACS URL: AuthnRequest 에 명시됐으면 사용, 없으면 DB 값 사용
-	const acsUrl = authnRequest.acsUrl ?? sp.acsUrl;
-
-	const signingKey = await getActiveSigningKey(db, tenant.id, config.signingKeySecret);
-	if (!signingKey || !signingKey.certPem) {
-		throw error(503, '서명 키가 없습니다. 서버를 재시작하여 키를 생성하세요.');
+	// forceAuthn: 세션이 AuthnRequest 발급 이전에 생성된 경우 재인증을 강제한다.
+	// 로그인 후 새 세션의 createdAt > issueInstant 이므로 자연스럽게 루프가 끊긴다.
+	if (authnRequest.forceAuthn && locals.session.createdAt < authnRequest.issueInstant) {
+		const loginUrl = new URL('/login', url);
+		loginUrl.searchParams.set('redirectTo', url.pathname + url.search);
+		loginUrl.searchParams.set('forceAuthn', 'true');
+		throw redirect(302, loginUrl.toString());
 	}
 
 	// Attribute 매핑 (attributeMappingJson 또는 기본값)
@@ -128,6 +178,7 @@ export const GET: RequestHandler = async ({ locals, url, platform }) => {
 		signResponse: sp.signResponse
 	});
 
+	const requestMetadata = getRequestMetadata(event);
 	await recordAuditEvent(db, {
 		tenantId: tenant.id,
 		userId: user.id,
@@ -135,23 +186,29 @@ export const GET: RequestHandler = async ({ locals, url, platform }) => {
 		spOrClientId: sp.entityId,
 		kind: 'saml_sso',
 		outcome: 'success',
+		ip: requestMetadata.ip,
+		userAgent: requestMetadata.userAgent,
 		detail: { spEntityId: sp.entityId, nameId }
 	});
 
 	// HTTP-POST 바인딩: auto-submit 폼 렌더링
+	function htmlEscape(s: string): string {
+		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+	}
+
 	const relayStateInput = relayState
-		? `<input type="hidden" name="RelayState" value="${relayState.replace(/"/g, '&quot;')}">`
+		? `<input type="hidden" name="RelayState" value="${htmlEscape(relayState)}">`
 		: '';
 
 	const html = `<!DOCTYPE html>
 <html lang="ko">
 <head><meta charset="UTF-8"><title>SSO 리다이렉트 중...</title></head>
-<body>
-<form id="samlForm" method="POST" action="${acsUrl.replace(/"/g, '&quot;')}">
+<body onload="document.getElementById('samlForm').submit()">
+<form id="samlForm" method="POST" action="${htmlEscape(acsUrl)}">
   <input type="hidden" name="SAMLResponse" value="${samlResponseB64}">
   ${relayStateInput}
 </form>
-<script>document.getElementById('samlForm').submit();</script>
 </body>
 </html>`;
 

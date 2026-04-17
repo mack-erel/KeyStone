@@ -205,3 +205,73 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
 	const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join('');
 	return btoa(binary);
 }
+
+export interface BuildSamlErrorResponseParams {
+	inResponseTo: string;
+	acsUrl: string;
+	issuerUrl: string;
+	/** 2차 StatusCode (예: urn:oasis:names:tc:SAML:2.0:status:NoPassive) */
+	subStatusCode: string;
+	certPem: string;
+	privateKey: CryptoKey;
+}
+
+/**
+ * SAML 오류 Response 를 서명하여 base64 인코딩한다.
+ * Assertion 없이 Status 만 포함하며, Response 요소를 서명한다.
+ */
+export async function buildSignedSamlErrorResponse(
+	params: BuildSamlErrorResponseParams
+): Promise<string> {
+	ensureXmlEngine();
+
+	const responseId = `_r${crypto.randomUUID().replace(/-/g, '')}`;
+	const issueInstant = toIso(new Date());
+	const certB64 = pemToBase64(params.certPem);
+
+	const fullXml =
+		`<samlp:Response` +
+		` xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"` +
+		` xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"` +
+		` ID="${responseId}" Version="2.0" IssueInstant="${issueInstant}"` +
+		` InResponseTo="${xmlEscape(params.inResponseTo)}"` +
+		` Destination="${xmlEscape(params.acsUrl)}">` +
+		`<saml:Issuer>${xmlEscape(params.issuerUrl)}</saml:Issuer>` +
+		`<samlp:Status>` +
+		`<samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Responder">` +
+		`<samlp:StatusCode Value="${xmlEscape(params.subStatusCode)}"/>` +
+		`</samlp:StatusCode>` +
+		`</samlp:Status>` +
+		`</samlp:Response>`;
+
+	const responseDoc = xmldsigjs.Parse(fullXml);
+	const responseEl = responseDoc.documentElement as Element & {
+		setIdAttribute?: (name: string, flag: boolean) => void;
+	};
+	responseEl.setIdAttribute?.('ID', true);
+
+	const signedXml = new xmldsigjs.SignedXml();
+	signedXml.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm =
+		'http://www.w3.org/2001/10/xml-exc-c14n#';
+	await signedXml.Sign({ name: 'RSASSA-PKCS1-v1_5' }, params.privateKey, responseDoc, {
+		x509: [certB64],
+		references: [{ uri: `#${responseId}`, hash: 'SHA-256', transforms: ['enveloped', 'exc-c14n'] }]
+	});
+
+	const sigNode = signedXml.XmlSignature.GetXml();
+	if (sigNode) {
+		const issuerEl = Array.from(responseDoc.documentElement.childNodes).find(
+			(n) => n.nodeType === 1 && (n as Element).localName === 'Issuer'
+		) as Element | undefined;
+		if (issuerEl?.nextSibling) {
+			responseDoc.documentElement.insertBefore(sigNode, issuerEl.nextSibling);
+		} else {
+			responseDoc.documentElement.appendChild(sigNode);
+		}
+	}
+
+	const serialized = xmldsigjs.Stringify(responseDoc).replace(/^<\?xml[^?]*\?>\s*/i, '');
+	const bytes = new TextEncoder().encode(serialized);
+	const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join('');
+	return btoa(binary);
+}

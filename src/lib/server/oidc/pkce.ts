@@ -10,8 +10,6 @@ export async function verifyPkce(
 		const hash = await crypto.subtle.digest('SHA-256', enc.encode(codeVerifier));
 		return b64uEncode(hash) === codeChallenge;
 	}
-	if (codeChallengeMethod === 'plain') {
-		return codeVerifier === codeChallenge;
-	}
+	// plain 방식은 code_verifier 를 그대로 노출하므로 허용하지 않는다.
 	return false;
 }
