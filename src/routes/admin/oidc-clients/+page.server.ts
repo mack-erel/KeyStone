@@ -1,7 +1,7 @@
 import { fail } from "@sveltejs/kit";
 import { desc, eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireDbContext } from "$lib/server/auth/guards";
+import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { oidcClients } from "$lib/server/db/schema";
 import { hashPassword } from "$lib/server/auth/password";
@@ -28,7 +28,7 @@ function parseUris(raw: string): string {
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant } = requireAdminContext(locals);
     const rows = await db
         .select({
             id: oidcClients.id,
@@ -53,7 +53,7 @@ export const actions: Actions = {
     // ── 클라이언트 생성 ────────────────────────────────────────────────────────
     create: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const name = String(fd.get("name") ?? "").trim();
@@ -103,7 +103,7 @@ export const actions: Actions = {
     // ── 클라이언트 수정 ────────────────────────────────────────────────────────
     update: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
@@ -111,11 +111,18 @@ export const actions: Actions = {
         const redirectUrisRaw = String(fd.get("redirectUris") ?? "").trim();
         const postLogoutUrisRaw = String(fd.get("postLogoutRedirectUris") ?? "").trim();
         const scopes = String(fd.get("scopes") ?? "openid").trim();
-        const requirePkce = fd.get("requirePkce") === "true";
         const enabled = fd.get("enabled") === "true";
 
         if (!id || !name) return fail(400, { error: "잘못된 요청입니다." });
         if (!redirectUrisRaw) return fail(400, { error: "Redirect URI 는 필수입니다." });
+
+        // public client(none)는 PKCE를 수정 시에도 강제 유지
+        const [existingClient] = await db
+            .select({ tokenEndpointAuthMethod: oidcClients.tokenEndpointAuthMethod })
+            .from(oidcClients)
+            .where(and(eq(oidcClients.id, id), eq(oidcClients.tenantId, tenant.id)))
+            .limit(1);
+        const requirePkce = existingClient?.tokenEndpointAuthMethod === "none" ? true : fd.get("requirePkce") === "true";
 
         await db
             .update(oidcClients)
@@ -147,7 +154,7 @@ export const actions: Actions = {
     // ── 시크릿 재생성 ─────────────────────────────────────────────────────────
     regenerateSecret: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
@@ -177,7 +184,7 @@ export const actions: Actions = {
     // ── 삭제 ─────────────────────────────────────────────────────────────────
     delete: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");

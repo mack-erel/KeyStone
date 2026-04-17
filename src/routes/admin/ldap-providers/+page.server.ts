@@ -1,7 +1,7 @@
 import { fail } from "@sveltejs/kit";
 import { and, desc, eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireDbContext } from "$lib/server/auth/guards";
+import { requireAdminContext } from "$lib/server/auth/guards";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { encryptSecret } from "$lib/server/crypto/keys";
@@ -58,7 +58,7 @@ async function encryptBindPassword(config: LdapProviderConfig, signingKeySecret:
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant } = requireAdminContext(locals);
 
     const rows = await db
         .select()
@@ -71,7 +71,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
     create: async (event) => {
-        const { db, tenant } = requireDbContext(event.locals);
+        const { db, tenant } = requireAdminContext(event.locals);
         const fd = await event.request.formData();
 
         const name = String(fd.get("name") ?? "").trim();
@@ -113,7 +113,7 @@ export const actions: Actions = {
     },
 
     update: async (event) => {
-        const { db, tenant } = requireDbContext(event.locals);
+        const { db, tenant } = requireAdminContext(event.locals);
         const fd = await event.request.formData();
 
         const id = String(fd.get("id") ?? "");
@@ -134,7 +134,7 @@ export const actions: Actions = {
     },
 
     delete: async (event) => {
-        const { db, tenant } = requireDbContext(event.locals);
+        const { db, tenant } = requireAdminContext(event.locals);
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
 

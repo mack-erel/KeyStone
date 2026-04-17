@@ -1,12 +1,12 @@
 import { fail } from "@sveltejs/kit";
 import { desc, eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireDbContext } from "$lib/server/auth/guards";
+import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { samlSps } from "$lib/server/db/schema";
 
 export const load: PageServerLoad = async ({ locals }) => {
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant } = requireAdminContext(locals);
     const rows = await db
         .select({
             id: samlSps.id,
@@ -50,7 +50,7 @@ export const actions: Actions = {
     // ── SP 생성 ────────────────────────────────────────────────────────────────
     create: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const name = String(fd.get("name") ?? "").trim();
@@ -109,7 +109,7 @@ export const actions: Actions = {
     // ── SP 수정 ────────────────────────────────────────────────────────────────
     update: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
@@ -149,7 +149,7 @@ export const actions: Actions = {
     // ── SP 삭제 ────────────────────────────────────────────────────────────────
     delete: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");

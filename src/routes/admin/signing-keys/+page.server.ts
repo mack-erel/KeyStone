@@ -1,14 +1,14 @@
 import { fail } from "@sveltejs/kit";
 import { desc, eq, and, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireDbContext } from "$lib/server/auth/guards";
+import { requireAdminContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { signingKeys } from "$lib/server/db/schema";
 import { generateRsaSigningKey, wrapPrivateKey, generateSelfSignedCert } from "$lib/server/crypto/keys";
 
 export const load: PageServerLoad = async ({ locals }) => {
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant } = requireAdminContext(locals);
     const rows = await db
         .select({
             id: signingKeys.id,
@@ -34,7 +34,7 @@ export const actions: Actions = {
     // ── 새 키 생성 + 기존 활성 키 rotate ──────────────────────────────────────
     rotate: async (event) => {
         const { locals, platform } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const config = getRuntimeConfig(platform);
         if (!config.signingKeySecret) {
