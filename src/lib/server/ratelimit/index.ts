@@ -6,7 +6,7 @@
  * - 윈도우 내 count > limit 이면 차단
  */
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { DB } from '$lib/server/db';
 import { rateLimits } from '$lib/server/db/schema';
 
@@ -25,6 +25,9 @@ export interface RateLimitOptions {
 
 /**
  * 지정된 key 에 대해 레이트 리밋을 확인하고 카운터를 증가시킨다.
+ *
+ * SELECT→UPDATE 분리 대신 단일 INSERT...ON CONFLICT DO UPDATE...RETURNING 으로
+ * 원자적으로 처리해 동시 요청 race condition 을 제거한다.
  */
 export async function checkRateLimit(
 	db: DB,
@@ -34,38 +37,30 @@ export async function checkRateLimit(
 	const now = Date.now();
 	const newExpiresAt = new Date(now + options.windowMs);
 
-	const [existing] = await db.select().from(rateLimits).where(eq(rateLimits.key, key)).limit(1);
+	// 단일 문으로 삽입/리셋/증가를 원자적으로 수행
+	const [row] = await db
+		.insert(rateLimits)
+		.values({ key, count: 1, expiresAt: newExpiresAt })
+		.onConflictDoUpdate({
+			target: rateLimits.key,
+			set: {
+				count: sql`CASE WHEN ${rateLimits.expiresAt} <= ${now} THEN 1 ELSE ${rateLimits.count} + 1 END`,
+				expiresAt: sql`CASE WHEN ${rateLimits.expiresAt} <= ${now} THEN ${newExpiresAt.getTime()} ELSE ${rateLimits.expiresAt} END`
+			}
+		})
+		.returning({ count: rateLimits.count, expiresAt: rateLimits.expiresAt });
 
-	// 레코드 없거나 윈도우 만료 → 새 윈도우 시작
-	if (!existing || existing.expiresAt.getTime() <= now) {
-		await db
-			.insert(rateLimits)
-			.values({ key, count: 1, expiresAt: newExpiresAt })
-			.onConflictDoUpdate({
-				target: rateLimits.key,
-				set: { count: 1, expiresAt: newExpiresAt }
-			});
-		return { allowed: true, remaining: options.limit - 1, retryAfterMs: 0 };
-	}
-
-	// 윈도우 내 — 이미 한도 초과
-	if (existing.count >= options.limit) {
+	if (row.count > options.limit) {
 		return {
 			allowed: false,
 			remaining: 0,
-			retryAfterMs: existing.expiresAt.getTime() - now
+			retryAfterMs: row.expiresAt.getTime() - now
 		};
 	}
 
-	// 카운터 증가
-	await db
-		.update(rateLimits)
-		.set({ count: sql`${rateLimits.count} + 1` })
-		.where(eq(rateLimits.key, key));
-
 	return {
 		allowed: true,
-		remaining: options.limit - existing.count - 1,
+		remaining: options.limit - row.count,
 		retryAfterMs: 0
 	};
 }
