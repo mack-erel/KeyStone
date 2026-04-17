@@ -91,12 +91,18 @@ export const POST: RequestHandler = async (event) => {
 
 	// SAML/OIDC 플로우에서 전달된 redirectTo 를 우선 사용 (내부 경로만 허용)
 	const requested = body._redirectTo ?? '';
-	const safeRedirect =
-		requested && requested.startsWith('/') && !requested.startsWith('//')
-			? requested
-			: user.role === 'admin'
-				? '/admin'
-				: '/';
+	let safeRedirect: string;
+	try {
+		const decoded = decodeURIComponent(requested);
+		safeRedirect =
+			decoded && decoded.startsWith('/') && !decoded.startsWith('//') && !decoded.includes('\\')
+				? requested
+				: user.role === 'admin'
+					? '/admin'
+					: '/';
+	} catch {
+		safeRedirect = user.role === 'admin' ? '/admin' : '/';
+	}
 
 	return json({ ok: true, redirectTo: safeRedirect });
 };
