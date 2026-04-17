@@ -31,9 +31,9 @@ async function performLogout(event: RequestEvent) {
 	clearSessionCookie(event.cookies, event.url);
 }
 
-export const load: PageServerLoad = async (event) => {
-	await performLogout(event);
-	throw redirect(303, '/login');
+export const load: PageServerLoad = async ({ locals }) => {
+	if (!locals.user) throw redirect(303, '/login');
+	return {};
 };
 
 export const actions: Actions = {
