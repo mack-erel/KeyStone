@@ -8,13 +8,15 @@ jobs:
     format:
         name: Auto Format
         runs-on: ubuntu-latest
+        if: github.event.pull_request.head.repo.full_name == github.repository
         permissions:
             contents: write
         steps:
             - name: Checkout
               uses: actions/checkout@v4
               with:
-                  ref: ${{ github.event.pull_request.head.ref }}
+                  ref: ${{ github.head_ref }}
+                  token: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
@@ -26,7 +28,6 @@ jobs:
               run: bun run format
 
             - name: Commit and push formatted files
-              if: github.event.pull_request.head.repo.full_name == github.repository
               run: |
                   if [[ -z "$(git status --porcelain)" ]]; then
                     echo "No formatting changes"
