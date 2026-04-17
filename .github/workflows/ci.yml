@@ -82,6 +82,9 @@ jobs:
             - name: Setup Wrangler config
               run: cp wrangler.example.jsonc wrangler.jsonc
 
+            - name: Generate Wrangler types
+              run: bunx wrangler types
+
             - name: Lint
               run: bun run lint
 
