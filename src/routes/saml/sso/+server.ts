@@ -156,30 +156,56 @@ export const GET: RequestHandler = async (event) => {
 		}
 	}
 
+	// SP 별 허용 속성 목록. NULL → 기본 최소 집합. 명시된 경우만 조직정보 등이 포함된다.
+	const DEFAULT_ALLOWED = ['email', 'username', 'displayName'] as const;
+	let allowedSet: Set<string>;
+	if (sp.allowedAttributes) {
+		try {
+			const parsed = JSON.parse(sp.allowedAttributes) as unknown;
+			allowedSet = new Set(
+				Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : DEFAULT_ALLOWED
+			);
+		} catch {
+			allowedSet = new Set(DEFAULT_ALLOWED);
+		}
+	} else {
+		allowedSet = new Set(DEFAULT_ALLOWED);
+	}
+
 	const user = locals.user;
 	const attributes: Record<string, string> = {};
+	const setAttr = (key: string, value: string | null | undefined) => {
+		if (!value) return;
+		if (!allowedSet.has(key)) return;
+		attributes[attrMapping[key] ?? key] = value;
+	};
 
-	if (user.email) attributes[attrMapping['email'] ?? 'email'] = user.email;
-	if (user.username) attributes[attrMapping['username'] ?? 'username'] = user.username;
-	if (user.displayName) attributes[attrMapping['displayName'] ?? 'displayName'] = user.displayName;
-	if (user.givenName) attributes[attrMapping['givenName'] ?? 'givenName'] = user.givenName;
-	if (user.familyName) attributes[attrMapping['familyName'] ?? 'familyName'] = user.familyName;
-	if (user.familyName) attributes[attrMapping['surName'] ?? 'surName'] = user.familyName;
-	if (user.phoneNumber) attributes[attrMapping['phoneNumber'] ?? 'phoneNumber'] = user.phoneNumber;
+	setAttr('email', user.email);
+	setAttr('username', user.username);
+	setAttr('displayName', user.displayName);
+	setAttr('givenName', user.givenName);
+	setAttr('familyName', user.familyName);
+	setAttr('surName', user.familyName);
+	setAttr('phoneNumber', user.phoneNumber);
 
-	// 조직 정보 (주소속 부서/팀/직급/직책)
-	const membership = await getUserMembership(db, user.id);
-	const primaryDept = membership.departments.find((d) => d.isPrimary) ?? membership.departments[0];
-	const primaryTeam = membership.teams.find((t) => t.isPrimary) ?? membership.teams[0];
-	if (primaryDept) {
-		attributes[attrMapping['department'] ?? 'department'] = primaryDept.name;
-		if (primaryDept.jobTitle)
-			attributes[attrMapping['jobTitle'] ?? 'jobTitle'] = primaryDept.jobTitle;
-		if (primaryDept.position)
-			attributes[attrMapping['position'] ?? 'position'] = primaryDept.position.name;
-	}
-	if (primaryTeam) {
-		attributes[attrMapping['team'] ?? 'team'] = primaryTeam.name;
+	// 조직 정보는 SP 가 명시적으로 허용한 경우에만 포함한다.
+	const wantsOrg =
+		allowedSet.has('department') ||
+		allowedSet.has('team') ||
+		allowedSet.has('jobTitle') ||
+		allowedSet.has('position');
+	if (wantsOrg) {
+		const membership = await getUserMembership(db, user.id);
+		const primaryDept = membership.departments.find((d) => d.isPrimary) ?? membership.departments[0];
+		const primaryTeam = membership.teams.find((t) => t.isPrimary) ?? membership.teams[0];
+		if (primaryDept) {
+			setAttr('department', primaryDept.name);
+			setAttr('jobTitle', primaryDept.jobTitle);
+			if (primaryDept.position) setAttr('position', primaryDept.position.name);
+		}
+		if (primaryTeam) {
+			setAttr('team', primaryTeam.name);
+		}
 	}
 
 	// NameID 결정

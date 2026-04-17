@@ -21,6 +21,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 			signResponse: samlSps.signResponse,
 			encryptAssertion: samlSps.encryptAssertion,
 			wantAuthnRequestsSigned: samlSps.wantAuthnRequestsSigned,
+			allowedAttributes: samlSps.allowedAttributes,
 			enabled: samlSps.enabled,
 			createdAt: samlSps.createdAt
 		})
@@ -30,6 +31,34 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	return { sps: rows };
 };
+
+const ATTRIBUTE_KEYS = [
+	'email',
+	'username',
+	'displayName',
+	'givenName',
+	'familyName',
+	'surName',
+	'phoneNumber',
+	'department',
+	'team',
+	'jobTitle',
+	'position'
+] as const;
+
+function parseAllowedAttributes(raw: string): string | null {
+	const trimmed = raw.trim();
+	if (!trimmed) return null;
+	const parts = trimmed
+		.split(',')
+		.map((s) => s.trim())
+		.filter((s) => s.length > 0)
+		.filter((s): s is (typeof ATTRIBUTE_KEYS)[number] =>
+			(ATTRIBUTE_KEYS as readonly string[]).includes(s)
+		);
+	if (parts.length === 0) return null;
+	return JSON.stringify([...new Set(parts)]);
+}
 
 export const actions: Actions = {
 	// ── SP 생성 ────────────────────────────────────────────────────────────────
@@ -49,6 +78,7 @@ export const actions: Actions = {
 		const signAssertion = fd.get('signAssertion') === 'true';
 		const signResponse = fd.get('signResponse') === 'true';
 		const wantAuthnRequestsSigned = fd.get('wantAuthnRequestsSigned') === 'true';
+		const allowedAttributes = parseAllowedAttributes(String(fd.get('allowedAttributes') ?? ''));
 
 		if (!name) return fail(400, { create: true, error: '이름은 필수입니다.' });
 		if (!entityId) return fail(400, { create: true, error: 'Entity ID 는 필수입니다.' });
@@ -74,6 +104,7 @@ export const actions: Actions = {
 			signAssertion,
 			signResponse,
 			wantAuthnRequestsSigned,
+			allowedAttributes,
 			enabled: true
 		});
 
@@ -107,6 +138,7 @@ export const actions: Actions = {
 		const signResponse = fd.get('signResponse') === 'true';
 		const wantAuthnRequestsSigned = fd.get('wantAuthnRequestsSigned') === 'true';
 		const enabled = fd.get('enabled') === 'true';
+		const allowedAttributes = parseAllowedAttributes(String(fd.get('allowedAttributes') ?? ''));
 
 		if (!id || !name || !acsUrl) return fail(400, { error: '필수 항목이 누락되었습니다.' });
 
@@ -121,6 +153,7 @@ export const actions: Actions = {
 				signAssertion,
 				signResponse,
 				wantAuthnRequestsSigned,
+				allowedAttributes,
 				enabled,
 				updatedAt: new Date()
 			})

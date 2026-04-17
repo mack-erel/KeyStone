@@ -19,6 +19,7 @@
 	let createSignAssertion = $state(true);
 	let createSignResponse = $state(false);
 	let createWantSigned = $state(false);
+	let createAllowedAttributes = $state('');
 
 	// 메타데이터 파싱
 	let metadataXml = $state('');
@@ -93,6 +94,7 @@
 		createSignAssertion = true;
 		createSignResponse = false;
 		createWantSigned = false;
+		createAllowedAttributes = '';
 		metadataXml = '';
 		metaParseError = null;
 	}
@@ -105,6 +107,16 @@
 	const globalErr = $derived(
 		createErr ? null : ((form as { error?: string } | null)?.error ?? null)
 	);
+
+	function formatAllowedAttributes(raw: string | null): string {
+		if (!raw) return '';
+		try {
+			const parsed = JSON.parse(raw) as unknown;
+			return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string').join(',') : '';
+		} catch {
+			return '';
+		}
+	}
 
 	const NAME_ID_OPTIONS = [
 		{ value: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress', label: 'emailAddress' },
@@ -291,6 +303,19 @@
 						placeholder="-----BEGIN CERTIFICATE-----"
 						class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"
 					></textarea>
+				</div>
+				<div class="sm:col-span-2">
+					<label for="s-allowedAttributes" class="block text-xs font-medium text-gray-700">
+						허용 속성 (콤마 구분, 비우면 email,username,displayName 만 전송)
+					</label>
+					<input
+						id="s-allowedAttributes"
+						type="text"
+						name="allowedAttributes"
+						bind:value={createAllowedAttributes}
+						placeholder="email,username,displayName,department,team,jobTitle,position,givenName,familyName,surName,phoneNumber"
+						class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"
+					/>
 				</div>
 				<div class="flex justify-end sm:col-span-2">
 					<button
@@ -519,6 +544,22 @@
 												class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"
 												>{sp.cert ?? ''}</textarea
 											>
+										</div>
+										<div class="sm:col-span-2">
+											<label
+												for="e-allowedAttributes-{sp.id}"
+												class="block text-xs font-medium text-gray-700"
+											>
+												허용 속성 (콤마 구분, 비우면 email,username,displayName 만 전송)
+											</label>
+											<input
+												id="e-allowedAttributes-{sp.id}"
+												type="text"
+												name="allowedAttributes"
+												value={formatAllowedAttributes(sp.allowedAttributes)}
+												placeholder="email,username,displayName"
+												class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 font-mono text-xs focus:border-blue-500 focus:outline-none"
+											/>
 										</div>
 										<div class="flex justify-end gap-2 sm:col-span-2">
 											<button
