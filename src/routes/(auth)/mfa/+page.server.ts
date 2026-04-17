@@ -11,6 +11,7 @@ import {
 	AMR_PASSWORD,
 	AMR_TOTP,
 	AMR_BACKUP_CODE,
+	amrToAcr,
 	TOTP_CREDENTIAL_TYPE,
 	BACKUP_CODE_CREDENTIAL_TYPE
 } from '$lib/server/auth/constants';
@@ -18,12 +19,13 @@ import { getRuntimeConfig } from '$lib/server/auth/runtime';
 import { credentials, users } from '$lib/server/db/schema';
 
 export const load: PageServerLoad = async ({ locals, cookies, platform }) => {
-	// 이미 로그인된 경우
-	if (locals.user) {
+	const mfaToken = cookies.get(MFA_PENDING_COOKIE);
+
+	// MFA pending 토큰이 없는 경우에만 자동 리다이렉트.
+	// 토큰이 있으면 forceAuthn 등으로 재인증 중인 상태이므로 기존 세션을 무시한다.
+	if (locals.user && !mfaToken) {
 		throw redirect(302, locals.user.role === 'admin' ? '/admin' : '/');
 	}
-
-	const mfaToken = cookies.get(MFA_PENDING_COOKIE);
 	if (!mfaToken) {
 		throw redirect(303, '/login');
 	}
@@ -180,7 +182,8 @@ export const actions: Actions = {
 			userId: user.id,
 			ip: requestMetadata.ip,
 			userAgent: requestMetadata.userAgent,
-			amr: [AMR_PASSWORD, amrMethod]
+			amr: [AMR_PASSWORD, amrMethod],
+			acr: amrToAcr([AMR_PASSWORD, amrMethod])
 		});
 
 		setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);

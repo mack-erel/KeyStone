@@ -43,6 +43,8 @@ export interface BuildSamlResponseParams {
 	privateKey: CryptoKey;
 	/** true 이면 Response 요소도 서명 (Assertion 서명 후 추가 서명) */
 	signResponse?: boolean;
+	/** AuthnContextClassRef 값 (기본값: PasswordProtectedTransport) */
+	authnContextClassRef?: string;
 }
 
 export async function buildSignedSamlResponse(params: BuildSamlResponseParams): Promise<string> {
@@ -107,7 +109,7 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
 		` SessionIndex="${xmlEscape(params.sessionIndex)}"` +
 		` SessionNotOnOrAfter="${sessionNotOnOrAfter}">` +
 		`<saml:AuthnContext>` +
-		`<saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml:AuthnContextClassRef>` +
+		`<saml:AuthnContextClassRef>${xmlEscape(params.authnContextClassRef ?? 'urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport')}</saml:AuthnContextClassRef>` +
 		`</saml:AuthnContext>` +
 		`</saml:AuthnStatement>` +
 		attributeStmtXml +

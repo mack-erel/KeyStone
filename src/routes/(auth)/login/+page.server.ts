@@ -9,7 +9,7 @@ import {
 	normalizeUsername
 } from '$lib/server/auth/users';
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from '$lib/server/auth/mfa';
-import { AMR_PASSWORD } from '$lib/server/auth/constants';
+import { AMR_PASSWORD, amrToAcr } from '$lib/server/auth/constants';
 import { getRuntimeConfig } from '$lib/server/auth/runtime';
 import { checkRateLimit } from '$lib/server/ratelimit';
 import { and, eq } from 'drizzle-orm';
@@ -181,7 +181,8 @@ export const actions: Actions = {
 			userId: user.id,
 			ip: requestMetadata.ip,
 			userAgent: requestMetadata.userAgent,
-			amr: [AMR_PASSWORD]
+			amr: [AMR_PASSWORD],
+			acr: amrToAcr([AMR_PASSWORD])
 		});
 
 		setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);

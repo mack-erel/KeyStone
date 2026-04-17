@@ -99,6 +99,13 @@ export async function verifySamlRedirectSignature(
 	}
 }
 
+export interface RequestedAuthnContext {
+	/** exact | minimum | maximum | better */
+	comparison: string;
+	/** 요청된 AuthnContextClassRef 목록 */
+	classRefs: string[];
+}
+
 export interface ParsedAuthnRequest {
 	/** AuthnRequest 의 ID 속성 */
 	id: string;
@@ -114,6 +121,8 @@ export interface ParsedAuthnRequest {
 	isPassive: boolean;
 	/** AuthnRequest 발급 시각 */
 	issueInstant: Date;
+	/** SP 가 요구하는 인증 수준 (없으면 null) */
+	requestedAuthnContext: RequestedAuthnContext | null;
 }
 
 function parseBoolAttr(val: string | null): boolean {
@@ -148,5 +157,28 @@ export async function parseAuthnRequest(
 	const issuerEls = doc.getElementsByTagNameNS('urn:oasis:names:tc:SAML:2.0:assertion', 'Issuer');
 	const issuer = issuerEls[0]?.textContent?.trim() ?? '';
 
-	return { id, issuer, acsUrl, relayState, forceAuthn, isPassive, issueInstant };
+	// RequestedAuthnContext 파싱
+	const racEls = doc.getElementsByTagNameNS(
+		'urn:oasis:names:tc:SAML:2.0:protocol',
+		'RequestedAuthnContext'
+	);
+	let requestedAuthnContext: RequestedAuthnContext | null = null;
+	const racEl = racEls[0];
+	if (racEl) {
+		const comparison = racEl.getAttribute('Comparison') ?? 'exact';
+		const classRefEls = racEl.getElementsByTagNameNS(
+			'urn:oasis:names:tc:SAML:2.0:assertion',
+			'AuthnContextClassRef'
+		);
+		const classRefs: string[] = [];
+		for (let i = 0; i < classRefEls.length; i++) {
+			const text = classRefEls[i]?.textContent?.trim();
+			if (text) classRefs.push(text);
+		}
+		if (classRefs.length > 0) {
+			requestedAuthnContext = { comparison, classRefs };
+		}
+	}
+
+	return { id, issuer, acsUrl, relayState, forceAuthn, isPassive, issueInstant, requestedAuthnContext };
 }
