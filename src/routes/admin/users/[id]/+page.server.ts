@@ -121,6 +121,19 @@ export const actions: Actions = {
 		const fd = await request.formData();
 		const userId = params.id;
 
+		const rawRole = String(fd.get('role') ?? 'user');
+		const rawStatus = String(fd.get('status') ?? 'active');
+
+		if (rawRole !== 'admin' && rawRole !== 'user') {
+			return fail(400, { error: '잘못된 role 값입니다.' });
+		}
+		if (rawStatus !== 'active' && rawStatus !== 'disabled' && rawStatus !== 'locked') {
+			return fail(400, { error: '잘못된 status 값입니다.' });
+		}
+
+		const role = rawRole as 'admin' | 'user';
+		const status = rawStatus as 'active' | 'disabled' | 'locked';
+
 		const displayName = String(fd.get('displayName') ?? '').trim() || null;
 		const givenName = String(fd.get('givenName') ?? '').trim() || null;
 		const familyName = String(fd.get('familyName') ?? '').trim() || null;
@@ -129,8 +142,6 @@ export const actions: Actions = {
 		const birthdate = String(fd.get('birthdate') ?? '').trim() || null;
 		const locale = String(fd.get('locale') ?? 'ko-KR').trim();
 		const zoneinfo = String(fd.get('zoneinfo') ?? 'Asia/Seoul').trim();
-		const role = String(fd.get('role') ?? 'user') as 'admin' | 'user';
-		const status = String(fd.get('status') ?? 'active') as 'active' | 'disabled' | 'locked';
 
 		await db
 			.update(users)
@@ -164,6 +175,20 @@ export const actions: Actions = {
 
 		if (!departmentId) return fail(400, { error: '부서를 선택해 주세요.' });
 
+		const [targetUser] = await db.select({ id: users.id }).from(users)
+			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id))).limit(1);
+		if (!targetUser) return fail(404, { error: '사용자를 찾을 수 없습니다.' });
+
+		const [dept] = await db.select({ id: departments.id }).from(departments)
+			.where(and(eq(departments.id, departmentId), eq(departments.tenantId, tenant.id))).limit(1);
+		if (!dept) return fail(404, { error: '부서를 찾을 수 없습니다.' });
+
+		if (positionId) {
+			const [pos] = await db.select({ id: positions.id }).from(positions)
+				.where(and(eq(positions.id, positionId), eq(positions.tenantId, tenant.id))).limit(1);
+			if (!pos) return fail(404, { error: '직책을 찾을 수 없습니다.' });
+		}
+
 		await db
 			.insert(userDepartments)
 			.values({ tenantId: tenant.id, userId, departmentId, positionId, jobTitle, isPrimary });
@@ -195,6 +220,14 @@ export const actions: Actions = {
 
 		if (!teamId) return fail(400, { error: '팀을 선택해 주세요.' });
 
+		const [targetUser] = await db.select({ id: users.id }).from(users)
+			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id))).limit(1);
+		if (!targetUser) return fail(404, { error: '사용자를 찾을 수 없습니다.' });
+
+		const [team] = await db.select({ id: teams.id }).from(teams)
+			.where(and(eq(teams.id, teamId), eq(teams.tenantId, tenant.id))).limit(1);
+		if (!team) return fail(404, { error: '팀을 찾을 수 없습니다.' });
+
 		await db.insert(userTeams).values({ tenantId: tenant.id, userId, teamId, jobTitle, isPrimary });
 		return { addedTeam: true };
 	},
@@ -223,6 +256,14 @@ export const actions: Actions = {
 		const isPrimary = fd.get('isPrimary') === 'true';
 
 		if (!partId) return fail(400, { error: '파트를 선택해 주세요.' });
+
+		const [targetUser] = await db.select({ id: users.id }).from(users)
+			.where(and(eq(users.id, userId), eq(users.tenantId, tenant.id))).limit(1);
+		if (!targetUser) return fail(404, { error: '사용자를 찾을 수 없습니다.' });
+
+		const [part] = await db.select({ id: parts.id }).from(parts)
+			.where(and(eq(parts.id, partId), eq(parts.tenantId, tenant.id))).limit(1);
+		if (!part) return fail(404, { error: '파트를 찾을 수 없습니다.' });
 
 		await db.insert(userParts).values({ tenantId: tenant.id, userId, partId, jobTitle, isPrimary });
 		return { addedPart: true };

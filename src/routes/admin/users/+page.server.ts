@@ -7,6 +7,7 @@ import { users, credentials } from '$lib/server/db/schema';
 import { hashPassword } from '$lib/server/auth/password';
 import { normalizeEmail, normalizeUsername } from '$lib/server/auth/users';
 import { PASSWORD_CREDENTIAL_TYPE } from '$lib/server/auth/constants';
+import { revokeAllUserSessions } from '$lib/server/auth/session';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const { db, tenant } = requireDbContext(locals);
@@ -127,6 +128,11 @@ export const actions: Actions = {
 			.set({ status, updatedAt: new Date() })
 			.where(and(eq(users.id, id), eq(users.tenantId, tenant.id)));
 
+		// 비활성/잠금 처리 시 기존 세션 즉시 파기
+		if (status !== 'active') {
+			await revokeAllUserSessions(db, id);
+		}
+
 		const requestMetadata = getRequestMetadata(event);
 		await recordAuditEvent(db, {
 			tenantId: tenant.id,
@@ -164,6 +170,9 @@ export const actions: Actions = {
 			.update(users)
 			.set({ role, updatedAt: new Date() })
 			.where(and(eq(users.id, id), eq(users.tenantId, tenant.id)));
+
+		// role 변경 시 기존 세션 파기 — 이전 권한으로 캐시된 세션 차단
+		await revokeAllUserSessions(db, id);
 
 		const requestMetadata = getRequestMetadata(event);
 		await recordAuditEvent(db, {
@@ -222,6 +231,9 @@ export const actions: Actions = {
 				label: '비밀번호'
 			});
 		}
+
+		// 비밀번호 리셋 시 기존 세션 전부 파기 — 탈취된 세션 무효화
+		await revokeAllUserSessions(db, id);
 
 		const requestMetadata = getRequestMetadata(event);
 		await recordAuditEvent(db, {

@@ -85,6 +85,13 @@ export async function revokeSession(db: DB, sessionToken: string, revokedAt = ne
 		.where(and(eq(sessions.idpSessionId, sessionToken), isNull(sessions.revokedAt)));
 }
 
+export async function revokeAllUserSessions(db: DB, userId: string, revokedAt = new Date()) {
+	await db
+		.update(sessions)
+		.set({ revokedAt })
+		.where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+}
+
 export function setSessionCookie(
 	cookies: Cookies,
 	url: URL,
