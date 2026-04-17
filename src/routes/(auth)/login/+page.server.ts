@@ -17,17 +17,27 @@ import { identityProviders } from '$lib/server/db/schema';
 import { authenticateLdap } from '$lib/server/ldap/auth';
 import { provisionLdapUser } from '$lib/server/ldap/provision';
 import type { LdapProviderConfig } from '$lib/server/ldap/types';
+import { decryptSecret } from '$lib/server/crypto/keys';
 
 function sanitizeRedirectTarget(target: string | null): string | null {
-	if (!target || !target.startsWith('/') || target.startsWith('//')) {
+	if (!target) return null;
+	// URL 디코딩 후 재검사 — /%2f, /\ 등 우회 패턴 차단
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(target);
+	} catch {
 		return null;
 	}
-
+	if (!decoded.startsWith('/') || decoded.startsWith('//') || decoded.includes('\\')) {
+		return null;
+	}
 	return target;
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	if (locals.user) {
+	// forceAuthn=true 이면 이미 로그인된 사용자도 재인증을 진행해야 하므로 자동 리다이렉트 생략
+	const forceAuthn = url.searchParams.get('forceAuthn') === 'true';
+	if (locals.user && !forceAuthn) {
 		throw redirect(302, locals.user.role === 'admin' ? '/admin' : '/');
 	}
 
@@ -94,6 +104,21 @@ export const actions: Actions = {
 
 		if (ldapProvider) {
 			const ldapConfig = JSON.parse(ldapProvider.configJson ?? '{}') as LdapProviderConfig;
+
+			// 암호화된 bindPassword 가 있으면 복호화 (레거시 평문 bindPassword 는 그대로 사용)
+			const config = getRuntimeConfig(event.platform);
+			if (ldapConfig.bindPasswordEnc && !ldapConfig.bindPassword && config.signingKeySecret) {
+				try {
+					ldapConfig.bindPassword = await decryptSecret(
+						ldapConfig.bindPasswordEnc,
+						config.signingKeySecret,
+						'idp-ldap-bind-password-v1'
+					);
+				} catch {
+					// 복호화 실패 시 인증 진행 불가 — bindPassword 없이 진행하면 null 반환됨
+				}
+			}
+
 			const ldapAttrs = await authenticateLdap(ldapConfig, username, password);
 
 			if (ldapAttrs) {
@@ -135,7 +160,7 @@ export const actions: Actions = {
 			}
 
 			const mfaToken = await createMfaPendingToken(
-				{ userId: user.id, tenantId: tenant.id, redirectTo },
+				{ userId: user.id, tenantId: tenant.id, redirectTo, ip: requestMetadata.ip },
 				config.signingKeySecret
 			);
 

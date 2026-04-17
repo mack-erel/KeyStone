@@ -6,6 +6,7 @@ import { requireDbContext } from '$lib/server/auth/guards';
 import { createSessionRecord, setSessionCookie } from '$lib/server/auth/session';
 import { verifyMfaPendingToken, MFA_PENDING_COOKIE } from '$lib/server/auth/mfa';
 import { verifyTotp, decryptTotpSecret, verifyBackupCode } from '$lib/server/auth/totp';
+import { checkRateLimit } from '$lib/server/ratelimit';
 import {
 	AMR_PASSWORD,
 	AMR_TOTP,
@@ -59,6 +60,26 @@ export const actions: Actions = {
 			throw redirect(303, '/login');
 		}
 
+		const requestMetadata = getRequestMetadata(event);
+
+		// IP 바인딩 검증: MFA 토큰 발급 IP 와 현재 요청 IP 가 다르면 거부
+		if (claims.ip && claims.ip !== requestMetadata.ip) {
+			event.cookies.delete(MFA_PENDING_COOKIE, { path: '/' });
+			throw redirect(303, '/login');
+		}
+
+		if (!event.locals.db) {
+			return fail(503, { error: 'DB가 준비되지 않았습니다.' });
+		}
+
+		const rl = await checkRateLimit(event.locals.db, `mfa:${claims.userId}`, {
+			windowMs: 5 * 60 * 1000,
+			limit: 10
+		});
+		if (!rl.allowed) {
+			return fail(429, { error: 'MFA 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.' });
+		}
+
 		const formData = await event.request.formData();
 		const code = String(formData.get('code') ?? '')
 			.trim()
@@ -69,12 +90,7 @@ export const actions: Actions = {
 			return fail(400, { error: '인증 코드를 입력해 주세요.' });
 		}
 
-		if (!event.locals.db) {
-			return fail(503, { error: 'DB가 준비되지 않았습니다.' });
-		}
-
 		const { db } = requireDbContext(event.locals);
-		const requestMetadata = getRequestMetadata(event);
 
 		// 사용자 확인
 		const [user] = await db.select().from(users).where(eq(users.id, claims.userId)).limit(1);
@@ -124,11 +140,14 @@ export const actions: Actions = {
 
 			if (totpCred?.secret) {
 				const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret);
-				verified = await verifyTotp(code, plainSecret);
-				if (verified) {
+				// counter 컬럼을 마지막으로 사용된 TOTP 스텝으로 활용 (재사용 방지)
+				const lastUsedStep = totpCred.counter ?? undefined;
+				const matchedStep = await verifyTotp(code, plainSecret, lastUsedStep);
+				if (matchedStep !== null) {
+					verified = true;
 					await db
 						.update(credentials)
-						.set({ lastUsedAt: new Date() })
+						.set({ lastUsedAt: new Date(), counter: matchedStep })
 						.where(eq(credentials.id, totpCred.id));
 				}
 			}
