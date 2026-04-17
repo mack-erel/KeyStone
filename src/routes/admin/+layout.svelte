@@ -37,7 +37,9 @@ const orgMenuItems = [
             </div>
 
             <div class="border-b border-gray-200 px-6 py-4">
-                <p class="text-sm font-medium text-gray-900">{data.currentUser.displayName ?? "관리자"}</p>
+                <p class="text-sm font-medium text-gray-900">
+                    {data.currentUser.displayName ?? "관리자"}
+                </p>
                 <p class="text-sm text-gray-500">{data.currentUser.email}</p>
             </div>
 

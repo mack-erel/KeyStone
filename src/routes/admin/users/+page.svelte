@@ -133,7 +133,9 @@ const STATUS_COLOR: Record<string, string> = {
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3">
                                 <a href={resolve(`/admin/users/${user.id}`)} class="block hover:underline">
-                                    <p class="text-sm font-medium text-gray-900">{user.username ?? "-"}</p>
+                                    <p class="text-sm font-medium text-gray-900">
+                                        {user.username ?? "-"}
+                                    </p>
                                     <p class="text-xs text-gray-500">{user.email}</p>
                                 </a>
                             </td>

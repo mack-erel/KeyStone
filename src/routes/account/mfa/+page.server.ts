@@ -107,7 +107,10 @@ export const actions: Actions = {
         if (!locals.user) throw redirect(303, "/login");
         const config = getRuntimeConfig(platform);
         if (!config.signingKeySecret) {
-            return fail(503, { setup: true, error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다." });
+            return fail(503, {
+                setup: true,
+                error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            });
         }
 
         const secret = generateTotpSecret();
@@ -133,18 +136,27 @@ export const actions: Actions = {
 
         const config = getRuntimeConfig(platform);
         if (!config.signingKeySecret) {
-            return fail(503, { confirm: true, error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다." });
+            return fail(503, {
+                confirm: true,
+                error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            });
         }
 
         const setupToken = cookies.get(TOTP_SETUP_COOKIE);
         if (!setupToken) {
-            return fail(400, { confirm: true, error: "등록 세션이 만료되었습니다. 다시 시작해 주세요." });
+            return fail(400, {
+                confirm: true,
+                error: "등록 세션이 만료되었습니다. 다시 시작해 주세요.",
+            });
         }
 
         const plainSecret = await verifySetupToken(setupToken, config.signingKeySecret);
         if (!plainSecret) {
             cookies.delete(TOTP_SETUP_COOKIE, { path: "/" });
-            return fail(400, { confirm: true, error: "등록 세션이 만료되었습니다. 다시 시작해 주세요." });
+            return fail(400, {
+                confirm: true,
+                error: "등록 세션이 만료되었습니다. 다시 시작해 주세요.",
+            });
         }
 
         const formData = await event.request.formData();
@@ -156,7 +168,10 @@ export const actions: Actions = {
 
         const valid = await verifyTotp(code, plainSecret);
         if (!valid) {
-            return fail(400, { confirm: true, error: "코드가 올바르지 않습니다. 다시 확인해 주세요." });
+            return fail(400, {
+                confirm: true,
+                error: "코드가 올바르지 않습니다. 다시 확인해 주세요.",
+            });
         }
 
         const { db, tenant } = requireDbContext(locals);
@@ -219,7 +234,10 @@ export const actions: Actions = {
 
         const config = getRuntimeConfig(platform);
         if (!config.signingKeySecret) {
-            return fail(503, { delete: true, error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다." });
+            return fail(503, {
+                delete: true,
+                error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            });
         }
 
         const formData = await event.request.formData();

@@ -82,7 +82,9 @@ const STATUS_LABEL: Record<string, string> = { active: "활성", inactive: "비�
     {/if}
 
     {#if err && !createErr}
-        <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{err}</p>
+        <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {err}
+        </p>
     {/if}
 
     <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">

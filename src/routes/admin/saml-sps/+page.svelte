@@ -295,7 +295,9 @@ const NAME_ID_OPTIONS = [
                         <tr class="hover:bg-gray-50">
                             <td class="px-4 py-3">
                                 <p class="text-sm font-medium text-gray-900">{sp.name}</p>
-                                <p class="font-mono text-xs break-all text-gray-400">{sp.entityId}</p>
+                                <p class="font-mono text-xs break-all text-gray-400">
+                                    {sp.entityId}
+                                </p>
                             </td>
                             <td class="max-w-50 px-4 py-3 text-xs break-all text-gray-500">{sp.acsUrl}</td>
                             <td class="px-4 py-3 text-xs text-gray-500">
