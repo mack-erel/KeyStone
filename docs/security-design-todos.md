@@ -158,7 +158,7 @@ WebAuthn challenge가 HMAC 서명 쿠키로만 관리됨. 공격자가 쿠키값
 - fork 이유를 CLAUDE.md 또는 README에 명시 (Workers `net` 미지원으로 Cloudflare `connect()` API 사용)
 - npm scoped package로 퍼블리시해 버전 고정 + integrity hash 확보
 - 또는 upstream에 Workers 호환 PR 제출
-- `bun.lockb`에 integrity hash 포함 여부 확인
+- `bun.lock`에 integrity hash 포함 여부 확인
 
 ---
 
