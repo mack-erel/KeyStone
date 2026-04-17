@@ -79,6 +79,9 @@ jobs:
             - name: Install dependencies
               run: bun install
 
+            - name: Setup Wrangler config
+              run: cp wrangler.example.jsonc wrangler.jsonc
+
             - name: Lint
               run: bun run lint
 
