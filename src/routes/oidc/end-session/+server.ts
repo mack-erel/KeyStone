@@ -33,8 +33,13 @@ async function handleEndSession(
 			.limit(1);
 
 		if (client?.postLogoutRedirectUris) {
-			const allowed = client.postLogoutRedirectUris.split(',').map((u) => u.trim());
-			if (allowed.includes(postLogoutRedirectUri)) {
+			let allowed: string[] = [];
+			try {
+				allowed = JSON.parse(client.postLogoutRedirectUris) as string[];
+			} catch {
+				allowed = [];
+			}
+			if (Array.isArray(allowed) && allowed.includes(postLogoutRedirectUri)) {
 				throw redirect(302, postLogoutRedirectUri);
 			}
 		}

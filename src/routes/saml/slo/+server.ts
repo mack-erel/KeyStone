@@ -11,12 +11,12 @@ import type { RequestHandler } from './$types';
 import { eq } from 'drizzle-orm';
 import { requireDbContext } from '$lib/server/auth/guards';
 import { sessions } from '$lib/server/db/schema';
-import { recordAuditEvent } from '$lib/server/audit';
+import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit';
 import { SESSION_COOKIE_NAME } from '$lib/server/auth/constants';
 
-export const GET: RequestHandler = async ({ locals, url, cookies }) => {
+export const GET: RequestHandler = async (event) => {
+	const { locals, cookies } = event;
 	const { db, tenant } = requireDbContext(locals);
-	const relayState = url.searchParams.get('RelayState');
 
 	if (locals.session) {
 		await db
@@ -25,12 +25,15 @@ export const GET: RequestHandler = async ({ locals, url, cookies }) => {
 			.where(eq(sessions.id, locals.session.id));
 
 		if (locals.user) {
+			const requestMetadata = getRequestMetadata(event);
 			await recordAuditEvent(db, {
 				tenantId: tenant.id,
 				userId: locals.user.id,
 				actorId: locals.user.id,
 				kind: 'saml_slo',
 				outcome: 'success',
+				ip: requestMetadata.ip,
+				userAgent: requestMetadata.userAgent,
 				detail: {}
 			});
 		}
@@ -38,7 +41,5 @@ export const GET: RequestHandler = async ({ locals, url, cookies }) => {
 		cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
 	}
 
-	// RelayState 가 URL 이면 리다이렉트, 아니면 홈으로
-	const dest = relayState && /^https?:\/\//.test(relayState) ? relayState : '/';
-	throw redirect(302, dest);
+	throw redirect(302, '/');
 };
