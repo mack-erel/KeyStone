@@ -1124,7 +1124,7 @@ ${cyan('━━━━━━━━━━━━━━━━━━━━━━━━
   초기 관리자 계정 정보${adminResult.generated ? ' (자동 생성됨)' : ''}
 
   이메일  : ${yellow(adminResult.email)}`);
-		console.log(`  비밀번호: ${passwordLine}`); // codeql[js/clear-text-logging] 설치 스크립트에서 초기 비밀번호를 1회 표시하는 의도된 동작
+		console.log(`  비밀번호: ${passwordLine}`);
 		console.log(`${adminResult.generated ? `${red('⚠️  이 비밀번호는 다시 표시되지 않습니다. 반드시 저장하세요.')}` : ''}
 ${cyan('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')}
 `);
