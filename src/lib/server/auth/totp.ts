@@ -51,7 +51,13 @@ export function base32Decode(input: string): Uint8Array<ArrayBuffer> {
 // ── HOTP / TOTP ───────────────────────────────────────────────────────────────
 
 async function hotp(key: Uint8Array<ArrayBuffer>, counter: number): Promise<number> {
-    const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+    const cryptoKey = await crypto.subtle.importKey(
+        "raw",
+        key,
+        { name: "HMAC", hash: "SHA-1" },
+        false,
+        ["sign"],
+    );
     const counterBuf = new Uint8Array(8);
     // counter를 빅엔디안 8바이트로 기록
     let c = counter;
@@ -62,7 +68,11 @@ async function hotp(key: Uint8Array<ArrayBuffer>, counter: number): Promise<numb
     const sig = await crypto.subtle.sign("HMAC", cryptoKey, counterBuf);
     const hash = new Uint8Array(sig);
     const offset = hash[19] & 0xf;
-    const code = ((hash[offset] & 0x7f) << 24) | (hash[offset + 1] << 16) | (hash[offset + 2] << 8) | hash[offset + 3];
+    const code =
+        ((hash[offset] & 0x7f) << 24) |
+        (hash[offset + 1] << 16) |
+        (hash[offset + 2] << 8) |
+        hash[offset + 3];
     return code % 1_000_000;
 }
 
@@ -81,7 +91,11 @@ export async function generateTotpCode(base32Secret: string, stepOffset = 0): Pr
  * lastUsedStep 을 지정하면 해당 스텝 이하는 거부하여 재사용 공격을 방지한다.
  * 검증 성공 시 매칭된 스텝을 반환하고, 실패 시 null 을 반환한다.
  */
-export async function verifyTotp(code: string, base32Secret: string, lastUsedStep?: number): Promise<number | null> {
+export async function verifyTotp(
+    code: string,
+    base32Secret: string,
+    lastUsedStep?: number,
+): Promise<number | null> {
     if (!/^\d{6}$/.test(code)) return null;
     const key = base32Decode(base32Secret);
     const t = Math.floor(Date.now() / 30_000);
@@ -96,22 +110,44 @@ export async function verifyTotp(code: string, base32Secret: string, lastUsedSte
 
 // ── TOTP 시크릿 암호화/복호화 ──────────────────────────────────────────────────
 
-async function deriveTotpWrapKey(signingKeySecret: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+async function deriveTotpWrapKey(
+    signingKeySecret: string,
+    salt: Uint8Array<ArrayBuffer>,
+): Promise<CryptoKey> {
     const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(signingKeySecret), "HKDF", false, ["deriveKey"]);
-    return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt, info: enc.encode("idp-totp-secret-wrap-v1") }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(signingKeySecret),
+        "HKDF",
+        false,
+        ["deriveKey"],
+    );
+    return crypto.subtle.deriveKey(
+        { name: "HKDF", hash: "SHA-256", salt, info: enc.encode("idp-totp-secret-wrap-v1") },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"],
+    );
 }
 
 /**
  * TOTP base32 시크릿을 AES-256-GCM 으로 암호화한다.
  * 형식: `<salt_b64u>.<iv_b64u>.<ciphertext_b64u>`
  */
-export async function encryptTotpSecret(base32Secret: string, signingKeySecret: string): Promise<string> {
+export async function encryptTotpSecret(
+    base32Secret: string,
+    signingKeySecret: string,
+): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const wrapKey = await deriveTotpWrapKey(signingKeySecret, salt);
     const enc = new TextEncoder();
-    const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, wrapKey, enc.encode(base32Secret));
+    const ct = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        wrapKey,
+        enc.encode(base32Secret),
+    );
     const b64u = (buf: Uint8Array) =>
         btoa(String.fromCharCode(...buf))
             .replace(/\+/g, "-")
@@ -123,7 +159,10 @@ export async function encryptTotpSecret(base32Secret: string, signingKeySecret: 
 /**
  * `encryptTotpSecret` 역연산. 복호화된 base32 시크릿 반환.
  */
-export async function decryptTotpSecret(encrypted: string, signingKeySecret: string): Promise<string> {
+export async function decryptTotpSecret(
+    encrypted: string,
+    signingKeySecret: string,
+): Promise<string> {
     const parts = encrypted.split(".");
     if (parts.length !== 3) throw new Error("Invalid encrypted TOTP secret format");
     const [saltB64, ivB64, ctB64] = parts;
@@ -135,7 +174,11 @@ export async function decryptTotpSecret(encrypted: string, signingKeySecret: str
         return arr;
     };
     const wrapKey = await deriveTotpWrapKey(signingKeySecret, b64uDec(saltB64));
-    const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64uDec(ivB64) }, wrapKey, b64uDec(ctB64));
+    const plaintext = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: b64uDec(ivB64) },
+        wrapKey,
+        b64uDec(ctB64),
+    );
     return new TextDecoder().decode(plaintext);
 }
 

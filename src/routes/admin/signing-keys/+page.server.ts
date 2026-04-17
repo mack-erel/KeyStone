@@ -5,7 +5,11 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { signingKeys } from "$lib/server/db/schema";
-import { generateRsaSigningKey, wrapPrivateKey, generateSelfSignedCert } from "$lib/server/crypto/keys";
+import {
+    generateRsaSigningKey,
+    wrapPrivateKey,
+    generateSelfSignedCert,
+} from "$lib/server/crypto/keys";
 
 export const load: PageServerLoad = async ({ locals }) => {
     const { db, tenant } = requireDbContext(locals);
@@ -47,7 +51,13 @@ export const actions: Actions = {
         await db
             .update(signingKeys)
             .set({ active: false, rotatedAt: new Date() })
-            .where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)));
+            .where(
+                and(
+                    eq(signingKeys.tenantId, tenant.id),
+                    eq(signingKeys.active, true),
+                    isNull(signingKeys.rotatedAt),
+                ),
+            );
 
         // 새 키 생성
         const { kid, publicKey, privateKey, publicJwk } = await generateRsaSigningKey();

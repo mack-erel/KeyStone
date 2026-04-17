@@ -7,7 +7,14 @@ import { createSessionRecord, setSessionCookie } from "$lib/server/auth/session"
 import { verifyMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
 import { verifyTotp, decryptTotpSecret, verifyBackupCode } from "$lib/server/auth/totp";
 import { checkRateLimit } from "$lib/server/ratelimit";
-import { AMR_PASSWORD, AMR_TOTP, AMR_BACKUP_CODE, amrToAcr, TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
+import {
+    AMR_PASSWORD,
+    AMR_TOTP,
+    AMR_BACKUP_CODE,
+    amrToAcr,
+    TOTP_CREDENTIAL_TYPE,
+    BACKUP_CODE_CREDENTIAL_TYPE,
+} from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { credentials, users } from "$lib/server/db/schema";
 
@@ -103,14 +110,23 @@ export const actions: Actions = {
             const backupCreds = await db
                 .select()
                 .from(credentials)
-                .where(and(eq(credentials.userId, user.id), eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE), isNull(credentials.usedAt)));
+                .where(
+                    and(
+                        eq(credentials.userId, user.id),
+                        eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE),
+                        isNull(credentials.usedAt),
+                    ),
+                );
 
             for (const cred of backupCreds) {
                 if (!cred.secret) continue;
                 const match = await verifyBackupCode(code, cred.secret);
                 if (match) {
                     // 소진 처리
-                    await db.update(credentials).set({ usedAt: new Date() }).where(eq(credentials.id, cred.id));
+                    await db
+                        .update(credentials)
+                        .set({ usedAt: new Date() })
+                        .where(eq(credentials.id, cred.id));
                     amrMethod = AMR_BACKUP_CODE;
                     verified = true;
                     break;
@@ -121,17 +137,28 @@ export const actions: Actions = {
             const [totpCred] = await db
                 .select()
                 .from(credentials)
-                .where(and(eq(credentials.userId, user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+                .where(
+                    and(
+                        eq(credentials.userId, user.id),
+                        eq(credentials.type, TOTP_CREDENTIAL_TYPE),
+                    ),
+                )
                 .limit(1);
 
             if (totpCred?.secret) {
-                const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret);
+                const plainSecret = await decryptTotpSecret(
+                    totpCred.secret,
+                    config.signingKeySecret,
+                );
                 // counter 컬럼을 마지막으로 사용된 TOTP 스텝으로 활용 (재사용 방지)
                 const lastUsedStep = totpCred.counter ?? undefined;
                 const matchedStep = await verifyTotp(code, plainSecret, lastUsedStep);
                 if (matchedStep !== null) {
                     verified = true;
-                    await db.update(credentials).set({ lastUsedAt: new Date(), counter: matchedStep }).where(eq(credentials.id, totpCred.id));
+                    await db
+                        .update(credentials)
+                        .set({ lastUsedAt: new Date(), counter: matchedStep })
+                        .where(eq(credentials.id, totpCred.id));
                 }
             }
         }
@@ -149,7 +176,9 @@ export const actions: Actions = {
             });
 
             return fail(400, {
-                error: useBackup ? "백업 코드가 올바르지 않거나 이미 사용되었습니다." : "인증 코드가 올바르지 않습니다. 시간이 맞는지 확인해 주세요.",
+                error: useBackup
+                    ? "백업 코드가 올바르지 않거나 이미 사용되었습니다."
+                    : "인증 코드가 올바르지 않습니다. 시간이 맞는지 확인해 주세요.",
             });
         }
 

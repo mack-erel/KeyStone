@@ -29,7 +29,11 @@ export interface RateLimitOptions {
  * SELECT→UPDATE 분리 대신 단일 INSERT...ON CONFLICT DO UPDATE...RETURNING 으로
  * 원자적으로 처리해 동시 요청 race condition 을 제거한다.
  */
-export async function checkRateLimit(db: DB, key: string, options: RateLimitOptions): Promise<RateLimitResult> {
+export async function checkRateLimit(
+    db: DB,
+    key: string,
+    options: RateLimitOptions,
+): Promise<RateLimitResult> {
     const now = Date.now();
     const newExpiresAt = new Date(now + options.windowMs);
 

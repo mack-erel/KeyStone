@@ -19,12 +19,16 @@ export const AMR_WEBAUTHN = "hwk"; // hardware key (RFC 8176)
 export const WEBAUTHN_CREDENTIAL_TYPE = "webauthn";
 
 // ACR (Authentication Context Class Reference) 값
-export const ACR_PASSWORD_TRANSPORT = "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport";
+export const ACR_PASSWORD_TRANSPORT =
+    "urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport";
 export const ACR_MFA = "https://refeds.org/profile/mfa";
 
 /** AMR 배열로부터 ACR 을 결정한다. */
 export function amrToAcr(amr: string[]): string {
-    if (amr.includes(AMR_WEBAUTHN) || (amr.includes(AMR_PASSWORD) && (amr.includes(AMR_TOTP) || amr.includes(AMR_BACKUP_CODE)))) {
+    if (
+        amr.includes(AMR_WEBAUTHN) ||
+        (amr.includes(AMR_PASSWORD) && (amr.includes(AMR_TOTP) || amr.includes(AMR_BACKUP_CODE)))
+    ) {
         return ACR_MFA;
     }
     return ACR_PASSWORD_TRANSPORT;
@@ -58,12 +62,17 @@ function acrSubsumes(sessionAcr: string | null, requestedRef: string): boolean {
  * 세션 ACR 이 SP 가 요구하는 RequestedAuthnContext 를 만족하는지 검사한다.
  * comparison: exact | minimum | maximum | better
  */
-export function acrSatisfies(sessionAcr: string | null, requested: { comparison: string; classRefs: string[] }): boolean {
+export function acrSatisfies(
+    sessionAcr: string | null,
+    requested: { comparison: string; classRefs: string[] },
+): boolean {
     const level = acrLevel(sessionAcr);
     switch (requested.comparison) {
         case "exact":
             // 정확히 일치하거나, 상위 ACR 이 해당 수준을 포함(subsume)하는 경우 허용
-            return requested.classRefs.some((ref) => ref === sessionAcr || acrSubsumes(sessionAcr, ref));
+            return requested.classRefs.some(
+                (ref) => ref === sessionAcr || acrSubsumes(sessionAcr, ref),
+            );
         case "minimum":
             return requested.classRefs.some((ref) => level >= acrLevel(ref));
         case "maximum":
@@ -71,6 +80,8 @@ export function acrSatisfies(sessionAcr: string | null, requested: { comparison:
         case "better":
             return requested.classRefs.some((ref) => level > acrLevel(ref));
         default:
-            return requested.classRefs.some((ref) => ref === sessionAcr || acrSubsumes(sessionAcr, ref));
+            return requested.classRefs.some(
+                (ref) => ref === sessionAcr || acrSubsumes(sessionAcr, ref),
+            );
     }
 }

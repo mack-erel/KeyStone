@@ -13,7 +13,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     const outcomeFilter = url.searchParams.get("outcome")?.trim() || null;
     const cursorParam = url.searchParams.get("cursor")?.trim() || null;
 
-    const outcome = VALID_OUTCOMES.includes(outcomeFilter as (typeof VALID_OUTCOMES)[number]) ? (outcomeFilter as "success" | "failure") : null;
+    const outcome = VALID_OUTCOMES.includes(outcomeFilter as (typeof VALID_OUTCOMES)[number])
+        ? (outcomeFilter as "success" | "failure")
+        : null;
 
     const cursorMs = cursorParam ? Number.parseInt(cursorParam, 10) : NaN;
     const cursor = Number.isFinite(cursorMs) ? new Date(cursorMs) : null;
@@ -42,10 +44,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
     const hasMore = rowsPlusOne.length > PAGE_SIZE;
     const rows = hasMore ? rowsPlusOne.slice(0, PAGE_SIZE) : rowsPlusOne;
-    const nextCursor = hasMore && rows.length > 0 ? rows[rows.length - 1].createdAt.getTime() : null;
+    const nextCursor =
+        hasMore && rows.length > 0 ? rows[rows.length - 1].createdAt.getTime() : null;
 
     // 필터 선택지용 kind 목록
-    const kindRows = await db.selectDistinct({ kind: auditEvents.kind }).from(auditEvents).where(eq(auditEvents.tenantId, tenant.id)).orderBy(auditEvents.kind);
+    const kindRows = await db
+        .selectDistinct({ kind: auditEvents.kind })
+        .from(auditEvents)
+        .where(eq(auditEvents.tenantId, tenant.id))
+        .orderBy(auditEvents.kind);
 
     return {
         events: rows,

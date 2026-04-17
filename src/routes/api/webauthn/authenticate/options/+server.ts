@@ -1,7 +1,11 @@
 import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
-import { buildAuthenticationOptions, getWebAuthnConfig, saveChallenge } from "$lib/server/auth/webauthn";
+import {
+    buildAuthenticationOptions,
+    getWebAuthnConfig,
+    saveChallenge,
+} from "$lib/server/auth/webauthn";
 
 export const POST: RequestHandler = async ({ url, locals }) => {
     const { db } = requireDbContext(locals);

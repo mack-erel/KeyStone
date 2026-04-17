@@ -3,7 +3,11 @@ import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { createSessionRecord, setSessionCookie } from "$lib/server/auth/session";
-import { authenticateLocalUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
+import {
+    authenticateLocalUser,
+    hasTotpCredential,
+    normalizeUsername,
+} from "$lib/server/auth/users";
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
 import { AMR_PASSWORD, amrToAcr } from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
@@ -63,7 +67,9 @@ export const actions: Actions = {
             return fail(503, {
                 username,
                 redirectTo,
-                error: event.locals.runtimeError ?? 'D1 binding "DB" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요.',
+                error:
+                    event.locals.runtimeError ??
+                    'D1 binding "DB" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요.',
             });
         }
 
@@ -85,7 +91,13 @@ export const actions: Actions = {
         const [ldapProvider] = await db
             .select()
             .from(identityProviders)
-            .where(and(eq(identityProviders.tenantId, tenant.id), eq(identityProviders.kind, "ldap"), eq(identityProviders.enabled, true)))
+            .where(
+                and(
+                    eq(identityProviders.tenantId, tenant.id),
+                    eq(identityProviders.kind, "ldap"),
+                    eq(identityProviders.enabled, true),
+                ),
+            )
             .limit(1);
 
         let user = null;
@@ -97,7 +109,11 @@ export const actions: Actions = {
             const config = getRuntimeConfig(event.platform);
             if (ldapConfig.bindPasswordEnc && !ldapConfig.bindPassword && config.signingKeySecret) {
                 try {
-                    ldapConfig.bindPassword = await decryptSecret(ldapConfig.bindPasswordEnc, config.signingKeySecret, "idp-ldap-bind-password-v1");
+                    ldapConfig.bindPassword = await decryptSecret(
+                        ldapConfig.bindPasswordEnc,
+                        config.signingKeySecret,
+                        "idp-ldap-bind-password-v1",
+                    );
                 } catch {
                     // 복호화 실패 시 인증 진행 불가 — bindPassword 없이 진행하면 null 반환됨
                 }
@@ -143,7 +159,10 @@ export const actions: Actions = {
                 });
             }
 
-            const mfaToken = await createMfaPendingToken({ userId: user.id, tenantId: tenant.id, redirectTo, ip: requestMetadata.ip }, config.signingKeySecret);
+            const mfaToken = await createMfaPendingToken(
+                { userId: user.id, tenantId: tenant.id, redirectTo, ip: requestMetadata.ip },
+                config.signingKeySecret,
+            );
 
             event.cookies.set(MFA_PENDING_COOKIE, mfaToken, {
                 path: "/",

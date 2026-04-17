@@ -37,12 +37,19 @@ function escapeLdapDn(input: string): string {
  *
  * 인증 실패 시 null 반환, 서버 오류는 throw.
  */
-export async function authenticateLdap(config: LdapProviderConfig, username: string, password: string): Promise<LdapUserAttrs | null> {
+export async function authenticateLdap(
+    config: LdapProviderConfig,
+    username: string,
+    password: string,
+): Promise<LdapUserAttrs | null> {
     let userDn: string;
 
     if (config.bindDN && config.bindPassword) {
         // Search 방식: admin bind → uid 검색으로 실제 DN 확정
-        const filter = (config.userSearchFilter ?? "(uid={username})").replace("{username}", escapeLdapFilter(username));
+        const filter = (config.userSearchFilter ?? "(uid={username})").replace(
+            "{username}",
+            escapeLdapFilter(username),
+        );
         const found = await ldapSearchDn(config, config.bindDN, config.bindPassword, filter);
         if (!found) return null; // 유저 없음
         userDn = found;
@@ -68,7 +75,12 @@ export async function authenticateLdap(config: LdapProviderConfig, username: str
 
     let entry: Record<string, string> | null = null;
     try {
-        entry = await ldapFetchEntry(config, userDn, password, userDn, [emailAttr, displayNameAttr, givenNameAttr, familyNameAttr]);
+        entry = await ldapFetchEntry(config, userDn, password, userDn, [
+            emailAttr,
+            displayNameAttr,
+            givenNameAttr,
+            familyNameAttr,
+        ]);
     } catch {
         // 속성 조회 실패해도 인증은 성공으로 처리
     }

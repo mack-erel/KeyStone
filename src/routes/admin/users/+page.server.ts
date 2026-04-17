@@ -221,7 +221,10 @@ export const actions: Actions = {
             .limit(1);
 
         if (existing) {
-            await db.update(credentials).set({ secret: hashed }).where(eq(credentials.id, existing.id));
+            await db
+                .update(credentials)
+                .set({ secret: hashed })
+                .where(eq(credentials.id, existing.id));
         } else {
             await db.insert(credentials).values({
                 id: crypto.randomUUID(),

@@ -106,7 +106,11 @@ export const POST: RequestHandler = async (event) => {
         if (!codeVerifier) {
             return tokenError("invalid_grant", "code_verifier 가 필요합니다.");
         }
-        const valid = await verifyPkce(grant.codeChallenge, grant.codeChallengeMethod ?? "plain", codeVerifier);
+        const valid = await verifyPkce(
+            grant.codeChallenge,
+            grant.codeChallengeMethod ?? "plain",
+            codeVerifier,
+        );
         if (!valid) {
             return tokenError("invalid_grant", "code_verifier 검증에 실패했습니다.");
         }

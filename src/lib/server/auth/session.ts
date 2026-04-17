@@ -64,7 +64,14 @@ export async function getSessionContext(db: DB, sessionToken: string) {
         .select({ session: sessions, user: users })
         .from(sessions)
         .innerJoin(users, eq(sessions.userId, users.id))
-        .where(and(eq(sessions.idpSessionId, sessionToken), gt(sessions.expiresAt, now), isNull(sessions.revokedAt), eq(users.status, "active")))
+        .where(
+            and(
+                eq(sessions.idpSessionId, sessionToken),
+                gt(sessions.expiresAt, now),
+                isNull(sessions.revokedAt),
+                eq(users.status, "active"),
+            ),
+        )
         .limit(1);
 
     return row ?? null;
@@ -88,7 +95,12 @@ export async function revokeAllUserSessions(db: DB, userId: string, revokedAt = 
         .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
 }
 
-export function setSessionCookie(cookies: Cookies, url: URL, sessionToken: string, expiresAt: Date) {
+export function setSessionCookie(
+    cookies: Cookies,
+    url: URL,
+    sessionToken: string,
+    expiresAt: Date,
+) {
     cookies.set(SESSION_COOKIE_NAME, sessionToken, cookieOptions(url, expiresAt));
 }
 

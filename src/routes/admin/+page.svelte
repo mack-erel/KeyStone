@@ -8,11 +8,15 @@ const { data } = $props<{ data: PageData }>();
 <div class="space-y-6">
     <div class="space-y-2">
         <h1 class="text-2xl font-bold text-gray-900">{t("admin.title")}</h1>
-        <p class="text-sm text-gray-500">기본 tenant 의 현재 운영 현황을 빠르게 확인할 수 있습니다.</p>
+        <p class="text-sm text-gray-500">
+            기본 tenant 의 현재 운영 현황을 빠르게 확인할 수 있습니다.
+        </p>
     </div>
 
     <div>
-        <p class="mb-3 text-xs font-semibold tracking-wider text-gray-400 uppercase">인증 프로토콜</p>
+        <p class="mb-3 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+            인증 프로토콜
+        </p>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
             <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
                 <h3 class="text-sm font-medium text-gray-500">{t("admin.users")}</h3>

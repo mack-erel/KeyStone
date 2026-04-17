@@ -34,10 +34,21 @@ export function b64uDecode(str: string): Uint8Array<ArrayBuffer> {
 
 // ── private key wrapping ──────────────────────────────────────────────────────
 
-async function deriveWrappingKey(secret: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+async function deriveWrappingKey(
+    secret: string,
+    salt: Uint8Array<ArrayBuffer>,
+): Promise<CryptoKey> {
     const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(secret), "HKDF", false, ["deriveKey"]);
-    return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt, info: enc.encode("idp-signing-key-wrap-v1") }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(secret), "HKDF", false, [
+        "deriveKey",
+    ]);
+    return crypto.subtle.deriveKey(
+        { name: "HKDF", hash: "SHA-256", salt, info: enc.encode("idp-signing-key-wrap-v1") },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"],
+    );
 }
 
 /**
@@ -50,7 +61,11 @@ export async function wrapPrivateKey(privateKey: CryptoKey, secret: string): Pro
     const wrappingKey = await deriveWrappingKey(secret, salt);
     const jwk = await crypto.subtle.exportKey("jwk", privateKey);
     const enc = new TextEncoder();
-    const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, wrappingKey, enc.encode(JSON.stringify(jwk)));
+    const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        wrappingKey,
+        enc.encode(JSON.stringify(jwk)),
+    );
     return `${b64uEncode(salt)}.${b64uEncode(iv)}.${b64uEncode(ciphertext)}`;
 }
 
@@ -63,9 +78,19 @@ export async function unwrapPrivateKey(encrypted: string, secret: string): Promi
     const [saltB64, ivB64, ctB64] = parts;
     const wrappingKey = await deriveWrappingKey(secret, b64uDecode(saltB64));
     const dec = new TextDecoder();
-    const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64uDecode(ivB64) }, wrappingKey, b64uDecode(ctB64));
+    const plaintext = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: b64uDecode(ivB64) },
+        wrappingKey,
+        b64uDecode(ctB64),
+    );
     const jwk = JSON.parse(dec.decode(plaintext)) as JsonWebKey;
-    return crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+    return crypto.subtle.importKey(
+        "jwk",
+        jwk,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["sign"],
+    );
 }
 
 // ── X.509 self-signed cert ────────────────────────────────────────────────────
@@ -75,7 +100,11 @@ export async function unwrapPrivateKey(encrypted: string, secret: string): Promi
  * SAML IdP Metadata 의 <KeyDescriptor> 에 사용.
  * @param commonName 인증서 CN (보통 IDP_ISSUER_URL 의 hostname)
  */
-export async function generateSelfSignedCert(publicKey: CryptoKey, privateKey: CryptoKey, commonName: string): Promise<string> {
+export async function generateSelfSignedCert(
+    publicKey: CryptoKey,
+    privateKey: CryptoKey,
+    commonName: string,
+): Promise<string> {
     const cert = await X509CertificateGenerator.createSelfSigned(
         {
             keys: { publicKey, privateKey },
@@ -114,7 +143,11 @@ export async function generateRsaSigningKey(): Promise<{
 
 // ── JWT signing (RS256) ───────────────────────────────────────────────────────
 
-export async function signJwt(payload: Record<string, unknown>, privateKey: CryptoKey, kid: string): Promise<string> {
+export async function signJwt(
+    payload: Record<string, unknown>,
+    privateKey: CryptoKey,
+    kid: string,
+): Promise<string> {
     const enc = new TextEncoder();
     const header = { alg: "RS256", typ: "JWT", kid };
     const headerB64 = b64uEncode(enc.encode(JSON.stringify(header)));
@@ -137,10 +170,19 @@ export interface AccessTokenClaims {
 
 async function deriveHmacKey(secret: string): Promise<CryptoKey> {
     const enc = new TextEncoder();
-    return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+    return crypto.subtle.importKey(
+        "raw",
+        enc.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign", "verify"],
+    );
 }
 
-export async function generateAccessToken(claims: AccessTokenClaims, secret: string): Promise<string> {
+export async function generateAccessToken(
+    claims: AccessTokenClaims,
+    secret: string,
+): Promise<string> {
     const enc = new TextEncoder();
     const data = b64uEncode(enc.encode(JSON.stringify(claims)));
     const key = await deriveHmacKey(secret);
@@ -148,7 +190,10 @@ export async function generateAccessToken(claims: AccessTokenClaims, secret: str
     return `${data}.${b64uEncode(sig)}`;
 }
 
-export async function verifyAccessToken(token: string, secret: string): Promise<AccessTokenClaims | null> {
+export async function verifyAccessToken(
+    token: string,
+    secret: string,
+): Promise<AccessTokenClaims | null> {
     try {
         const lastDot = token.lastIndexOf(".");
         if (lastDot === -1) return null;
@@ -173,27 +218,61 @@ export async function verifyAccessToken(token: string, secret: string): Promise<
  * 임의의 문자열을 AES-256-GCM 으로 암호화한다.
  * 형식: `<salt_b64u>.<iv_b64u>.<ciphertext_b64u>`
  */
-export async function encryptSecret(plaintext: string, masterSecret: string, context = "idp-secret-v1"): Promise<string> {
+export async function encryptSecret(
+    plaintext: string,
+    masterSecret: string,
+    context = "idp-secret-v1",
+): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(masterSecret), "HKDF", false, ["deriveKey"]);
-    const key = await crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt, info: enc.encode(context) }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt"]);
+    const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(masterSecret),
+        "HKDF",
+        false,
+        ["deriveKey"],
+    );
+    const key = await crypto.subtle.deriveKey(
+        { name: "HKDF", hash: "SHA-256", salt, info: enc.encode(context) },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt"],
+    );
     const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plaintext));
     return `${b64uEncode(salt)}.${b64uEncode(iv)}.${b64uEncode(new Uint8Array(ct))}`;
 }
 
 /** `encryptSecret` 역연산. */
-export async function decryptSecret(encrypted: string, masterSecret: string, context = "idp-secret-v1"): Promise<string> {
+export async function decryptSecret(
+    encrypted: string,
+    masterSecret: string,
+    context = "idp-secret-v1",
+): Promise<string> {
     const parts = encrypted.split(".");
     if (parts.length !== 3) throw new Error("Invalid encrypted secret format");
     const [saltB64, ivB64, ctB64] = parts;
     const enc = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(masterSecret), "HKDF", false, ["deriveKey"]);
-    const key = await crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: b64uDecode(saltB64), info: enc.encode(context) }, keyMaterial, { name: "AES-GCM", length: 256 }, false, [
-        "decrypt",
-    ]);
-    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64uDecode(ivB64) }, key, b64uDecode(ctB64));
+    const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(masterSecret),
+        "HKDF",
+        false,
+        ["deriveKey"],
+    );
+    const key = await crypto.subtle.deriveKey(
+        { name: "HKDF", hash: "SHA-256", salt: b64uDecode(saltB64), info: enc.encode(context) },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["decrypt"],
+    );
+    const pt = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: b64uDecode(ivB64) },
+        key,
+        b64uDecode(ctB64),
+    );
     return new TextDecoder().decode(pt);
 }
 
@@ -212,7 +291,13 @@ export async function getActiveSigningKey(
     const [row] = await db
         .select()
         .from(signingKeys)
-        .where(and(eq(signingKeys.tenantId, tenantId), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)))
+        .where(
+            and(
+                eq(signingKeys.tenantId, tenantId),
+                eq(signingKeys.active, true),
+                isNull(signingKeys.rotatedAt),
+            ),
+        )
         .limit(1);
     if (!row) return null;
     const privateKey = await unwrapPrivateKey(row.privateJwkEncrypted, secret);
@@ -224,7 +309,10 @@ export async function getActiveSigningKey(
     };
 }
 
-export async function getPublicJwks(db: DB, tenantId: string): Promise<Array<Record<string, unknown>>> {
+export async function getPublicJwks(
+    db: DB,
+    tenantId: string,
+): Promise<Array<Record<string, unknown>>> {
     const rows = await db
         .select({
             kid: signingKeys.kid,

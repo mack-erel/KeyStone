@@ -22,7 +22,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
             transports: credentials.transports,
         })
         .from(credentials)
-        .where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, WEBAUTHN_CREDENTIAL_TYPE)));
+        .where(
+            and(
+                eq(credentials.userId, locals.user.id),
+                eq(credentials.type, WEBAUTHN_CREDENTIAL_TYPE),
+            ),
+        );
 
     return {
         passkeys,
@@ -44,7 +49,15 @@ export const actions: Actions = {
         const { db, tenant } = requireDbContext(locals);
 
         // 본인 소유 확인 후 삭제
-        const deleted = await db.delete(credentials).where(and(eq(credentials.id, credentialId), eq(credentials.userId, locals.user.id), eq(credentials.type, WEBAUTHN_CREDENTIAL_TYPE)));
+        const deleted = await db
+            .delete(credentials)
+            .where(
+                and(
+                    eq(credentials.id, credentialId),
+                    eq(credentials.userId, locals.user.id),
+                    eq(credentials.type, WEBAUTHN_CREDENTIAL_TYPE),
+                ),
+            );
 
         if (!deleted) {
             return fail(404, { error: "패스키를 찾을 수 없습니다." });

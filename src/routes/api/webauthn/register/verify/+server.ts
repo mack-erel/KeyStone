@@ -3,7 +3,13 @@ import type { RequestHandler } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
-import { verifyChallengeCookie, verifyRegistrationResponse, savePasskey, getWebAuthnConfig, WEBAUTHN_CHALLENGE_COOKIE } from "$lib/server/auth/webauthn";
+import {
+    verifyChallengeCookie,
+    verifyRegistrationResponse,
+    savePasskey,
+    getWebAuthnConfig,
+    WEBAUTHN_CHALLENGE_COOKIE,
+} from "$lib/server/auth/webauthn";
 import type { RegistrationResponseJSON } from "$lib/server/auth/webauthn";
 
 export const POST: RequestHandler = async (event) => {

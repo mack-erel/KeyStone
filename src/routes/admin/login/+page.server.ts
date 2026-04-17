@@ -2,7 +2,11 @@ import { fail, redirect } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
-import { authenticateLocalUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
+import {
+    authenticateLocalUser,
+    hasTotpCredential,
+    normalizeUsername,
+} from "$lib/server/auth/users";
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { checkRateLimit } from "$lib/server/ratelimit";
@@ -52,7 +56,9 @@ export const actions: Actions = {
             return fail(503, {
                 username,
                 redirectTo,
-                error: event.locals.runtimeError ?? 'D1 binding "DB" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요.',
+                error:
+                    event.locals.runtimeError ??
+                    'D1 binding "DB" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요.',
             });
         }
 

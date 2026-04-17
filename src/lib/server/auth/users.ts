@@ -12,7 +12,11 @@ export function normalizeUsername(username: string): string {
     return username.trim().toLowerCase();
 }
 
-export async function findUserByEmail(db: DB, tenantId: string, email: string): Promise<User | null> {
+export async function findUserByEmail(
+    db: DB,
+    tenantId: string,
+    email: string,
+): Promise<User | null> {
     const [user] = await db
         .select()
         .from(users)
@@ -22,7 +26,11 @@ export async function findUserByEmail(db: DB, tenantId: string, email: string): 
     return user ?? null;
 }
 
-export async function findUserByUsername(db: DB, tenantId: string, username: string): Promise<User | null> {
+export async function findUserByUsername(
+    db: DB,
+    tenantId: string,
+    username: string,
+): Promise<User | null> {
     const [user] = await db
         .select()
         .from(users)
@@ -42,7 +50,12 @@ export async function findPasswordCredential(db: DB, userId: string): Promise<Cr
     return credential ?? null;
 }
 
-export async function authenticateLocalUser(db: DB, tenantId: string, username: string, password: string): Promise<User | null> {
+export async function authenticateLocalUser(
+    db: DB,
+    tenantId: string,
+    username: string,
+    password: string,
+): Promise<User | null> {
     const user = await findUserByUsername(db, tenantId, username);
 
     if (!user || user.status !== "active") {
@@ -62,7 +75,10 @@ export async function authenticateLocalUser(db: DB, tenantId: string, username: 
     }
 
     if (result.rehash) {
-        await db.update(credentials).set({ secret: result.rehash, lastUsedAt: new Date() }).where(eq(credentials.id, credential.id));
+        await db
+            .update(credentials)
+            .set({ secret: result.rehash, lastUsedAt: new Date() })
+            .where(eq(credentials.id, credential.id));
     }
 
     return user;

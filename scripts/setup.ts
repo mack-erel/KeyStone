@@ -181,7 +181,10 @@ function closeRL() {
 }
 
 async function ask(prompt: string, defaultVal?: string): Promise<string> {
-    const displayPrompt = defaultVal !== undefined ? `${yellow(prompt)} [기본값: ${defaultVal}]: ` : `${yellow(prompt)}: `;
+    const displayPrompt =
+        defaultVal !== undefined
+            ? `${yellow(prompt)} [기본값: ${defaultVal}]: `
+            : `${yellow(prompt)}: `;
 
     return new Promise((resolve) => {
         getRL().question(displayPrompt, (answer: string) => {
@@ -308,13 +311,19 @@ async function wranglerWhoami(): Promise<{ loggedIn: boolean; accountId: string 
 }
 
 async function createD1Database(name: string): Promise<string | null> {
-    const result = await runWithSpinner(`D1 DB 생성 중: ${name}`, "wrangler", ["d1", "create", name]);
+    const result = await runWithSpinner(`D1 DB 생성 중: ${name}`, "wrangler", [
+        "d1",
+        "create",
+        name,
+    ]);
     if (!result.success) {
         console.error(red(`  D1 DB 생성 실패:\n${result.stderr}`));
         return null;
     }
     const combined = result.stdout + result.stderr;
-    const match = combined.match(/"?database_id"?\s*[=:]\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/i);
+    const match = combined.match(
+        /"?database_id"?\s*[=:]\s*"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"/i,
+    );
     if (!match) {
         console.error(red(`  D1 생성 결과에서 database_id를 찾을 수 없습니다:\n${combined}`));
         return null;
@@ -326,7 +335,11 @@ let _cachedDbList: D1Database[] | null | undefined = undefined;
 
 async function listD1Databases(): Promise<D1Database[] | null> {
     if (_cachedDbList !== undefined) return _cachedDbList;
-    const result = await runWithSpinner("D1 DB 목록 조회 중...", "wrangler", ["d1", "list", "--json"]);
+    const result = await runWithSpinner("D1 DB 목록 조회 중...", "wrangler", [
+        "d1",
+        "list",
+        "--json",
+    ]);
     if (!result.success) {
         console.error(red(`  D1 목록 조회 실패:\n${result.stderr}`));
         _cachedDbList = null;
@@ -356,7 +369,10 @@ function writeFile(filePath: string, content: string) {
 }
 
 /** mkdtempSync으로 안전한 임시 파일 생성 (symlink attack 방지) */
-function createTempFile(prefix: string, content: string): { filePath: string; cleanup: () => void } {
+function createTempFile(
+    prefix: string,
+    content: string,
+): { filePath: string; cleanup: () => void } {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
     const filePath = path.join(tmpDir, "content.sql");
     fs.writeFileSync(filePath, content, { mode: 0o600 });
@@ -392,7 +408,10 @@ function loadEnvFile(envPath: string): Record<string, string> {
         if (eq < 0) continue;
         const key = trimmed.slice(0, eq).trim();
         let val = trimmed.slice(eq + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        if (
+            (val.startsWith('"') && val.endsWith('"')) ||
+            (val.startsWith("'") && val.endsWith("'"))
+        ) {
             val = val.slice(1, -1);
         }
         if (key) env[key] = val;
@@ -478,7 +497,13 @@ async function step2_createEnv(args: Args) {
     console.log(green("  ✓ .env 생성 완료"));
 }
 
-async function setupDb(label: string, nameArg: string | undefined, idArg: string | undefined, defaultName: string, isPreview = false): Promise<{ id: string; name: string } | null> {
+async function setupDb(
+    label: string,
+    nameArg: string | undefined,
+    idArg: string | undefined,
+    defaultName: string,
+    isPreview = false,
+): Promise<{ id: string; name: string } | null> {
     // If ID directly provided
     if (idArg) {
         console.log(green(`  ✓ ${label} ID: ${idArg}`));
@@ -486,7 +511,11 @@ async function setupDb(label: string, nameArg: string | undefined, idArg: string
     }
 
     const thirdOption = isPreview ? "미사용" : "나중에 직접 설정 (종료)";
-    const choice = await select(`${label} 설정`, ["지금 새로 생성", "이미 생성된 DB 사용", thirdOption]);
+    const choice = await select(`${label} 설정`, [
+        "지금 새로 생성",
+        "이미 생성된 DB 사용",
+        thirdOption,
+    ]);
 
     if (choice === 3) {
         if (isPreview) {
@@ -548,7 +577,13 @@ async function step3_dbSetup(args: Args): Promise<{
             previewDbName = args.previewDbName ?? `${db.name}-preview`;
             console.log(green(`  ✓ 프리뷰 DB ID: ${previewDbId}`));
         } else {
-            const previewDb = await setupDb("프리뷰 D1 데이터베이스", args.previewDbName, undefined, `${db.name}-preview`, true);
+            const previewDb = await setupDb(
+                "프리뷰 D1 데이터베이스",
+                args.previewDbName,
+                undefined,
+                `${db.name}-preview`,
+                true,
+            );
             previewDbId = previewDb?.id ?? null;
             previewDbName = previewDb?.name ?? null;
         }
@@ -557,7 +592,11 @@ async function step3_dbSetup(args: Args): Promise<{
     return { dbId: db.id, dbName: db.name, previewDbId, previewDbName };
 }
 
-async function step4_updateFiles(dbId: string, previewDbId: string | null, accountId: string | null) {
+async function step4_updateFiles(
+    dbId: string,
+    previewDbId: string | null,
+    accountId: string | null,
+) {
     console.log(`\n${cyan("─── 4. 파일 업데이트 ──────────────────────────────────────")}`);
 
     // Update wrangler.jsonc
@@ -567,7 +606,10 @@ async function step4_updateFiles(dbId: string, previewDbId: string | null, accou
     if (previewDbId) {
         wranglerContent = replaceAll(wranglerContent, "YOUR_D1_PREVIEW_DATABASE_ID", previewDbId);
         // Uncomment the preview_database_id line if it's commented out
-        wranglerContent = wranglerContent.replace(/\/\/\s*"preview_database_id":\s*"([^"]+)"/g, `"preview_database_id": "$1"`);
+        wranglerContent = wranglerContent.replace(
+            /\/\/\s*"preview_database_id":\s*"([^"]+)"/g,
+            `"preview_database_id": "$1"`,
+        );
     }
 
     writeFile(WRANGLER_JSONC, wranglerContent);
@@ -576,12 +618,21 @@ async function step4_updateFiles(dbId: string, previewDbId: string | null, accou
     // Update .env
     let envContent = readFile(ENV_FILE);
     if (accountId) {
-        envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${accountId}"`);
+        envContent = envContent.replace(
+            /^CLOUDFLARE_ACCOUNT_ID=".*"$/m,
+            `CLOUDFLARE_ACCOUNT_ID="${accountId}"`,
+        );
     }
-    envContent = envContent.replace(/^CLOUDFLARE_D1_DATABASE_ID=".*"$/m, `CLOUDFLARE_D1_DATABASE_ID="${dbId}"`);
+    envContent = envContent.replace(
+        /^CLOUDFLARE_D1_DATABASE_ID=".*"$/m,
+        `CLOUDFLARE_D1_DATABASE_ID="${dbId}"`,
+    );
 
     if (previewDbId) {
-        envContent = envContent.replace(/^CLOUDFLARE_D1_PREVIEW_DATABASE_ID=".*"$/m, `CLOUDFLARE_D1_PREVIEW_DATABASE_ID="${previewDbId}"`);
+        envContent = envContent.replace(
+            /^CLOUDFLARE_D1_PREVIEW_DATABASE_ID=".*"$/m,
+            `CLOUDFLARE_D1_PREVIEW_DATABASE_ID="${previewDbId}"`,
+        );
     }
 
     writeFile(ENV_FILE, envContent);
@@ -590,11 +641,22 @@ async function step4_updateFiles(dbId: string, previewDbId: string | null, accou
 
 // ─── Migration Conflict Detection ────────────────────────────────────────────
 
-async function getExistingTables(dbName: string, env: Record<string, string>): Promise<string[] | null> {
+async function getExistingTables(
+    dbName: string,
+    env: Record<string, string>,
+): Promise<string[] | null> {
     const result = await runWithSpinner(
         `기존 테이블 조회 중 (${dbName})...`,
         "wrangler",
-        ["d1", "execute", dbName, "--remote", "--json", "--command", "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"],
+        [
+            "d1",
+            "execute",
+            dbName,
+            "--remote",
+            "--json",
+            "--command",
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        ],
         { env },
     );
     if (!result.success) {
@@ -649,19 +711,27 @@ function buildFilteredMigrationSQL(conflicting: Set<string>): string {
 function buildDrizzleTrackingSQL(): string {
     const drizzleDir = path.join(ROOT, "drizzle");
     const now = Date.now();
-    const lines = [`CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, hash TEXT NOT NULL, created_at NUMERIC);`];
+    const lines = [
+        `CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, hash TEXT NOT NULL, created_at NUMERIC);`,
+    ];
     for (const file of fs
         .readdirSync(drizzleDir)
         .filter((f) => f.endsWith(".sql"))
         .sort()) {
         const content = readFile(path.join(drizzleDir, file));
         const hash = createHash("sha256").update(content).digest("hex");
-        lines.push(`INSERT INTO "__drizzle_migrations" (hash, created_at) SELECT '${hash}', ${now} WHERE NOT EXISTS (SELECT 1 FROM "__drizzle_migrations" WHERE hash = '${hash}');`);
+        lines.push(
+            `INSERT INTO "__drizzle_migrations" (hash, created_at) SELECT '${hash}', ${now} WHERE NOT EXISTS (SELECT 1 FROM "__drizzle_migrations" WHERE hash = '${hash}');`,
+        );
     }
     return lines.join("\n");
 }
 
-async function handleMigrationConflicts(dbName: string, env: Record<string, string>, args: Args): Promise<"proceed" | "done"> {
+async function handleMigrationConflicts(
+    dbName: string,
+    env: Record<string, string>,
+    args: Args,
+): Promise<"proceed" | "done"> {
     const existing = await getExistingTables(dbName, env);
     if (!existing || existing.length === 0) return "proceed";
 
@@ -677,15 +747,30 @@ async function handleMigrationConflicts(dbName: string, env: Record<string, stri
         choice = 2;
         console.log(yellow("  (--yes 모드) 겹치는 테이블은 건너뜀으로 자동 선택"));
     } else {
-        choice = await select("마이그레이션 방식을 선택하세요", ["겹치는 테이블 삭제 후 전체 마이그레이션 (데이터 손실 주의)", "겹치는 테이블은 건너뛰고 나머지만 마이그레이션"]);
+        choice = await select("마이그레이션 방식을 선택하세요", [
+            "겹치는 테이블 삭제 후 전체 마이그레이션 (데이터 손실 주의)",
+            "겹치는 테이블은 건너뛰고 나머지만 마이그레이션",
+        ]);
     }
 
     if (choice === 1) {
-        const dropSQL = ["PRAGMA foreign_keys = OFF;", ...conflicts.map((t) => `DROP TABLE IF EXISTS \`${t}\`;`), "PRAGMA foreign_keys = ON;"].join("\n");
+        const dropSQL = [
+            "PRAGMA foreign_keys = OFF;",
+            ...conflicts.map((t) => `DROP TABLE IF EXISTS \`${t}\`;`),
+            "PRAGMA foreign_keys = ON;",
+        ].join("\n");
 
-        const { filePath: dropTmpFile, cleanup: dropCleanup } = createTempFile("idp-drop-", dropSQL);
+        const { filePath: dropTmpFile, cleanup: dropCleanup } = createTempFile(
+            "idp-drop-",
+            dropSQL,
+        );
         try {
-            const dropResult = await runWithSpinner(`겹치는 테이블 삭제 중 (${dbName})...`, "wrangler", ["d1", "execute", dbName, "--remote", "--file", dropTmpFile], { env });
+            const dropResult = await runWithSpinner(
+                `겹치는 테이블 삭제 중 (${dbName})...`,
+                "wrangler",
+                ["d1", "execute", dbName, "--remote", "--file", dropTmpFile],
+                { env },
+            );
             if (!dropResult.success) {
                 console.error(red(`  테이블 삭제 실패:\n${dropResult.stderr}`));
                 closeRL();
@@ -699,10 +784,19 @@ async function handleMigrationConflicts(dbName: string, env: Record<string, stri
     }
 
     // Option 2: 필터링된 SQL + drizzle tracking
-    const combinedSQL = buildFilteredMigrationSQL(new Set(conflicts)) + "\n" + buildDrizzleTrackingSQL();
-    const { filePath: filteredTmpFile, cleanup: filteredCleanup } = createTempFile("idp-migrate-", combinedSQL);
+    const combinedSQL =
+        buildFilteredMigrationSQL(new Set(conflicts)) + "\n" + buildDrizzleTrackingSQL();
+    const { filePath: filteredTmpFile, cleanup: filteredCleanup } = createTempFile(
+        "idp-migrate-",
+        combinedSQL,
+    );
     try {
-        const runResult = await runWithSpinner(`필터링된 마이그레이션 실행 중 (${dbName})...`, "wrangler", ["d1", "execute", dbName, "--remote", "--file", filteredTmpFile], { env });
+        const runResult = await runWithSpinner(
+            `필터링된 마이그레이션 실행 중 (${dbName})...`,
+            "wrangler",
+            ["d1", "execute", dbName, "--remote", "--file", filteredTmpFile],
+            { env },
+        );
         if (!runResult.success) {
             console.error(red(`  필터링된 마이그레이션 실패:\n${runResult.stderr}`));
             closeRL();
@@ -717,7 +811,12 @@ async function handleMigrationConflicts(dbName: string, env: Record<string, stri
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, previewDbName: string | null) {
+async function step5_migrate(
+    args: Args,
+    hasPreviewDb: boolean,
+    dbName: string,
+    previewDbName: string | null,
+) {
     console.log(`\n${cyan("─── 5. 마이그레이션 ────────────────────────────────────────")}`);
 
     let doMigrate = args.migrate;
@@ -743,7 +842,10 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, 
         }
         envVars.CLOUDFLARE_ACCOUNT_ID = id;
         let envContent = readFile(ENV_FILE);
-        envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${id}"`);
+        envContent = envContent.replace(
+            /^CLOUDFLARE_ACCOUNT_ID=".*"$/m,
+            `CLOUDFLARE_ACCOUNT_ID="${id}"`,
+        );
         writeFile(ENV_FILE, envContent);
     }
 
@@ -769,7 +871,10 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, 
         }
         let envContent = readFile(ENV_FILE);
         if (/^CLOUDFLARE_D1_TOKEN=/m.test(envContent)) {
-            envContent = envContent.replace(/^CLOUDFLARE_D1_TOKEN=".*"$/m, `CLOUDFLARE_D1_TOKEN="${token}"`);
+            envContent = envContent.replace(
+                /^CLOUDFLARE_D1_TOKEN=".*"$/m,
+                `CLOUDFLARE_D1_TOKEN="${token}"`,
+            );
         } else {
             envContent += `\nCLOUDFLARE_API_TOKEN="${token}"\n`;
         }
@@ -782,8 +887,12 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, 
         CLOUDFLARE_ACCOUNT_ID: freshEnv.CLOUDFLARE_ACCOUNT_ID ?? "",
         CLOUDFLARE_D1_DATABASE_ID: freshEnv.CLOUDFLARE_D1_DATABASE_ID ?? "",
         CLOUDFLARE_D1_PREVIEW_DATABASE_ID: freshEnv.CLOUDFLARE_D1_PREVIEW_DATABASE_ID ?? "",
-        ...(hasToken(freshEnv.CLOUDFLARE_D1_TOKEN) ? { CLOUDFLARE_D1_TOKEN: freshEnv.CLOUDFLARE_D1_TOKEN! } : {}),
-        ...(hasToken(freshEnv.CLOUDFLARE_API_TOKEN) ? { CLOUDFLARE_API_TOKEN: freshEnv.CLOUDFLARE_API_TOKEN! } : {}),
+        ...(hasToken(freshEnv.CLOUDFLARE_D1_TOKEN)
+            ? { CLOUDFLARE_D1_TOKEN: freshEnv.CLOUDFLARE_D1_TOKEN! }
+            : {}),
+        ...(hasToken(freshEnv.CLOUDFLARE_API_TOKEN)
+            ? { CLOUDFLARE_API_TOKEN: freshEnv.CLOUDFLARE_API_TOKEN! }
+            : {}),
     };
 
     // Generate migrations
@@ -819,7 +928,10 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, 
     if (hasPreviewDb && previewDbName) {
         let doMigratePreview = args.migratePreview;
         if (doMigratePreview === undefined) {
-            doMigratePreview = await confirm("프리뷰 DB에도 마이그레이션을 진행하시겠습니까?", true);
+            doMigratePreview = await confirm(
+                "프리뷰 DB에도 마이그레이션을 진행하시겠습니까?",
+                true,
+            );
         }
 
         if (doMigratePreview) {
@@ -848,8 +960,18 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, 
 
 async function hashPasswordForSetup(password: string): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(16));
-    const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-    const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 }, keyMaterial, 256);
+    const keyMaterial = await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(password),
+        "PBKDF2",
+        false,
+        ["deriveBits"],
+    );
+    const derived = await crypto.subtle.deriveBits(
+        { name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 },
+        keyMaterial,
+        256,
+    );
     const saltB64 = btoa(String.fromCharCode(...salt));
     const hashB64 = btoa(String.fromCharCode(...new Uint8Array(derived)));
     return `pbkdf2:sha256:100000:${saltB64}:${hashB64}`;
@@ -871,7 +993,12 @@ interface AdminSeedData {
     hashedPassword: string;
 }
 
-async function seedAdminToDb(dbName: string, data: AdminSeedData, env: Record<string, string>, isPreview = false): Promise<boolean> {
+async function seedAdminToDb(
+    dbName: string,
+    data: AdminSeedData,
+    env: Record<string, string>,
+    isPreview = false,
+): Promise<boolean> {
     const now = Date.now();
     const tenantId = crypto.randomUUID();
     const userId = crypto.randomUUID();
@@ -896,7 +1023,12 @@ async function seedAdminToDb(dbName: string, data: AdminSeedData, env: Record<st
     const label = `관리자 계정 생성 중 (${dbName}${isPreview ? " preview" : ""})...`;
 
     try {
-        const result = await runWithSpinner(label, "wrangler", ["d1", "execute", dbName, "--remote", "--file", seedTmpFile], { env: actualEnv });
+        const result = await runWithSpinner(
+            label,
+            "wrangler",
+            ["d1", "execute", dbName, "--remote", "--file", seedTmpFile],
+            { env: actualEnv },
+        );
 
         if (!result.success) {
             console.error(red(`  관리자 계정 생성 실패:\n${result.stderr}`));
@@ -908,7 +1040,11 @@ async function seedAdminToDb(dbName: string, data: AdminSeedData, env: Record<st
     }
 }
 
-async function step5b_bootstrapConfig(args: Args, dbName: string, previewDbName: string | null): Promise<{ email: string; password: string; generated: boolean } | null> {
+async function step5b_bootstrapConfig(
+    args: Args,
+    dbName: string,
+    previewDbName: string | null,
+): Promise<{ email: string; password: string; generated: boolean } | null> {
     console.log(`\n${cyan("─── 5b. 초기 관리자 계정 생성 ─────────────────────────────────")}`);
 
     const tenantName = args.tenantName ?? (await ask("조직(테넌트) 이름", "My Organization"));
@@ -937,7 +1073,10 @@ async function step5b_bootstrapConfig(args: Args, dbName: string, previewDbName:
     // .env에 민감하지 않은 값만 저장
     if (fs.existsSync(ENV_FILE)) {
         let envContent = readFile(ENV_FILE);
-        envContent = envContent.replace(/^IDP_DEFAULT_TENANT_NAME=".*"$/m, `IDP_DEFAULT_TENANT_NAME="${tenantName}"`);
+        envContent = envContent.replace(
+            /^IDP_DEFAULT_TENANT_NAME=".*"$/m,
+            `IDP_DEFAULT_TENANT_NAME="${tenantName}"`,
+        );
         envContent = envContent.replace(/^IDP_ISSUER_URL=".*"$/m, `IDP_ISSUER_URL="${issuerUrl}"`);
         writeFile(ENV_FILE, envContent);
         console.log(green("  ✓ .env 업데이트 완료 (테넌트 이름, Issuer URL)"));
@@ -946,8 +1085,12 @@ async function step5b_bootstrapConfig(args: Args, dbName: string, previewDbName:
     const envVars = loadEnvFile(ENV_FILE);
     const wranglerEnv: Record<string, string> = {
         CLOUDFLARE_ACCOUNT_ID: envVars.CLOUDFLARE_ACCOUNT_ID ?? "",
-        ...(envVars.CLOUDFLARE_D1_TOKEN ? { CLOUDFLARE_D1_TOKEN: envVars.CLOUDFLARE_D1_TOKEN } : {}),
-        ...(envVars.CLOUDFLARE_API_TOKEN ? { CLOUDFLARE_API_TOKEN: envVars.CLOUDFLARE_API_TOKEN } : {}),
+        ...(envVars.CLOUDFLARE_D1_TOKEN
+            ? { CLOUDFLARE_D1_TOKEN: envVars.CLOUDFLARE_D1_TOKEN }
+            : {}),
+        ...(envVars.CLOUDFLARE_API_TOKEN
+            ? { CLOUDFLARE_API_TOKEN: envVars.CLOUDFLARE_API_TOKEN }
+            : {}),
     };
 
     const data: AdminSeedData = { tenantName, email, username, displayName, hashedPassword };
@@ -955,7 +1098,8 @@ async function step5b_bootstrapConfig(args: Args, dbName: string, previewDbName:
     if (!ok) return null;
 
     if (previewDbName) {
-        const doPreview = args.yes || (await confirm("프리뷰 DB에도 관리자 계정을 생성하시겠습니까?", true));
+        const doPreview =
+            args.yes || (await confirm("프리뷰 DB에도 관리자 계정을 생성하시겠습니까?", true));
         if (doPreview) {
             await seedAdminToDb(previewDbName, data, wranglerEnv, true);
         }
@@ -971,7 +1115,10 @@ async function step6_signingKey(args: Args) {
 
     if (!signingKey) {
         console.log(`  ${cyan("IDP_SIGNING_KEY_SECRET")} 을 설정합니다.`);
-        const input = await ask("직접 입력하거나 엔터를 누르면 자동 생성합니다 (openssl rand -base64 32)", "");
+        const input = await ask(
+            "직접 입력하거나 엔터를 누르면 자동 생성합니다 (openssl rand -base64 32)",
+            "",
+        );
 
         if (input === "") {
             const result = runCommand("openssl", ["rand", "-base64", "32"]);
@@ -988,12 +1135,17 @@ async function step6_signingKey(args: Args) {
 
     // Update .env
     let envContent = readFile(ENV_FILE);
-    envContent = envContent.replace(/^IDP_SIGNING_KEY_SECRET=".*"$/m, `IDP_SIGNING_KEY_SECRET="${signingKey}"`);
+    envContent = envContent.replace(
+        /^IDP_SIGNING_KEY_SECRET=".*"$/m,
+        `IDP_SIGNING_KEY_SECRET="${signingKey}"`,
+    );
     writeFile(ENV_FILE, envContent);
     console.log(green("  ✓ IDP_SIGNING_KEY_SECRET .env 업데이트 완료"));
 }
 
-function printComplete(adminResult?: { email: string; password: string; generated: boolean } | null) {
+function printComplete(
+    adminResult?: { email: string; password: string; generated: boolean } | null,
+) {
     console.log(`\n${green("✓ 셋업 완료!")}`);
 
     if (adminResult) {

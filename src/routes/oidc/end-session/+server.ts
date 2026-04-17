@@ -4,7 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { oidcClients } from "$lib/server/db/schema";
 import { clearSessionCookie, revokeSession } from "$lib/server/auth/session";
 
-async function handleEndSession(locals: App.Locals, url: URL, cookies: Parameters<RequestHandler>[0]["cookies"]): Promise<never> {
+async function handleEndSession(
+    locals: App.Locals,
+    url: URL,
+    cookies: Parameters<RequestHandler>[0]["cookies"],
+): Promise<never> {
     const postLogoutRedirectUri = url.searchParams.get("post_logout_redirect_uri");
     const clientId = url.searchParams.get("client_id");
 
@@ -19,7 +23,13 @@ async function handleEndSession(locals: App.Locals, url: URL, cookies: Parameter
         const [client] = await locals.db
             .select({ postLogoutRedirectUris: oidcClients.postLogoutRedirectUris })
             .from(oidcClients)
-            .where(and(eq(oidcClients.tenantId, locals.tenant.id), eq(oidcClients.clientId, clientId), eq(oidcClients.enabled, true)))
+            .where(
+                and(
+                    eq(oidcClients.tenantId, locals.tenant.id),
+                    eq(oidcClients.clientId, clientId),
+                    eq(oidcClients.enabled, true),
+                ),
+            )
             .limit(1);
 
         if (client?.postLogoutRedirectUris) {
@@ -38,6 +48,8 @@ async function handleEndSession(locals: App.Locals, url: URL, cookies: Parameter
     throw redirect(302, "/");
 }
 
-export const GET: RequestHandler = ({ locals, url, cookies }) => handleEndSession(locals, url, cookies);
+export const GET: RequestHandler = ({ locals, url, cookies }) =>
+    handleEndSession(locals, url, cookies);
 
-export const POST: RequestHandler = ({ locals, url, cookies }) => handleEndSession(locals, url, cookies);
+export const POST: RequestHandler = ({ locals, url, cookies }) =>
+    handleEndSession(locals, url, cookies);

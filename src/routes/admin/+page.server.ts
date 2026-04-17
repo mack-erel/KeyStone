@@ -1,11 +1,29 @@
 import { count, eq } from "drizzle-orm";
 import type { PageServerLoad } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
-import { auditEvents, departments, oidcClients, positions, samlSps, signingKeys, teams, users } from "$lib/server/db/schema";
+import {
+    auditEvents,
+    departments,
+    oidcClients,
+    positions,
+    samlSps,
+    signingKeys,
+    teams,
+    users,
+} from "$lib/server/db/schema";
 
 export const load: PageServerLoad = async ({ locals }) => {
     const { db, tenant } = requireDbContext(locals);
-    const [userCount, oidcClientCount, samlSpCount, signingKeyCount, auditEventCount, deptCount, teamCount, positionCount] = await Promise.all([
+    const [
+        userCount,
+        oidcClientCount,
+        samlSpCount,
+        signingKeyCount,
+        auditEventCount,
+        deptCount,
+        teamCount,
+        positionCount,
+    ] = await Promise.all([
         db.select({ count: count() }).from(users).where(eq(users.tenantId, tenant.id)),
         db.select({ count: count() }).from(oidcClients).where(eq(oidcClients.tenantId, tenant.id)),
         db.select({ count: count() }).from(samlSps).where(eq(samlSps.tenantId, tenant.id)),

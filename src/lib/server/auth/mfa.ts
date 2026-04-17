@@ -43,13 +43,22 @@ function b64uDecode(str: string): Uint8Array<ArrayBuffer> {
 
 async function deriveHmacKey(secret: string): Promise<CryptoKey> {
     const enc = new TextEncoder();
-    return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+    return crypto.subtle.importKey(
+        "raw",
+        enc.encode(secret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign", "verify"],
+    );
 }
 
 /**
  * MFA pending 토큰 생성. 쿠키 value 로 사용한다.
  */
-export async function createMfaPendingToken(claims: MfaPendingClaims, signingKeySecret: string): Promise<string> {
+export async function createMfaPendingToken(
+    claims: MfaPendingClaims,
+    signingKeySecret: string,
+): Promise<string> {
     const enc = new TextEncoder();
     const payload: MfaPendingPayload = {
         uid: claims.userId,
@@ -68,7 +77,10 @@ export async function createMfaPendingToken(claims: MfaPendingClaims, signingKey
  * MFA pending 토큰을 검증하고 claims 를 반환한다.
  * 만료되었거나 서명이 유효하지 않으면 null 반환.
  */
-export async function verifyMfaPendingToken(token: string, signingKeySecret: string): Promise<MfaPendingClaims | null> {
+export async function verifyMfaPendingToken(
+    token: string,
+    signingKeySecret: string,
+): Promise<MfaPendingClaims | null> {
     try {
         const lastDot = token.lastIndexOf(".");
         if (lastDot === -1) return null;

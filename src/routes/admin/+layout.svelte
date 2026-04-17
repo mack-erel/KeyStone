@@ -37,7 +37,9 @@ const orgMenuItems = [
             </div>
 
             <div class="border-b border-gray-200 px-6 py-4">
-                <p class="text-sm font-medium text-gray-900">{data.currentUser.displayName ?? "관리자"}</p>
+                <p class="text-sm font-medium text-gray-900">
+                    {data.currentUser.displayName ?? "관리자"}
+                </p>
                 <p class="text-sm text-gray-500">{data.currentUser.email}</p>
             </div>
 
@@ -47,7 +49,8 @@ const orgMenuItems = [
                         <li>
                             <a
                                 href={resolve(item.route)}
-                                class="block rounded-md px-3 py-2 text-sm font-medium transition-colors {page.url.pathname === resolve(item.route)
+                                class="block rounded-md px-3 py-2 text-sm font-medium transition-colors {page
+                                    .url.pathname === resolve(item.route)
                                     ? 'bg-blue-50 text-blue-700'
                                     : 'text-gray-700 hover:bg-gray-100'}">
                                 {t(item.key)}
@@ -57,7 +60,8 @@ const orgMenuItems = [
                 </ul>
 
                 <div>
-                    <p class="px-3 pb-1 text-xs font-semibold tracking-wider text-gray-400 uppercase">
+                    <p
+                        class="px-3 pb-1 text-xs font-semibold tracking-wider text-gray-400 uppercase">
                         {t("admin.org")}
                     </p>
                     <ul class="space-y-1">
@@ -65,7 +69,8 @@ const orgMenuItems = [
                             <li>
                                 <a
                                     href={resolve(item.route)}
-                                    class="block rounded-md px-3 py-2 text-sm font-medium transition-colors {page.url.pathname === resolve(item.route)
+                                    class="block rounded-md px-3 py-2 text-sm font-medium transition-colors {page
+                                        .url.pathname === resolve(item.route)
                                         ? 'bg-blue-50 text-blue-700'
                                         : 'text-gray-700 hover:bg-gray-100'}">
                                     {t(item.key)}
@@ -78,7 +83,9 @@ const orgMenuItems = [
 
             <div class="mt-auto p-4">
                 <form method="POST" action={resolve("/logout")}>
-                    <button type="submit" class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100">
+                    <button
+                        type="submit"
+                        class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100">
                         {t("admin.logout")}
                     </button>
                 </form>

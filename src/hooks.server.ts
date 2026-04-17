@@ -15,13 +15,19 @@ export const handle: Handle = async ({ event, resolve }) => {
 
     // baseline 쿼리가 불필요한 경로 (정적 메타데이터, 헬스체크)
     const path = event.url.pathname;
-    const skipBaseline = path.startsWith("/.well-known/") || path === "/api/health" || path === "/favicon.ico" || path === "/robots.txt";
+    const skipBaseline =
+        path.startsWith("/.well-known/") ||
+        path === "/api/health" ||
+        path === "/favicon.ico" ||
+        path === "/robots.txt";
 
     try {
         if (event.platform?.env?.DB) {
             const db = await getDb(event.platform);
             event.locals.db = db;
-            event.locals.tenant = skipBaseline ? null : await ensureAuthBaseline(db, event.platform);
+            event.locals.tenant = skipBaseline
+                ? null
+                : await ensureAuthBaseline(db, event.platform);
 
             const sessionToken = event.cookies.get(SESSION_COOKIE_NAME);
 
@@ -32,7 +38,10 @@ export const handle: Handle = async ({ event, resolve }) => {
                     event.locals.session = sessionContext.session;
                     event.locals.user = sessionContext.user;
 
-                    if (Date.now() - sessionContext.session.lastSeenAt.getTime() >= SESSION_TOUCH_INTERVAL_MS) {
+                    if (
+                        Date.now() - sessionContext.session.lastSeenAt.getTime() >=
+                        SESSION_TOUCH_INTERVAL_MS
+                    ) {
                         const now = new Date();
                         await touchSession(db, sessionContext.session.id, now);
                         event.locals.session.lastSeenAt = now;
@@ -43,7 +52,8 @@ export const handle: Handle = async ({ event, resolve }) => {
             }
         }
     } catch (error) {
-        event.locals.runtimeError = error instanceof Error ? error.message : "인증 컨텍스트 초기화 중 오류가 발생했습니다.";
+        event.locals.runtimeError =
+            error instanceof Error ? error.message : "인증 컨텍스트 초기화 중 오류가 발생했습니다.";
         console.error(event.locals.runtimeError, error);
     }
 
@@ -61,7 +71,10 @@ export const handle: Handle = async ({ event, resolve }) => {
     response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
     // Permissions Policy — 불필요한 브라우저 기능 비활성화
-    response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+    response.headers.set(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=()",
+    );
 
     // Content-Security-Policy
     // - 기본 self only

@@ -19,7 +19,10 @@ export const GET: RequestHandler = async (event) => {
     const { db, tenant } = requireDbContext(locals);
 
     if (locals.session) {
-        await db.update(sessions).set({ revokedAt: new Date() }).where(eq(sessions.id, locals.session.id));
+        await db
+            .update(sessions)
+            .set({ revokedAt: new Date() })
+            .where(eq(sessions.id, locals.session.id));
 
         if (locals.user) {
             const requestMetadata = getRequestMetadata(event);

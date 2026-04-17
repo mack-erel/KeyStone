@@ -3,7 +3,15 @@ import { eq, and, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
-import { generateTotpSecret, buildOtpAuthUri, verifyTotp, encryptTotpSecret, decryptTotpSecret, generateBackupCodes, hashBackupCode } from "$lib/server/auth/totp";
+import {
+    generateTotpSecret,
+    buildOtpAuthUri,
+    verifyTotp,
+    encryptTotpSecret,
+    decryptTotpSecret,
+    generateBackupCodes,
+    hashBackupCode,
+} from "$lib/server/auth/totp";
 import { TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { credentials } from "$lib/server/db/schema";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
@@ -20,8 +28,16 @@ async function createSetupToken(base32Secret: string, signingKeySecret: string):
             .replace(/\+/g, "-")
             .replace(/\//g, "_")
             .replace(/=+$/, "");
-    const data = b64u(enc.encode(JSON.stringify({ s: base32Secret, exp: Date.now() + TOTP_SETUP_TTL_MS })));
-    const key = await crypto.subtle.importKey("raw", enc.encode(signingKeySecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const data = b64u(
+        enc.encode(JSON.stringify({ s: base32Secret, exp: Date.now() + TOTP_SETUP_TTL_MS })),
+    );
+    const key = await crypto.subtle.importKey(
+        "raw",
+        enc.encode(signingKeySecret),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"],
+    );
     const sig = await crypto.subtle.sign("HMAC", key, enc.encode(data));
     return `${data}.${b64u(new Uint8Array(sig))}`;
 }
@@ -40,7 +56,13 @@ async function verifySetupToken(token: string, signingKeySecret: string): Promis
             return arr;
         };
         const enc = new TextEncoder();
-        const key = await crypto.subtle.importKey("raw", enc.encode(signingKeySecret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+        const key = await crypto.subtle.importKey(
+            "raw",
+            enc.encode(signingKeySecret),
+            { name: "HMAC", hash: "SHA-256" },
+            false,
+            ["verify"],
+        );
         const valid = await crypto.subtle.verify("HMAC", key, b64uDec(sigB64), enc.encode(data));
         if (!valid) return null;
         const payload = JSON.parse(new TextDecoder().decode(b64uDec(data))) as {
@@ -68,14 +90,22 @@ export const load: PageServerLoad = async ({ locals, cookies, platform, url }) =
     const [totpCred] = await db
         .select({ id: credentials.id, createdAt: credentials.createdAt })
         .from(credentials)
-        .where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+        .where(
+            and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)),
+        )
         .limit(1);
 
     // 미사용 백업 코드 수
     const backupCreds = await db
         .select({ id: credentials.id })
         .from(credentials)
-        .where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE), isNull(credentials.usedAt)));
+        .where(
+            and(
+                eq(credentials.userId, locals.user.id),
+                eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE),
+                isNull(credentials.usedAt),
+            ),
+        );
 
     // 등록 진행 중인지 확인
     let pendingUri: string | null = null;
@@ -107,7 +137,10 @@ export const actions: Actions = {
         if (!locals.user) throw redirect(303, "/login");
         const config = getRuntimeConfig(platform);
         if (!config.signingKeySecret) {
-            return fail(503, { setup: true, error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다." });
+            return fail(503, {
+                setup: true,
+                error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            });
         }
 
         const secret = generateTotpSecret();
@@ -133,18 +166,27 @@ export const actions: Actions = {
 
         const config = getRuntimeConfig(platform);
         if (!config.signingKeySecret) {
-            return fail(503, { confirm: true, error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다." });
+            return fail(503, {
+                confirm: true,
+                error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            });
         }
 
         const setupToken = cookies.get(TOTP_SETUP_COOKIE);
         if (!setupToken) {
-            return fail(400, { confirm: true, error: "등록 세션이 만료되었습니다. 다시 시작해 주세요." });
+            return fail(400, {
+                confirm: true,
+                error: "등록 세션이 만료되었습니다. 다시 시작해 주세요.",
+            });
         }
 
         const plainSecret = await verifySetupToken(setupToken, config.signingKeySecret);
         if (!plainSecret) {
             cookies.delete(TOTP_SETUP_COOKIE, { path: "/" });
-            return fail(400, { confirm: true, error: "등록 세션이 만료되었습니다. 다시 시작해 주세요." });
+            return fail(400, {
+                confirm: true,
+                error: "등록 세션이 만료되었습니다. 다시 시작해 주세요.",
+            });
         }
 
         const formData = await event.request.formData();
@@ -156,7 +198,10 @@ export const actions: Actions = {
 
         const valid = await verifyTotp(code, plainSecret);
         if (!valid) {
-            return fail(400, { confirm: true, error: "코드가 올바르지 않습니다. 다시 확인해 주세요." });
+            return fail(400, {
+                confirm: true,
+                error: "코드가 올바르지 않습니다. 다시 확인해 주세요.",
+            });
         }
 
         const { db, tenant } = requireDbContext(locals);
@@ -165,7 +210,12 @@ export const actions: Actions = {
         const [existing] = await db
             .select({ id: credentials.id })
             .from(credentials)
-            .where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+            .where(
+                and(
+                    eq(credentials.userId, locals.user.id),
+                    eq(credentials.type, TOTP_CREDENTIAL_TYPE),
+                ),
+            )
             .limit(1);
 
         if (existing) {
@@ -219,7 +269,10 @@ export const actions: Actions = {
 
         const config = getRuntimeConfig(platform);
         if (!config.signingKeySecret) {
-            return fail(503, { delete: true, error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다." });
+            return fail(503, {
+                delete: true,
+                error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            });
         }
 
         const formData = await event.request.formData();
@@ -233,7 +286,12 @@ export const actions: Actions = {
         const [totpCred] = await db
             .select()
             .from(credentials)
-            .where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+            .where(
+                and(
+                    eq(credentials.userId, locals.user.id),
+                    eq(credentials.type, TOTP_CREDENTIAL_TYPE),
+                ),
+            )
             .limit(1);
 
         if (!totpCred?.secret) {
@@ -246,9 +304,23 @@ export const actions: Actions = {
             return fail(400, { delete: true, error: "인증 코드가 올바르지 않습니다." });
         }
 
-        await db.delete(credentials).where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)));
+        await db
+            .delete(credentials)
+            .where(
+                and(
+                    eq(credentials.userId, locals.user.id),
+                    eq(credentials.type, TOTP_CREDENTIAL_TYPE),
+                ),
+            );
 
-        await db.delete(credentials).where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE)));
+        await db
+            .delete(credentials)
+            .where(
+                and(
+                    eq(credentials.userId, locals.user.id),
+                    eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE),
+                ),
+            );
 
         const requestMetadata = getRequestMetadata(event);
         await recordAuditEvent(db, {
@@ -289,7 +361,12 @@ export const actions: Actions = {
         const [totpCred] = await db
             .select()
             .from(credentials)
-            .where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)))
+            .where(
+                and(
+                    eq(credentials.userId, locals.user.id),
+                    eq(credentials.type, TOTP_CREDENTIAL_TYPE),
+                ),
+            )
             .limit(1);
 
         if (!totpCred?.secret) {
@@ -303,7 +380,14 @@ export const actions: Actions = {
         }
 
         // 기존 백업 코드 전체 삭제
-        await db.delete(credentials).where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE)));
+        await db
+            .delete(credentials)
+            .where(
+                and(
+                    eq(credentials.userId, locals.user.id),
+                    eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE),
+                ),
+            );
 
         // 새 백업 코드 10개 생성
         const codes = generateBackupCodes();

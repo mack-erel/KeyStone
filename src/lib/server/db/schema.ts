@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm";
-import { type AnySQLiteColumn, integer, sqliteTable, text, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+    type AnySQLiteColumn,
+    integer,
+    sqliteTable,
+    text,
+    index,
+    uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 // ---------- Tenancy ----------
 
@@ -62,7 +69,11 @@ export const users = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [uniqueIndex("users_tenant_email_uidx").on(t.tenantId, t.email), uniqueIndex("users_tenant_username_uidx").on(t.tenantId, t.username), index("users_tenant_idx").on(t.tenantId)],
+    (t) => [
+        uniqueIndex("users_tenant_email_uidx").on(t.tenantId, t.email),
+        uniqueIndex("users_tenant_username_uidx").on(t.tenantId, t.username),
+        index("users_tenant_idx").on(t.tenantId),
+    ],
 );
 
 /**
@@ -94,7 +105,11 @@ export const credentials = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("credentials_user_idx").on(t.userId), index("credentials_user_type_idx").on(t.userId, t.type), uniqueIndex("credentials_webauthn_credential_id_uidx").on(t.credentialId)],
+    (t) => [
+        index("credentials_user_idx").on(t.userId),
+        index("credentials_user_type_idx").on(t.userId, t.type),
+        uniqueIndex("credentials_webauthn_credential_id_uidx").on(t.credentialId),
+    ],
 );
 
 /**
@@ -122,7 +137,14 @@ export const identities = sqliteTable(
             .default(sql`(unixepoch() * 1000)`),
         lastLoginAt: integer("last_login_at", { mode: "timestamp_ms" }),
     },
-    (t) => [uniqueIndex("identities_tenant_provider_subject_uidx").on(t.tenantId, t.provider, t.subject), index("identities_user_idx").on(t.userId)],
+    (t) => [
+        uniqueIndex("identities_tenant_provider_subject_uidx").on(
+            t.tenantId,
+            t.provider,
+            t.subject,
+        ),
+        index("identities_user_idx").on(t.userId),
+    ],
 );
 
 /**
@@ -153,7 +175,10 @@ export const identityProviders = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("idp_tenant_idx").on(t.tenantId), uniqueIndex("idp_tenant_name_uidx").on(t.tenantId, t.name)],
+    (t) => [
+        index("idp_tenant_idx").on(t.tenantId),
+        uniqueIndex("idp_tenant_name_uidx").on(t.tenantId, t.name),
+    ],
 );
 
 // ---------- Session ----------
@@ -189,7 +214,11 @@ export const sessions = sqliteTable(
         expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
         revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
     },
-    (t) => [uniqueIndex("sessions_idp_session_id_uidx").on(t.idpSessionId), index("sessions_user_idx").on(t.userId), index("sessions_expires_idx").on(t.expiresAt)],
+    (t) => [
+        uniqueIndex("sessions_idp_session_id_uidx").on(t.idpSessionId),
+        index("sessions_user_idx").on(t.userId),
+        index("sessions_expires_idx").on(t.expiresAt),
+    ],
 );
 
 // ---------- OIDC ----------
@@ -228,7 +257,10 @@ export const oidcClients = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [uniqueIndex("oidc_clients_tenant_client_id_uidx").on(t.tenantId, t.clientId), index("oidc_clients_tenant_idx").on(t.tenantId)],
+    (t) => [
+        uniqueIndex("oidc_clients_tenant_client_id_uidx").on(t.tenantId, t.clientId),
+        index("oidc_clients_tenant_idx").on(t.tenantId),
+    ],
 );
 
 export const oidcGrants = sqliteTable(
@@ -259,7 +291,11 @@ export const oidcGrants = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [uniqueIndex("oidc_grants_code_uidx").on(t.code), index("oidc_grants_tenant_client_idx").on(t.tenantId, t.clientId), index("oidc_grants_expires_idx").on(t.expiresAt)],
+    (t) => [
+        uniqueIndex("oidc_grants_code_uidx").on(t.code),
+        index("oidc_grants_tenant_client_idx").on(t.tenantId, t.clientId),
+        index("oidc_grants_expires_idx").on(t.expiresAt),
+    ],
 );
 
 export const oidcRefreshTokens = sqliteTable(
@@ -285,7 +321,10 @@ export const oidcRefreshTokens = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [uniqueIndex("oidc_refresh_tokens_hash_uidx").on(t.tokenHash), index("oidc_refresh_tokens_user_idx").on(t.userId)],
+    (t) => [
+        uniqueIndex("oidc_refresh_tokens_hash_uidx").on(t.tokenHash),
+        index("oidc_refresh_tokens_user_idx").on(t.userId),
+    ],
 );
 
 // ---------- SAML ----------
@@ -302,15 +341,23 @@ export const samlSps = sqliteTable(
         entityId: text("entity_id").notNull(),
         name: text("name").notNull(),
         acsUrl: text("acs_url").notNull(),
-        acsBinding: text("acs_binding").notNull().default("urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"),
+        acsBinding: text("acs_binding")
+            .notNull()
+            .default("urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST"),
         sloUrl: text("slo_url"),
         sloBinding: text("slo_binding"),
         cert: text("cert"),
-        nameIdFormat: text("name_id_format").notNull().default("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"),
+        nameIdFormat: text("name_id_format")
+            .notNull()
+            .default("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"),
         signAssertion: integer("sign_assertion", { mode: "boolean" }).notNull().default(true),
         signResponse: integer("sign_response", { mode: "boolean" }).notNull().default(false),
-        encryptAssertion: integer("encrypt_assertion", { mode: "boolean" }).notNull().default(false),
-        wantAuthnRequestsSigned: integer("want_authn_requests_signed", { mode: "boolean" }).notNull().default(false),
+        encryptAssertion: integer("encrypt_assertion", { mode: "boolean" })
+            .notNull()
+            .default(false),
+        wantAuthnRequestsSigned: integer("want_authn_requests_signed", { mode: "boolean" })
+            .notNull()
+            .default(false),
         attributeMappingJson: text("attribute_mapping_json"),
         // JSON 배열 문자열 (예: ["email","department"]). NULL 이면 기본 최소 집합만 허용.
         allowedAttributes: text("allowed_attributes"),
@@ -322,7 +369,10 @@ export const samlSps = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [uniqueIndex("saml_sps_tenant_entity_id_uidx").on(t.tenantId, t.entityId), index("saml_sps_tenant_idx").on(t.tenantId)],
+    (t) => [
+        uniqueIndex("saml_sps_tenant_entity_id_uidx").on(t.tenantId, t.entityId),
+        index("saml_sps_tenant_idx").on(t.tenantId),
+    ],
 );
 
 export const samlSessions = sqliteTable(
@@ -350,7 +400,10 @@ export const samlSessions = sqliteTable(
             .default(sql`(unixepoch() * 1000)`),
         endedAt: integer("ended_at", { mode: "timestamp_ms" }),
     },
-    (t) => [uniqueIndex("saml_sessions_session_index_uidx").on(t.sessionIndex), index("saml_sessions_tenant_sp_idx").on(t.tenantId, t.spId)],
+    (t) => [
+        uniqueIndex("saml_sessions_session_index_uidx").on(t.sessionIndex),
+        index("saml_sessions_tenant_sp_idx").on(t.tenantId, t.spId),
+    ],
 );
 
 // ---------- Keys & Audit ----------
@@ -383,7 +436,10 @@ export const signingKeys = sqliteTable(
         rotatedAt: integer("rotated_at", { mode: "timestamp_ms" }),
         notAfter: integer("not_after", { mode: "timestamp_ms" }),
     },
-    (t) => [uniqueIndex("signing_keys_tenant_kid_uidx").on(t.tenantId, t.kid), index("signing_keys_tenant_active_idx").on(t.tenantId, t.active)],
+    (t) => [
+        uniqueIndex("signing_keys_tenant_kid_uidx").on(t.tenantId, t.kid),
+        index("signing_keys_tenant_active_idx").on(t.tenantId, t.active),
+    ],
 );
 
 export const auditEvents = sqliteTable(
@@ -407,7 +463,11 @@ export const auditEvents = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("audit_events_tenant_kind_idx").on(t.tenantId, t.kind), index("audit_events_tenant_created_idx").on(t.tenantId, t.createdAt), index("audit_events_user_idx").on(t.userId)],
+    (t) => [
+        index("audit_events_tenant_kind_idx").on(t.tenantId, t.kind),
+        index("audit_events_tenant_created_idx").on(t.tenantId, t.createdAt),
+        index("audit_events_user_idx").on(t.userId),
+    ],
 );
 
 // ---------- Organization ----------
@@ -435,7 +495,10 @@ export const positions = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("positions_tenant_idx").on(t.tenantId), uniqueIndex("positions_tenant_code_uidx").on(t.tenantId, t.code)],
+    (t) => [
+        index("positions_tenant_idx").on(t.tenantId),
+        uniqueIndex("positions_tenant_code_uidx").on(t.tenantId, t.code),
+    ],
 );
 
 /**
@@ -469,7 +532,11 @@ export const departments = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("departments_tenant_idx").on(t.tenantId), index("departments_parent_idx").on(t.parentId), uniqueIndex("departments_tenant_code_uidx").on(t.tenantId, t.code)],
+    (t) => [
+        index("departments_tenant_idx").on(t.tenantId),
+        index("departments_parent_idx").on(t.parentId),
+        uniqueIndex("departments_tenant_code_uidx").on(t.tenantId, t.code),
+    ],
 );
 
 /**
@@ -501,7 +568,11 @@ export const teams = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("teams_tenant_idx").on(t.tenantId), index("teams_department_idx").on(t.departmentId), uniqueIndex("teams_tenant_code_uidx").on(t.tenantId, t.code)],
+    (t) => [
+        index("teams_tenant_idx").on(t.tenantId),
+        index("teams_department_idx").on(t.departmentId),
+        uniqueIndex("teams_tenant_code_uidx").on(t.tenantId, t.code),
+    ],
 );
 
 /**
@@ -535,7 +606,11 @@ export const userDepartments = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("user_departments_user_idx").on(t.userId), index("user_departments_dept_idx").on(t.departmentId), index("user_departments_tenant_idx").on(t.tenantId)],
+    (t) => [
+        index("user_departments_user_idx").on(t.userId),
+        index("user_departments_dept_idx").on(t.departmentId),
+        index("user_departments_tenant_idx").on(t.tenantId),
+    ],
 );
 
 /**
@@ -565,7 +640,11 @@ export const parts = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("parts_tenant_idx").on(t.tenantId), index("parts_team_idx").on(t.teamId), uniqueIndex("parts_tenant_code_uidx").on(t.tenantId, t.code)],
+    (t) => [
+        index("parts_tenant_idx").on(t.tenantId),
+        index("parts_team_idx").on(t.teamId),
+        uniqueIndex("parts_tenant_code_uidx").on(t.tenantId, t.code),
+    ],
 );
 
 /**
@@ -596,7 +675,11 @@ export const userParts = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("user_parts_user_idx").on(t.userId), index("user_parts_part_idx").on(t.partId), index("user_parts_tenant_idx").on(t.tenantId)],
+    (t) => [
+        index("user_parts_user_idx").on(t.userId),
+        index("user_parts_part_idx").on(t.partId),
+        index("user_parts_tenant_idx").on(t.tenantId),
+    ],
 );
 
 /**
@@ -629,7 +712,11 @@ export const userTeams = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [index("user_teams_user_idx").on(t.userId), index("user_teams_team_idx").on(t.teamId), index("user_teams_tenant_idx").on(t.tenantId)],
+    (t) => [
+        index("user_teams_user_idx").on(t.userId),
+        index("user_teams_team_idx").on(t.teamId),
+        index("user_teams_tenant_idx").on(t.tenantId),
+    ],
 );
 
 // ---------- WebAuthn Challenges ----------
@@ -648,7 +735,10 @@ export const webauthnChallenges = sqliteTable(
         expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
         usedAt: integer("used_at", { mode: "timestamp_ms" }),
     },
-    (t) => [uniqueIndex("webauthn_challenges_challenge_uidx").on(t.challenge), index("webauthn_challenges_expires_idx").on(t.expiresAt)],
+    (t) => [
+        uniqueIndex("webauthn_challenges_challenge_uidx").on(t.challenge),
+        index("webauthn_challenges_expires_idx").on(t.expiresAt),
+    ],
 );
 
 // ---------- Types ----------

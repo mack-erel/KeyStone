@@ -5,16 +5,28 @@ import { verifyPassword } from "$lib/server/auth/password";
 
 export type OidcClientRecord = typeof oidcClients.$inferSelect;
 
-export async function findOidcClient(db: DB, tenantId: string, clientId: string): Promise<OidcClientRecord | null> {
+export async function findOidcClient(
+    db: DB,
+    tenantId: string,
+    clientId: string,
+): Promise<OidcClientRecord | null> {
     const [client] = await db
         .select()
         .from(oidcClients)
-        .where(and(eq(oidcClients.tenantId, tenantId), eq(oidcClients.clientId, clientId), eq(oidcClients.enabled, true)))
+        .where(
+            and(
+                eq(oidcClients.tenantId, tenantId),
+                eq(oidcClients.clientId, clientId),
+                eq(oidcClients.enabled, true),
+            ),
+        )
         .limit(1);
     return client ?? null;
 }
 
-export function parseBasicAuth(authHeader: string): { clientId: string; clientSecret: string } | null {
+export function parseBasicAuth(
+    authHeader: string,
+): { clientId: string; clientSecret: string } | null {
     if (!authHeader.startsWith("Basic ")) return null;
     const decoded = atob(authHeader.slice(6));
     const sep = decoded.indexOf(":");
@@ -28,7 +40,10 @@ export function parseBasicAuth(authHeader: string): { clientId: string; clientSe
     }
 }
 
-export async function isValidClientSecret(client: OidcClientRecord, clientSecret: string): Promise<boolean> {
+export async function isValidClientSecret(
+    client: OidcClientRecord,
+    clientSecret: string,
+): Promise<boolean> {
     if (client.tokenEndpointAuthMethod === "none") return true;
     if (!client.clientSecretHash || !clientSecret) return false;
     const result = await verifyPassword(clientSecret, client.clientSecretHash);

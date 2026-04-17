@@ -14,7 +14,9 @@ const MAX_DECOMPRESSED_BYTES = 64 * 1024; // 64 KB
 
 async function inflateRaw(compressed: Uint8Array<ArrayBuffer>): Promise<string> {
     if (compressed.length > MAX_COMPRESSED_BYTES) {
-        throw new Error(`SAMLRequest 압축 데이터가 너무 큽니다 (${compressed.length} > ${MAX_COMPRESSED_BYTES})`);
+        throw new Error(
+            `SAMLRequest 압축 데이터가 너무 큽니다 (${compressed.length} > ${MAX_COMPRESSED_BYTES})`,
+        );
     }
 
     const ds = new DecompressionStream("deflate-raw");
@@ -32,7 +34,9 @@ async function inflateRaw(compressed: Uint8Array<ArrayBuffer>): Promise<string> 
         if (value) {
             totalSize += value.length;
             if (totalSize > MAX_DECOMPRESSED_BYTES) {
-                throw new Error(`SAMLRequest 압축 해제 크기가 너무 큽니다 (> ${MAX_DECOMPRESSED_BYTES})`);
+                throw new Error(
+                    `SAMLRequest 압축 해제 크기가 너무 큽니다 (> ${MAX_DECOMPRESSED_BYTES})`,
+                );
             }
             chunks.push(value);
         }
@@ -54,7 +58,10 @@ async function inflateRaw(compressed: Uint8Array<ArrayBuffer>): Promise<string> 
  * SP 인증서의 공개 키로 SigAlg + 서명을 확인한다.
  * rawQueryString: URL 의 '?' 이후 문자열 (URL 인코딩 그대로)
  */
-export async function verifySamlRedirectSignature(rawQueryString: string, certPem: string): Promise<boolean> {
+export async function verifySamlRedirectSignature(
+    rawQueryString: string,
+    certPem: string,
+): Promise<boolean> {
     try {
         const params = rawQueryString.split("&");
         const samlRequestPart = params.find((p) => p.startsWith("SAMLRequest="));
@@ -65,7 +72,9 @@ export async function verifySamlRedirectSignature(rawQueryString: string, certPe
         if (!samlRequestPart || !sigAlgPart || !signaturePart) return false;
 
         const sigAlgValue = decodeURIComponent(sigAlgPart.slice(sigAlgPart.indexOf("=") + 1));
-        const signatureB64 = decodeURIComponent(signaturePart.slice(signaturePart.indexOf("=") + 1));
+        const signatureB64 = decodeURIComponent(
+            signaturePart.slice(signaturePart.indexOf("=") + 1),
+        );
 
         // 서명 대상 문자열: SAMLRequest[&RelayState]&SigAlg (원본 URL 인코딩 유지)
         const signedParts = [samlRequestPart];
@@ -86,7 +95,9 @@ export async function verifySamlRedirectSignature(rawQueryString: string, certPe
         // SP 인증서에서 공개 키(SPKI) 추출
         const cert = new X509Certificate(certPem);
         const spkiDer = cert.publicKey.rawData;
-        const publicKey = await crypto.subtle.importKey("spki", spkiDer, algorithm, false, ["verify"]);
+        const publicKey = await crypto.subtle.importKey("spki", spkiDer, algorithm, false, [
+            "verify",
+        ]);
 
         const sigBytes = Uint8Array.from(atob(signatureB64), (c) => c.charCodeAt(0));
         const enc = new TextEncoder();
@@ -126,7 +137,10 @@ function parseBoolAttr(val: string | null): boolean {
     return val === "true" || val === "1";
 }
 
-export async function parseAuthnRequest(samlRequestB64: string, relayState: string | null): Promise<ParsedAuthnRequest> {
+export async function parseAuthnRequest(
+    samlRequestB64: string,
+    relayState: string | null,
+): Promise<ParsedAuthnRequest> {
     // HTTP-Redirect 바인딩은 표준 base64 (base64url 이 아님)
     const raw = atob(samlRequestB64);
     const binary = new Uint8Array(raw.length) as Uint8Array<ArrayBuffer>;
@@ -152,12 +166,18 @@ export async function parseAuthnRequest(samlRequestB64: string, relayState: stri
     const issuer = issuerEls[0]?.textContent?.trim() ?? "";
 
     // RequestedAuthnContext 파싱
-    const racEls = doc.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:protocol", "RequestedAuthnContext");
+    const racEls = doc.getElementsByTagNameNS(
+        "urn:oasis:names:tc:SAML:2.0:protocol",
+        "RequestedAuthnContext",
+    );
     let requestedAuthnContext: RequestedAuthnContext | null = null;
     const racEl = racEls[0];
     if (racEl) {
         const comparison = racEl.getAttribute("Comparison") ?? "exact";
-        const classRefEls = racEl.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:assertion", "AuthnContextClassRef");
+        const classRefEls = racEl.getElementsByTagNameNS(
+            "urn:oasis:names:tc:SAML:2.0:assertion",
+            "AuthnContextClassRef",
+        );
         const classRefs: string[] = [];
         for (let i = 0; i < classRefEls.length; i++) {
             const text = classRefEls[i]?.textContent?.trim();
