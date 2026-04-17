@@ -2,46 +2,66 @@ import { json, error } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 import { requireDbContext } from '$lib/server/auth/guards';
-import { getRuntimeConfig } from '$lib/server/auth/runtime';
 import { recordAuditEvent, getRequestMetadata } from '$lib/server/audit/index';
 import { createSessionRecord, setSessionCookie } from '$lib/server/auth/session';
 import { AMR_WEBAUTHN, amrToAcr } from '$lib/server/auth/constants';
+import { checkRateLimit } from '$lib/server/ratelimit';
 import {
-	verifyChallengeCookie,
 	verifyPasskeyAuthentication,
-	getWebAuthnConfig,
-	WEBAUTHN_CHALLENGE_COOKIE
+	consumeChallenge,
+	getWebAuthnConfig
 } from '$lib/server/auth/webauthn';
 import type { AuthenticationResponseJSON } from '$lib/server/auth/webauthn';
 import { users } from '$lib/server/db/schema';
 
+function extractChallengeFromClientData(clientDataJSONb64u: string): string | null {
+	try {
+		const b64 = clientDataJSONb64u.replace(/-/g, '+').replace(/_/g, '/');
+		const bin = atob(b64);
+		const arr = new Uint8Array(bin.length);
+		for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+		const obj = JSON.parse(new TextDecoder().decode(arr)) as { challenge?: string };
+		return typeof obj.challenge === 'string' ? obj.challenge : null;
+	} catch {
+		return null;
+	}
+}
+
 export const POST: RequestHandler = async (event) => {
-	const { locals, cookies, request, url, platform } = event;
-
-	const config = getRuntimeConfig(platform);
-	if (!config.signingKeySecret) {
-		throw error(503, 'IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.');
-	}
-
-	const cookieValue = cookies.get(WEBAUTHN_CHALLENGE_COOKIE);
-	if (!cookieValue) {
-		throw error(400, '인증 세션이 만료되었습니다. 다시 시도해 주세요.');
-	}
-
-	const payload = await verifyChallengeCookie(cookieValue, config.signingKeySecret, 'authenticate');
-	if (!payload) {
-		cookies.delete(WEBAUTHN_CHALLENGE_COOKIE, { path: '/' });
-		throw error(400, '인증 세션이 유효하지 않습니다. 다시 시도해 주세요.');
-	}
+	const { locals, cookies, request, url } = event;
 
 	const body = (await request.json()) as AuthenticationResponseJSON & { _redirectTo?: string };
 	const { rpID, origin } = getWebAuthnConfig(url);
 
 	const { db, tenant } = requireDbContext(locals);
 
-	const result = await verifyPasskeyAuthentication(db, body, payload.challenge, rpID, origin);
+	// 레이트 리밋: credentialId 기반 (userId 가 검증 전에는 미상). 5분/10회.
+	const rlKey = `webauthn-verify:${tenant.id}:${body.id ?? 'none'}`;
+	const rl = await checkRateLimit(db, rlKey, { windowMs: 5 * 60 * 1000, limit: 10 });
+	if (!rl.allowed) {
+		throw error(429, '인증 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.');
+	}
 
-	cookies.delete(WEBAUTHN_CHALLENGE_COOKIE, { path: '/' });
+	// 1회용 challenge 소진 (DB 기반)
+	const clientChallenge = body.response?.clientDataJSON
+		? extractChallengeFromClientData(body.response.clientDataJSON)
+		: null;
+	if (!clientChallenge) {
+		throw error(400, '인증 세션이 유효하지 않습니다.');
+	}
+	const challengeOk = await consumeChallenge(db, clientChallenge);
+	if (!challengeOk) {
+		throw error(400, '인증 세션이 만료되었거나 이미 사용되었습니다.');
+	}
+
+	const result = await verifyPasskeyAuthentication(
+		db,
+		body,
+		clientChallenge,
+		rpID,
+		origin,
+		tenant.id
+	);
 
 	if (!result) {
 		const requestMetadata = getRequestMetadata(event);

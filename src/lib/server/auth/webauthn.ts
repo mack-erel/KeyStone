@@ -18,8 +18,8 @@ import type {
 	RegistrationResponseJSON
 } from '@simplewebauthn/server';
 import type { DB } from '$lib/server/db';
-import { credentials } from '$lib/server/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { credentials, users, webauthnChallenges } from '$lib/server/db/schema';
+import { eq, and, isNull, gt, sql } from 'drizzle-orm';
 
 export const WEBAUTHN_CHALLENGE_COOKIE = 'idp_webauthn_challenge';
 const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5분
@@ -173,6 +173,42 @@ export async function buildAuthenticationOptions(rpID: string) {
 	});
 }
 
+// ── 1회용 Challenge (DB 저장) ──────────────────────────────────────────────────
+
+/** options 생성 시 challenge 를 DB 에 저장. */
+export async function saveChallenge(db: DB, challenge: string): Promise<void> {
+	await db.insert(webauthnChallenges).values({
+		id: crypto.randomUUID(),
+		challenge,
+		expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS)
+	});
+}
+
+/**
+ * verify 시 challenge 소진. atomic UPDATE … WHERE used_at IS NULL RETURNING 으로
+ * 동시 요청에서도 정확히 한 번만 성공한다.
+ */
+export async function consumeChallenge(db: DB, challenge: string): Promise<boolean> {
+	const now = new Date();
+	const rows = await db
+		.update(webauthnChallenges)
+		.set({ usedAt: now })
+		.where(
+			and(
+				eq(webauthnChallenges.challenge, challenge),
+				isNull(webauthnChallenges.usedAt),
+				gt(webauthnChallenges.expiresAt, now)
+			)
+		)
+		.returning({ id: webauthnChallenges.id });
+	return rows.length > 0;
+}
+
+/** 만료된 챌린지 정리 (필요 시 주기적 호출). */
+export async function purgeExpiredChallenges(db: DB): Promise<void> {
+	await db.delete(webauthnChallenges).where(sql`${webauthnChallenges.expiresAt} <= ${Date.now()}`);
+}
+
 export interface PasskeyVerifyResult {
 	userId: string;
 	credentialDbId: string;
@@ -184,39 +220,60 @@ export async function verifyPasskeyAuthentication(
 	response: AuthenticationResponseJSON,
 	expectedChallenge: string,
 	rpID: string,
-	origin: string
+	origin: string,
+	tenantId: string
 ): Promise<PasskeyVerifyResult | null> {
 	const credentialId = response.id;
 
-	const [cred] = await db
-		.select()
+	// 테넌트 격리: credential 의 소유 user 가 같은 tenant 인 경우만 채택.
+	const [row] = await db
+		.select({
+			cred: credentials,
+			userTenantId: users.tenantId
+		})
 		.from(credentials)
-		.where(and(eq(credentials.credentialId, credentialId), eq(credentials.type, 'webauthn')))
+		.innerJoin(users, eq(credentials.userId, users.id))
+		.where(
+			and(
+				eq(credentials.credentialId, credentialId),
+				eq(credentials.type, 'webauthn'),
+				eq(users.tenantId, tenantId)
+			)
+		)
 		.limit(1);
 
-	if (!cred || !cred.publicKey) return null;
+	const cred = row?.cred ?? null;
+	const valid = !!cred && !!cred.publicKey;
 
-	const publicKey = b64uDecode(cred.publicKey);
-	const transports = cred.transports
+	// 타이밍 누출 방지: credential 이 없거나 잘못 매칭되더라도 동일한 검증 비용을 지불한다.
+	const publicKey = valid ? b64uDecode(cred.publicKey!) : DUMMY_PUBLIC_KEY;
+	const transports = valid && cred.transports
 		? (JSON.parse(cred.transports) as AuthenticatorTransportFuture[])
 		: undefined;
 
-	const verification = await verifyAuthenticationResponse({
-		response,
-		expectedChallenge,
-		expectedOrigin: origin,
-		expectedRPID: rpID,
-		credential: {
-			id: credentialId,
-			publicKey,
-			counter: cred.counter,
-			transports
-		}
-	});
+	let verified = false;
+	let newCounter = 0;
+	try {
+		const verification = await verifyAuthenticationResponse({
+			response,
+			expectedChallenge,
+			expectedOrigin: origin,
+			expectedRPID: rpID,
+			credential: {
+				id: credentialId,
+				publicKey,
+				counter: valid ? cred.counter : 0,
+				transports
+			}
+		});
+		verified = verification.verified;
+		newCounter = verification.authenticationInfo.newCounter;
+	} catch {
+		verified = false;
+	}
 
-	if (!verification.verified) return null;
+	if (!valid || !verified) return null;
 
-	const newCounter = verification.authenticationInfo.newCounter;
 	await db
 		.update(credentials)
 		.set({ counter: newCounter, lastUsedAt: new Date() })
@@ -224,6 +281,13 @@ export async function verifyPasskeyAuthentication(
 
 	return { userId: cred.userId, credentialDbId: cred.id, newCounter };
 }
+
+// 32바이트 더미 P-256 공개키 자리 표시자. 실제 검증은 실패하지만 호출 비용을 동일하게 만든다.
+const DUMMY_PUBLIC_KEY: Uint8Array<ArrayBuffer> = (() => {
+	const arr = new Uint8Array(77) as Uint8Array<ArrayBuffer>;
+	arr[0] = 0xa5;
+	return arr;
+})();
 
 // ── verifyRegistrationResponse 재익스포트 (API 라우트에서 사용) ──────────────────
 

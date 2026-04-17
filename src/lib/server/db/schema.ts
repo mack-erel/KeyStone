@@ -353,6 +353,8 @@ export const samlSps = sqliteTable(
 			.notNull()
 			.default(false),
 		attributeMappingJson: text('attribute_mapping_json'),
+		// JSON 배열 문자열 (예: ["email","department"]). NULL 이면 기본 최소 집합만 허용.
+		allowedAttributes: text('allowed_attributes'),
 		enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
 		createdAt: integer('created_at', { mode: 'timestamp_ms' })
 			.notNull()
@@ -711,6 +713,28 @@ export const userTeams = sqliteTable(
 	]
 );
 
+// ---------- WebAuthn Challenges ----------
+
+/**
+ * WebAuthn 1회용 챌린지. options 응답 시 INSERT, verify 시 atomic UPDATE 로 usedAt 마킹.
+ * 만료/재사용 챌린지는 거부된다.
+ */
+export const webauthnChallenges = sqliteTable(
+	'webauthn_challenges',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		challenge: text('challenge').notNull(),
+		expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+		usedAt: integer('used_at', { mode: 'timestamp_ms' })
+	},
+	(t) => [
+		uniqueIndex('webauthn_challenges_challenge_uidx').on(t.challenge),
+		index('webauthn_challenges_expires_idx').on(t.expiresAt)
+	]
+);
+
 // ---------- Types ----------
 
 export type Tenant = typeof tenants.$inferSelect;
@@ -741,3 +765,4 @@ export type UserDepartment = typeof userDepartments.$inferSelect;
 export type UserTeam = typeof userTeams.$inferSelect;
 export type Part = typeof parts.$inferSelect;
 export type UserPart = typeof userParts.$inferSelect;
+export type WebauthnChallenge = typeof webauthnChallenges.$inferSelect;
