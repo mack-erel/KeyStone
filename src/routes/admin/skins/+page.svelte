@@ -27,10 +27,7 @@ function clientLabel(clientType: string, clientRefId: string): string {
 <div class="space-y-6">
     <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-gray-900">{t("skins.title")}</h1>
-        <button
-            type="button"
-            onclick={() => (showCreate = !showCreate)}
-            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
+        <button type="button" onclick={() => (showCreate = !showCreate)} class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
             {showCreate ? t("common.cancel") : t("skins.add_btn")}
         </button>
     </div>
@@ -190,7 +187,7 @@ function clientLabel(clientType: string, clientRefId: string): string {
         </table>
     </div>
 
-    <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-500 space-y-1">
+    <div class="space-y-1 rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-500">
         <p class="font-medium text-gray-700">{t("skins.placeholder_guide_title")}</p>
         <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_FORM_ACTION&#125;&#125;</code> — {t("skins.placeholder_form_action")}</p>
         <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_REDIRECT_TO&#125;&#125;</code> — {t("skins.placeholder_redirect_to")}</p>

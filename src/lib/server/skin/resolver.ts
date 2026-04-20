@@ -5,12 +5,7 @@ import { and, eq } from "drizzle-orm";
 const R2_PREFIX = "skins/";
 
 export function escapeHtml(str: string): string {
-    return str
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 export function replacePlaceholders(html: string, vars: Record<string, string>): string {
@@ -93,13 +88,7 @@ export async function resolveSkinHtml(
     }
 }
 
-export async function invalidateSkinCache(
-    platform: App.Platform | undefined,
-    tenantId: string,
-    clientType: "oidc" | "saml",
-    clientRefId: string,
-    skinType: "login" = "login",
-): Promise<void> {
+export async function invalidateSkinCache(platform: App.Platform | undefined, tenantId: string, clientType: "oidc" | "saml", clientRefId: string, skinType: "login" = "login"): Promise<void> {
     const r2 = (platform?.env as Record<string, unknown> | undefined)?.SKIN_CACHE as R2Bucket | undefined;
     if (!r2) return;
     const cacheKey = `${R2_PREFIX}${tenantId}/${clientType}/${clientRefId}/${skinType}`;

@@ -9,19 +9,9 @@ export const load: PageServerLoad = async ({ locals }) => {
     const { db, tenant } = requireAdminContext(locals);
 
     const [skins, oidcList, samlList] = await Promise.all([
-        db
-            .select()
-            .from(clientSkins)
-            .where(eq(clientSkins.tenantId, tenant.id))
-            .orderBy(desc(clientSkins.createdAt)),
-        db
-            .select({ id: oidcClients.id, name: oidcClients.name, clientId: oidcClients.clientId })
-            .from(oidcClients)
-            .where(eq(oidcClients.tenantId, tenant.id)),
-        db
-            .select({ id: samlSps.id, name: samlSps.name, entityId: samlSps.entityId })
-            .from(samlSps)
-            .where(eq(samlSps.tenantId, tenant.id)),
+        db.select().from(clientSkins).where(eq(clientSkins.tenantId, tenant.id)).orderBy(desc(clientSkins.createdAt)),
+        db.select({ id: oidcClients.id, name: oidcClients.name, clientId: oidcClients.clientId }).from(oidcClients).where(eq(oidcClients.tenantId, tenant.id)),
+        db.select({ id: samlSps.id, name: samlSps.name, entityId: samlSps.entityId }).from(samlSps).where(eq(samlSps.tenantId, tenant.id)),
     ]);
 
     return { skins, oidcList, samlList };
@@ -106,10 +96,7 @@ export const actions: Actions = {
 
         if (!skin) return fail(404, { error: "스킨을 찾을 수 없습니다." });
 
-        await db
-            .update(clientSkins)
-            .set({ enabled: !skin.enabled })
-            .where(eq(clientSkins.id, id));
+        await db.update(clientSkins).set({ enabled: !skin.enabled }).where(eq(clientSkins.id, id));
 
         return { toggled: true };
     },
