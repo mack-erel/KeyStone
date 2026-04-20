@@ -1,5 +1,6 @@
 <script lang="ts">
 import { enhance } from "$app/forms";
+import { resolve } from "$app/paths";
 import type { ActionData, PageData } from "./$types";
 import { t } from "$lib/i18n.svelte";
 
@@ -27,9 +28,12 @@ function clientLabel(clientType: string, clientRefId: string): string {
 <div class="space-y-6">
     <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-gray-900">{t("skins.title")}</h1>
-        <button type="button" onclick={() => (showCreate = !showCreate)} class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
-            {showCreate ? t("common.cancel") : t("skins.add_btn")}
-        </button>
+        <div class="flex items-center gap-2">
+            <a href={resolve("/admin/skins/guide")} class="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">{t("skins.guide_link")}</a>
+            <button type="button" onclick={() => (showCreate = !showCreate)} class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
+                {showCreate ? t("common.cancel") : t("skins.add_btn")}
+            </button>
+        </div>
     </div>
 
     {#if globalErr}
