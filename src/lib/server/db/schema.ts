@@ -662,6 +662,29 @@ export const rateLimits = sqliteTable("rate_limits", {
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+export const clientSkins = sqliteTable(
+    "client_skins",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        tenantId: text("tenant_id")
+            .notNull()
+            .references(() => tenants.id, { onDelete: "cascade" }),
+        clientType: text("client_type", { enum: ["oidc", "saml"] }).notNull(),
+        clientRefId: text("client_ref_id").notNull(),
+        skinType: text("skin_type", { enum: ["login"] }).notNull().default("login"),
+        fetchUrl: text("fetch_url").notNull(),
+        fetchSecret: text("fetch_secret"),
+        cacheTtlSeconds: integer("cache_ttl_seconds").notNull().default(3600),
+        enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+        createdAt: integer("created_at", { mode: "timestamp" })
+            .notNull()
+            .$defaultFn(() => new Date()),
+    },
+    (t) => [uniqueIndex("client_skins_unique").on(t.tenantId, t.clientType, t.clientRefId, t.skinType)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;
 export type Identity = typeof identities.$inferSelect;
@@ -682,3 +705,4 @@ export type UserTeam = typeof userTeams.$inferSelect;
 export type Part = typeof parts.$inferSelect;
 export type UserPart = typeof userParts.$inferSelect;
 export type WebauthnChallenge = typeof webauthnChallenges.$inferSelect;
+export type ClientSkin = typeof clientSkins.$inferSelect;

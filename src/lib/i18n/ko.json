@@ -54,7 +54,8 @@
         "departments": "부서",
         "teams": "팀",
         "parts": "파트",
-        "ldap_providers": "LDAP 프로바이더"
+        "ldap_providers": "LDAP 프로바이더",
+        "skins": "로그인 스킨"
     },
     "account": {
         "profile": "내 프로필",
@@ -353,5 +354,30 @@
     "poc": {
         "title": "Workers 환경 PoC",
         "subtitle": "킥오프 M0 사전 점검. 각 엔드포인트는 GET 요청 시 JSON 으로 결과를 반환."
+    },
+    "skins": {
+        "title": "로그인 스킨",
+        "add_btn": "+ 스킨 추가",
+        "create_title": "새 로그인 스킨",
+        "created_success": "스킨이 추가되었습니다.",
+        "cache_invalidated": "캐시가 삭제되었습니다.",
+        "client_type_label": "클라이언트 타입",
+        "client_label": "클라이언트",
+        "fetch_url_label": "스킨 URL",
+        "fetch_secret_label": "인증 시크릿 (X-IDP-Token)",
+        "fetch_secret_placeholder": "없으면 비워두세요",
+        "cache_ttl_label": "캐시 TTL (초)",
+        "col_client": "클라이언트",
+        "col_skin_type": "스킨 타입",
+        "col_fetch_url": "스킨 URL",
+        "col_ttl": "TTL",
+        "col_created": "생성",
+        "empty": "등록된 스킨이 없습니다.",
+        "delete_confirm": "스킨을 삭제하시겠습니까?",
+        "invalidate_cache": "캐시 삭제",
+        "placeholder_guide_title": "치환자 안내",
+        "placeholder_form_action": "폼 action (비어 있으면 현재 URL로 POST)",
+        "placeholder_redirect_to": "로그인 후 리다이렉트 대상 URL",
+        "placeholder_skin_hint": "스킨 힌트 값 (hidden input에 활용)"
     }
 }

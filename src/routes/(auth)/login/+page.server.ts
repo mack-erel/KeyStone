@@ -14,6 +14,7 @@ import { authenticateLdap } from "$lib/server/ldap/auth";
 import { provisionLdapUser } from "$lib/server/ldap/provision";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
 import { decryptSecret } from "$lib/server/crypto/keys";
+import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 
 function sanitizeRedirectTarget(target: string | null): string | null {
     if (!target) return null;
@@ -30,15 +31,39 @@ function sanitizeRedirectTarget(target: string | null): string | null {
     return target;
 }
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ locals, url, platform }) => {
     // forceAuthn=true 이면 이미 로그인된 사용자도 재인증을 진행해야 하므로 자동 리다이렉트 생략
     const forceAuthn = url.searchParams.get("forceAuthn") === "true";
     if (locals.user && !forceAuthn) {
         throw redirect(302, locals.user.role === "admin" ? "/admin" : "/");
     }
 
+    const redirectTo = sanitizeRedirectTarget(url.searchParams.get("redirectTo"));
+    const skinHint = url.searchParams.get("skinHint");
+    let skinHtml: string | null = null;
+
+    if (skinHint && locals.db && locals.tenant) {
+        const colonIdx = skinHint.indexOf(":");
+        if (colonIdx > 0) {
+            const clientType = skinHint.slice(0, colonIdx) as "oidc" | "saml";
+            const clientRefId = skinHint.slice(colonIdx + 1);
+            if ((clientType === "oidc" || clientType === "saml") && clientRefId) {
+                const raw = await resolveSkinHtml(locals.db, platform, locals.tenant.id, clientType, clientRefId);
+                if (raw) {
+                    skinHtml = replacePlaceholders(raw, {
+                        IDP_FORM_ACTION: "",
+                        IDP_REDIRECT_TO: escapeHtml(redirectTo ?? ""),
+                        IDP_SKIN_HINT: escapeHtml(skinHint),
+                    });
+                }
+            }
+        }
+    }
+
     return {
-        redirectTo: sanitizeRedirectTarget(url.searchParams.get("redirectTo")),
+        redirectTo,
+        skinHint,
+        skinHtml,
         dbReady: Boolean(locals.db),
         runtimeError: locals.runtimeError,
     };

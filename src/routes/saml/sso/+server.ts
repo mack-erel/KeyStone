@@ -103,6 +103,7 @@ export const GET: RequestHandler = async (event) => {
     if (!locals.user || !locals.session) {
         const loginUrl = new URL("/login", url);
         loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
+        loginUrl.searchParams.set("skinHint", `saml:${sp.id}`);
         throw redirect(302, loginUrl.toString());
     }
 
@@ -111,6 +112,7 @@ export const GET: RequestHandler = async (event) => {
     if (authnRequest.forceAuthn && locals.session.createdAt < authnRequest.issueInstant) {
         const loginUrl = new URL("/login", url);
         loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
+        loginUrl.searchParams.set("skinHint", `saml:${sp.id}`);
         loginUrl.searchParams.set("forceAuthn", "true");
         throw redirect(302, loginUrl.toString());
     }
@@ -142,6 +144,7 @@ export const GET: RequestHandler = async (event) => {
         // 첫 시도: 재인증(MFA 포함)을 강제한다.
         const loginUrl = new URL("/login", url);
         loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
+        loginUrl.searchParams.set("skinHint", `saml:${sp.id}`);
         loginUrl.searchParams.set("forceAuthn", "true");
         throw redirect(302, loginUrl.toString());
     }

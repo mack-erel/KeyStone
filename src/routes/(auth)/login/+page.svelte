@@ -48,95 +48,111 @@ async function loginWithPasskey() {
 }
 </script>
 
-<div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
-    <div class="w-full max-w-105 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-        <div class="mb-6 space-y-2 text-center">
-            <h1 class="text-2xl font-bold text-gray-900">{t("app.title")}</h1>
-            <p class="text-sm leading-6 text-gray-500">M0 관리자 진입용 로컬 계정 로그인입니다.</p>
+{#if data.skinHtml}
+    <!-- 커스텀 스킨 -->
+    {#if !data.dbReady && data.runtimeError}
+        <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
+            {data.runtimeError}
         </div>
-
-        {#if !data.dbReady && data.runtimeError}
-            <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                {data.runtimeError}
-            </div>
-        {/if}
-
-        {#if form?.error}
-            <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {form.error}
-            </div>
-        {/if}
-
-        {#if passkeyError}
-            <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {passkeyError}
-            </div>
-        {/if}
-
-        <form method="POST" class="space-y-4">
-            <input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ""} />
-
-            <div>
-                <label for="username" class="block text-sm font-medium text-gray-700">
-                    {t("login.username")}
-                </label>
-                <input
-                    type="text"
-                    name="username"
-                    id="username"
-                    required
-                    autocomplete="username"
-                    value={form?.username ?? ""}
-                    class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+    {/if}
+    {#if form?.error}
+        <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg">
+            {form.error}
+        </div>
+    {/if}
+    {@html data.skinHtml}
+{:else}
+    <!-- 기본 스킨 -->
+    <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+        <div class="w-full max-w-105 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
+            <div class="mb-6 space-y-2 text-center">
+                <h1 class="text-2xl font-bold text-gray-900">{t("app.title")}</h1>
+                <p class="text-sm leading-6 text-gray-500">M0 관리자 진입용 로컬 계정 로그인입니다.</p>
             </div>
 
-            <div>
-                <label for="password" class="block text-sm font-medium text-gray-700">
-                    {t("login.password")}
-                </label>
-                <input
-                    type="password"
-                    name="password"
-                    id="password"
-                    required
-                    autocomplete="current-password"
-                    class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+            {#if !data.dbReady && data.runtimeError}
+                <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {data.runtimeError}
+                </div>
+            {/if}
+
+            {#if form?.error}
+                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {form.error}
+                </div>
+            {/if}
+
+            {#if passkeyError}
+                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {passkeyError}
+                </div>
+            {/if}
+
+            <form method="POST" class="space-y-4">
+                <input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ""} />
+
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700">
+                        {t("login.username")}
+                    </label>
+                    <input
+                        type="text"
+                        name="username"
+                        id="username"
+                        required
+                        autocomplete="username"
+                        value={form?.username ?? ""}
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+                </div>
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700">
+                        {t("login.password")}
+                    </label>
+                    <input
+                        type="password"
+                        name="password"
+                        id="password"
+                        required
+                        autocomplete="current-password"
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+                </div>
+
+                <button
+                    type="submit"
+                    class="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none">
+                    {t("login.submit")}
+                </button>
+            </form>
+
+            <div class="mt-4 flex items-center gap-3">
+                <div class="h-px flex-1 bg-gray-200"></div>
+                <span class="text-xs text-gray-400">또는</span>
+                <div class="h-px flex-1 bg-gray-200"></div>
             </div>
 
             <button
-                type="submit"
-                class="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none">
-                {t("login.submit")}
+                type="button"
+                onclick={loginWithPasskey}
+                disabled={passkeyLoading}
+                class="mt-4 flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60">
+                {#if passkeyLoading}
+                    <svg class="h-4 w-4 animate-spin text-gray-500" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    인증 중...
+                {:else}
+                    <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                    패스키로 로그인
+                {/if}
             </button>
-        </form>
-
-        <div class="mt-4 flex items-center gap-3">
-            <div class="h-px flex-1 bg-gray-200"></div>
-            <span class="text-xs text-gray-400">또는</span>
-            <div class="h-px flex-1 bg-gray-200"></div>
         </div>
-
-        <button
-            type="button"
-            onclick={loginWithPasskey}
-            disabled={passkeyLoading}
-            class="mt-4 flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60">
-            {#if passkeyLoading}
-                <svg class="h-4 w-4 animate-spin text-gray-500" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                </svg>
-                인증 중...
-            {:else}
-                <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-                패스키로 로그인
-            {/if}
-        </button>
     </div>
-</div>
+{/if}

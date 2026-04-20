@@ -1,0 +1,199 @@
+<script lang="ts">
+import { enhance } from "$app/forms";
+import type { ActionData, PageData } from "./$types";
+import { t } from "$lib/i18n.svelte";
+
+const { data, form } = $props<{ data: PageData; form?: ActionData }>();
+
+const dateFormatter = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" });
+
+let showCreate = $state(false);
+
+const createErr = $derived((form as { create?: boolean; error?: string } | null)?.create ? ((form as { error?: string } | null)?.error ?? null) : null);
+const globalErr = $derived(createErr ? null : ((form as { error?: string } | null)?.error ?? null));
+
+const CLIENT_TYPE_LABEL: Record<string, string> = { oidc: "OIDC", saml: "SAML" };
+
+function clientLabel(clientType: string, clientRefId: string): string {
+    if (clientType === "oidc") {
+        const c = data.oidcList.find((o: { id: string }) => o.id === clientRefId);
+        return c ? `${c.name} (${c.clientId})` : clientRefId;
+    }
+    const s = data.samlList.find((sp: { id: string }) => sp.id === clientRefId);
+    return s ? `${s.name} (${s.entityId})` : clientRefId;
+}
+</script>
+
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-gray-900">{t("skins.title")}</h1>
+        <button
+            type="button"
+            onclick={() => (showCreate = !showCreate)}
+            class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
+            {showCreate ? t("common.cancel") : t("skins.add_btn")}
+        </button>
+    </div>
+
+    {#if globalErr}
+        <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{globalErr}</div>
+    {/if}
+
+    {#if (form as { created?: boolean } | null)?.created}
+        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{t("skins.created_success")}</div>
+    {/if}
+
+    {#if (form as { invalidated?: boolean } | null)?.invalidated}
+        <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{t("skins.cache_invalidated")}</div>
+    {/if}
+
+    {#if showCreate}
+        <div class="rounded-xl border border-blue-100 bg-blue-50 p-5">
+            <h2 class="mb-4 font-semibold text-blue-900">{t("skins.create_title")}</h2>
+            {#if createErr}
+                <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{createErr}</div>
+            {/if}
+            <form
+                method="POST"
+                action="?/create"
+                use:enhance={() =>
+                    ({ result, update }) => {
+                        update();
+                        if (result.type === "success") showCreate = false;
+                    }}
+                class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                    <label for="c-clientType" class="block text-xs font-medium text-gray-700">{t("skins.client_type_label")}</label>
+                    <select id="c-clientType" name="clientType" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+                        <option value="oidc">OIDC</option>
+                        <option value="saml">SAML</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="c-clientRefId" class="block text-xs font-medium text-gray-700">{t("skins.client_label")}</label>
+                    <select id="c-clientRefId" name="clientRefId" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+                        {#if data.oidcList.length > 0}
+                            <optgroup label="OIDC">
+                                {#each data.oidcList as c (c.id)}
+                                    <option value={c.id}>{c.name} ({c.clientId})</option>
+                                {/each}
+                            </optgroup>
+                        {/if}
+                        {#if data.samlList.length > 0}
+                            <optgroup label="SAML">
+                                {#each data.samlList as sp (sp.id)}
+                                    <option value={sp.id}>{sp.name} ({sp.entityId})</option>
+                                {/each}
+                            </optgroup>
+                        {/if}
+                    </select>
+                </div>
+                <div class="sm:col-span-2">
+                    <label for="c-fetchUrl" class="block text-xs font-medium text-gray-700">{t("skins.fetch_url_label")}</label>
+                    <input
+                        id="c-fetchUrl"
+                        type="url"
+                        name="fetchUrl"
+                        required
+                        placeholder="https://example.com/login-skin.html"
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="c-fetchSecret" class="block text-xs font-medium text-gray-700">{t("skins.fetch_secret_label")}</label>
+                    <input
+                        id="c-fetchSecret"
+                        type="password"
+                        name="fetchSecret"
+                        placeholder={t("skins.fetch_secret_placeholder")}
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="c-cacheTtl" class="block text-xs font-medium text-gray-700">{t("skins.cache_ttl_label")}</label>
+                    <input
+                        id="c-cacheTtl"
+                        type="number"
+                        name="cacheTtlSeconds"
+                        value="3600"
+                        min="60"
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div class="flex justify-end sm:col-span-2">
+                    <button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t("common.add")}</button>
+                </div>
+            </form>
+        </div>
+    {/if}
+
+    <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("skins.col_client")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("skins.col_skin_type")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("skins.col_fetch_url")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("skins.col_ttl")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("common.status")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("skins.col_created")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("common.actions")}</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {#if data.skins.length === 0}
+                    <tr>
+                        <td colspan="7" class="px-6 py-8 text-center text-sm text-gray-500">{t("skins.empty")}</td>
+                    </tr>
+                {:else}
+                    {#each data.skins as skin (skin.id)}
+                        <tr class="hover:bg-gray-50 {skin.enabled ? '' : 'opacity-60'}">
+                            <td class="px-4 py-3">
+                                <span class="mr-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{CLIENT_TYPE_LABEL[skin.clientType]}</span>
+                                <span class="text-sm text-gray-800">{clientLabel(skin.clientType, skin.clientRefId)}</span>
+                            </td>
+                            <td class="px-4 py-3 text-xs text-gray-600">{skin.skinType}</td>
+                            <td class="max-w-xs truncate px-4 py-3 font-mono text-xs text-gray-500" title={skin.fetchUrl}>{skin.fetchUrl}</td>
+                            <td class="px-4 py-3 text-xs text-gray-500">{skin.cacheTtlSeconds}s</td>
+                            <td class="px-4 py-3">
+                                <span class="rounded-full px-2 py-0.5 text-xs font-medium {skin.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
+                                    {skin.enabled ? t("common.status_active") : t("common.status_inactive")}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-xs text-gray-400">{dateFormatter.format(skin.createdAt)}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <form method="POST" action="?/toggleEnabled" use:enhance>
+                                        <input type="hidden" name="id" value={skin.id} />
+                                        <button type="submit" class="text-xs text-gray-500 hover:text-gray-800">
+                                            {skin.enabled ? t("common.status_inactive") : t("common.status_active")}
+                                        </button>
+                                    </form>
+                                    <form method="POST" action="?/invalidateCache" use:enhance>
+                                        <input type="hidden" name="id" value={skin.id} />
+                                        <button type="submit" class="text-xs text-blue-500 hover:text-blue-700">{t("skins.invalidate_cache")}</button>
+                                    </form>
+                                    <form method="POST" action="?/delete" use:enhance>
+                                        <input type="hidden" name="id" value={skin.id} />
+                                        <button
+                                            type="submit"
+                                            class="text-xs text-red-400 hover:text-red-600"
+                                            onclick={(e) => {
+                                                if (!confirm(t("skins.delete_confirm"))) e.preventDefault();
+                                            }}>
+                                            {t("common.delete")}
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {/each}
+                {/if}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 text-xs text-gray-500 space-y-1">
+        <p class="font-medium text-gray-700">{t("skins.placeholder_guide_title")}</p>
+        <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_FORM_ACTION&#125;&#125;</code> — {t("skins.placeholder_form_action")}</p>
+        <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_REDIRECT_TO&#125;&#125;</code> — {t("skins.placeholder_redirect_to")}</p>
+        <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_SKIN_HINT&#125;&#125;</code> — {t("skins.placeholder_skin_hint")}</p>
+    </div>
+</div>
