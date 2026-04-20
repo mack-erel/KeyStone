@@ -12,10 +12,10 @@ jobs:
             build-affected: ${{ steps.filter.outputs.build-affected }}
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
 
             - name: Filter paths
-              uses: dorny/paths-filter@v3
+              uses: dorny/paths-filter@v4
               id: filter
               with:
                   filters: |
@@ -42,7 +42,7 @@ jobs:
             contents: write
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
               with:
                   ref: ${{ github.head_ref }}
                   token: ${{ secrets.GITHUB_TOKEN }}
@@ -57,7 +57,7 @@ jobs:
               run: bun run format
 
             - name: Commit formatted files
-              uses: stefanzweifel/git-auto-commit-action@v5
+              uses: stefanzweifel/git-auto-commit-action@v7
               with:
                   commit_message: "style: 코드 자동 포맷 적용 [skip ci]"
 
@@ -69,7 +69,7 @@ jobs:
 
         steps:
             - name: Checkout
-              uses: actions/checkout@v4
+              uses: actions/checkout@v6
               with:
                   ref: ${{ github.head_ref }}
 
