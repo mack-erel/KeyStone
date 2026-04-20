@@ -28,6 +28,7 @@ async function send(to: string, subject: string, html: string): Promise<void> {
         secure: smtp.secure,
         auth: { user: smtp.username, pass: smtp.password },
     });
+    transporter.setMaxListeners(20);
 
     try {
         await transporter.sendMail({ from: smtp.senderAddress, to, subject, html });
