@@ -8,6 +8,21 @@ const config = {
     },
     kit: {
         adapter: adapter(),
+        csp: {
+            mode: "hash", // unsafe-inline 제거: SvelteKit이 인라인 스크립트 해시를 자동 추가
+            directives: {
+                "default-src": ["self"],
+                "script-src": ["self"], // 해시 자동 추가됨
+                "style-src": ["self", "unsafe-inline"], // Tailwind 인라인 스타일 필요
+                "img-src": ["self", "data:"],
+                "font-src": ["self", "data:"],
+                "connect-src": ["self"],
+                "frame-ancestors": ["none"],
+                "form-action": ["self", "https:"], // SAML ACS HTTP-POST 바인딩
+                "base-uri": ["self"],
+                "object-src": ["none"],
+            },
+        },
         // OIDC token endpoint 는 server-to-server 호출이므로 Origin 헤더 없이 전달된다.
         // SvelteKit CSRF 체크는 Origin 헤더가 없을 때 자동으로 통과하므로 별도 설정 불필요.
         // trustedOrigins: ['*'] 는 전체 CSRF 비활성화와 동일하여 제거함.
