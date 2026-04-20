@@ -2,6 +2,7 @@
 import { enhance } from "$app/forms";
 import { invalidateAll } from "$app/navigation";
 import type { ActionData, PageData } from "./$types";
+import { t } from "$lib/i18n.svelte";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
@@ -13,7 +14,6 @@ async function registerPasskey() {
     registerError = "";
     registering = true;
     try {
-        // 1. 등록 옵션 요청
         const optRes = await fetch("/api/webauthn/register/options", { method: "POST" });
         if (!optRes.ok) {
             const msg = await optRes.text();
@@ -21,12 +21,10 @@ async function registerPasskey() {
         }
         const options = await optRes.json();
 
-        // 2. 브라우저 패스키 등록 (클라이언트 전용)
         const { startRegistration } = await import("@simplewebauthn/browser");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const regResponse = await startRegistration({ optionsJSON: options as any });
 
-        // 3. 검증 요청
         const verRes = await fetch("/api/webauthn/register/verify", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -59,14 +57,13 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
     <div class="mx-auto max-w-lg">
         <div class="mb-6">
             <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-            <a href="/" class="text-sm text-gray-500 hover:underline">← 홈으로</a>
+            <a href="/" class="text-sm text-gray-500 hover:underline">← {t("mfa_manage.back_to_home")}</a>
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-            <h1 class="mb-1 text-2xl font-bold text-gray-900">패스키 관리</h1>
-            <p class="mb-6 text-sm text-gray-500">지문, Face ID, 보안 키 등으로 비밀번호 없이 로그인할 수 있습니다.</p>
+            <h1 class="mb-1 text-2xl font-bold text-gray-900">{t("passkeys.title")}</h1>
+            <p class="mb-6 text-sm text-gray-500">{t("passkeys.subtitle")}</p>
 
-            <!-- 에러 -->
             {#if formError}
                 <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {formError}
@@ -79,7 +76,6 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                 </div>
             {/if}
 
-            <!-- 등록된 패스키 목록 -->
             {#if data.passkeys.length > 0}
                 <div class="mb-6 space-y-2">
                     {#each data.passkeys as pk (pk.id)}
@@ -94,12 +90,13 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                                 </svg>
                                 <div>
                                     <p class="text-sm font-medium text-gray-900">
-                                        {pk.label ?? "패스키"}
+                                        {pk.label ?? t("account.passkeys")}
                                     </p>
                                     <p class="text-xs text-gray-400">
-                                        등록: {new Date(pk.createdAt).toLocaleDateString("ko-KR")}
+                                        {t("passkeys.registered_date")}
+                                        {new Date(pk.createdAt).toLocaleDateString("ko-KR")}
                                         {#if pk.lastUsedAt}
-                                            · 마지막 사용: {new Date(pk.lastUsedAt).toLocaleDateString("ko-KR")}
+                                            {t("passkeys.last_used")} {new Date(pk.lastUsedAt).toLocaleDateString("ko-KR")}
                                         {/if}
                                     </p>
                                 </div>
@@ -111,9 +108,9 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                                     type="submit"
                                     class="text-sm text-red-500 hover:text-red-700"
                                     onclick={(e) => {
-                                        if (!confirm("이 패스키를 삭제하시겠습니까?")) e.preventDefault();
+                                        if (!confirm(t("passkeys.delete_confirm"))) e.preventDefault();
                                     }}>
-                                    삭제
+                                    {t("common.delete")}
                                 </button>
                             </form>
                         </div>
@@ -121,14 +118,13 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                 </div>
             {:else}
                 <div class="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <p class="text-sm text-gray-500">등록된 패스키가 없습니다.</p>
+                    <p class="text-sm text-gray-500">{t("passkeys.empty")}</p>
                 </div>
             {/if}
 
-            <!-- 새 패스키 등록 -->
             <div class="space-y-3">
                 <div>
-                    <label for="passkey-label" class="block text-sm font-medium text-gray-700"> 패스키 이름 (선택) </label>
+                    <label for="passkey-label" class="block text-sm font-medium text-gray-700">{t("passkeys.name_label")}</label>
                     <input
                         type="text"
                         id="passkey-label"
@@ -148,9 +144,9 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                             <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                         </svg>
-                        등록 중...
+                        {t("passkeys.registering")}
                     {:else}
-                        패스키 등록
+                        {t("passkeys.register")}
                     {/if}
                 </button>
             </div>

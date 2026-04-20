@@ -1,5 +1,6 @@
 <script lang="ts">
 import { resolve } from "$app/paths";
+import { t } from "$lib/i18n.svelte";
 
 const pocs = [
     { route: "/poc/rs256" as const, title: "RS256 JWT (WebCrypto)", status: "ok" },
@@ -17,8 +18,8 @@ const pocs = [
 </script>
 
 <main class="mx-auto max-w-2xl p-8">
-    <h1 class="mb-6 text-2xl font-semibold">Workers 환경 PoC</h1>
-    <p class="mb-4 text-sm text-gray-600">킥오프 M0 사전 점검. 각 엔드포인트는 GET 요청 시 JSON 으로 결과를 반환.</p>
+    <h1 class="mb-6 text-2xl font-semibold">{t("poc.title")}</h1>
+    <p class="mb-4 text-sm text-gray-600">{t("poc.subtitle")}</p>
     <ul class="space-y-3">
         {#each pocs as p (p.route)}
             <li class="rounded border p-3">

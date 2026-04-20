@@ -2,13 +2,13 @@
 import { enhance } from "$app/forms";
 import { onMount } from "svelte";
 import type { ActionData, PageData } from "./$types";
+import { t } from "$lib/i18n.svelte";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
 let qrDataUrl = $state("");
 let qrError = $state(false);
 
-// QR 코드 렌더링 (클라이언트 전용)
 const otpauthUri = $derived((form as { otpauthUri?: string } | null)?.otpauthUri ?? data.pendingUri ?? null);
 
 onMount(async () => {
@@ -39,9 +39,7 @@ $effect(() => {
 });
 
 const backupCodes = $derived((form as { backupCodes?: string[] } | null)?.backupCodes ?? null);
-
 const formError = $derived((form as { error?: string } | null)?.error ?? null);
-
 const isSetupMode = $derived(!!otpauthUri);
 </script>
 
@@ -49,24 +47,22 @@ const isSetupMode = $derived(!!otpauthUri);
     <div class="mx-auto max-w-lg">
         <div class="mb-6">
             <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-            <a href="/" class="text-sm text-gray-500 hover:underline">← 홈으로</a>
+            <a href="/" class="text-sm text-gray-500 hover:underline">{t("mfa_manage.back_to_home")}</a>
         </div>
 
         <div class="rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-            <h1 class="mb-6 text-2xl font-bold text-gray-900">2단계 인증 관리</h1>
+            <h1 class="mb-6 text-2xl font-bold text-gray-900">{t("mfa_manage.title")}</h1>
 
-            <!-- 에러 -->
             {#if formError}
                 <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                     {formError}
                 </div>
             {/if}
 
-            <!-- 백업 코드 표시 (등록 직후 또는 재생성 직후) -->
             {#if backupCodes}
                 <div class="mb-6 rounded-xl border border-green-200 bg-green-50 p-5">
-                    <h2 class="mb-2 font-semibold text-green-900">백업 코드가 생성되었습니다</h2>
-                    <p class="mb-4 text-sm text-green-700">이 코드는 지금만 표시됩니다. 안전한 곳에 저장해 두세요. 코드 하나당 1회만 사용 가능합니다.</p>
+                    <h2 class="mb-2 font-semibold text-green-900">{t("mfa_manage.backup_codes_generated")}</h2>
+                    <p class="mb-4 text-sm text-green-700">{t("mfa_manage.backup_codes_warning")}</p>
                     <div class="grid grid-cols-2 gap-2">
                         {#each backupCodes as code (code)}
                             <code class="rounded-md bg-white px-3 py-1.5 text-center font-mono text-sm text-gray-800 shadow-sm">
@@ -77,27 +73,26 @@ const isSetupMode = $derived(!!otpauthUri);
                 </div>
             {/if}
 
-            <!-- QR 코드 / 등록 화면 -->
             {#if isSetupMode}
                 <div class="space-y-5">
                     <div class="rounded-xl border border-blue-100 bg-blue-50 p-4">
-                        <h2 class="mb-2 font-semibold text-blue-900">인증 앱 등록</h2>
-                        <p class="text-sm text-blue-700">Google Authenticator, Authy 등 TOTP 앱으로 QR 코드를 스캔하세요.</p>
+                        <h2 class="mb-2 font-semibold text-blue-900">{t("mfa_manage.setup_title")}</h2>
+                        <p class="text-sm text-blue-700">{t("mfa_manage.setup_hint")}</p>
                     </div>
 
                     <div class="flex flex-col items-center gap-3">
                         {#if qrDataUrl}
                             <img src={qrDataUrl} alt="TOTP QR 코드" class="rounded-lg border border-gray-200" />
                         {:else if qrError}
-                            <p class="text-sm text-gray-500">QR 코드 생성 실패</p>
+                            <p class="text-sm text-gray-500">{t("mfa_manage.qr_error")}</p>
                         {:else}
                             <div class="flex h-50 w-50 items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
-                                <span class="text-xs text-gray-400">로딩 중...</span>
+                                <span class="text-xs text-gray-400">{t("mfa_manage.qr_loading")}</span>
                             </div>
                         {/if}
 
                         <details class="w-full">
-                            <summary class="cursor-pointer text-xs text-gray-500 hover:text-gray-700"> 직접 입력 (키 보기) </summary>
+                            <summary class="cursor-pointer text-xs text-gray-500 hover:text-gray-700">{t("mfa_manage.manual_entry")}</summary>
                             <div class="mt-2 rounded-md bg-gray-100 px-3 py-2 font-mono text-xs break-all text-gray-600">
                                 {otpauthUri}
                             </div>
@@ -106,7 +101,7 @@ const isSetupMode = $derived(!!otpauthUri);
 
                     <form method="POST" action="?/confirm" use:enhance class="space-y-3">
                         <div>
-                            <label for="code" class="block text-sm font-medium text-gray-700"> 앱에 표시된 6자리 코드 입력 </label>
+                            <label for="code" class="block text-sm font-medium text-gray-700">{t("mfa_manage.code_input_label")}</label>
                             <input
                                 type="text"
                                 name="code"
@@ -118,16 +113,14 @@ const isSetupMode = $derived(!!otpauthUri);
                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-center text-lg tracking-widest shadow-sm focus:border-blue-500 focus:outline-none" />
                         </div>
                         <button type="submit" class="flex w-full justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700">
-                            등록 완료
+                            {t("mfa_manage.register_complete")}
                         </button>
                     </form>
 
                     <form method="POST" action="?/setup" use:enhance>
-                        <button type="submit" class="w-full text-center text-sm text-gray-500 hover:underline"> 새 QR 코드 생성 </button>
+                        <button type="submit" class="w-full text-center text-sm text-gray-500 hover:underline">{t("mfa_manage.new_qr")}</button>
                     </form>
                 </div>
-
-                <!-- 등록된 상태 -->
             {:else if data.enrolled}
                 <div class="space-y-5">
                     <div class="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4">
@@ -135,26 +128,26 @@ const isSetupMode = $derived(!!otpauthUri);
                             <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
                         </svg>
                         <div>
-                            <p class="font-medium text-green-900">TOTP 인증기가 등록되어 있습니다.</p>
+                            <p class="font-medium text-green-900">{t("mfa_manage.enrolled_badge")}</p>
                             {#if data.enrolledAt}
                                 <p class="text-xs text-green-700">
-                                    등록일: {new Date(data.enrolledAt).toLocaleDateString("ko-KR")}
+                                    {t("mfa_manage.enrolled_date")}
+                                    {new Date(data.enrolledAt).toLocaleDateString("ko-KR")}
                                 </p>
                             {/if}
                         </div>
                     </div>
 
-                    <!-- 백업 코드 상태 -->
                     <div class="rounded-xl border border-gray-200 p-4">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="font-medium text-gray-900">백업 코드</p>
+                                <p class="font-medium text-gray-900">{t("mfa_manage.backup_codes_label")}</p>
                                 <p class="text-sm text-gray-500">
-                                    {data.backupCodesRemaining}개 남음
+                                    {t("mfa_manage.backup_codes_remaining", { count: data.backupCodesRemaining })}
                                     {#if data.backupCodesRemaining === 0}
-                                        <span class="text-red-500"> — 재생성이 필요합니다</span>
+                                        <span class="text-red-500">{t("mfa_manage.backup_codes_empty")}</span>
                                     {:else if data.backupCodesRemaining <= 3}
-                                        <span class="text-amber-500"> — 코드가 부족합니다</span>
+                                        <span class="text-amber-500">{t("mfa_manage.backup_codes_low")}</span>
                                     {/if}
                                 </p>
                             </div>
@@ -165,23 +158,22 @@ const isSetupMode = $derived(!!otpauthUri);
                                     required
                                     inputmode="numeric"
                                     maxlength={6}
-                                    placeholder="TOTP 코드"
+                                    placeholder={t("mfa_manage.totp_placeholder")}
                                     class="w-28 rounded-md border border-gray-300 px-2 py-1.5 text-center font-mono text-sm tracking-widest focus:border-blue-500 focus:outline-none" />
                                 <button
                                     type="submit"
                                     class="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 transition hover:bg-gray-50"
                                     onclick={(e) => {
-                                        if (!confirm("기존 백업 코드가 모두 삭제되고 새로 발급됩니다. 계속하시겠습니까?")) {
+                                        if (!confirm(t("mfa_manage.regenerate_confirm"))) {
                                             e.preventDefault();
                                         }
                                     }}>
-                                    재생성
+                                    {t("mfa_manage.regenerate")}
                                 </button>
                             </form>
                         </div>
                     </div>
 
-                    <!-- TOTP 삭제 -->
                     <form method="POST" action="?/delete" use:enhance class="space-y-2">
                         <input
                             type="text"
@@ -189,31 +181,29 @@ const isSetupMode = $derived(!!otpauthUri);
                             required
                             inputmode="numeric"
                             maxlength={6}
-                            placeholder="현재 TOTP 코드 입력 후 삭제"
+                            placeholder={t("mfa_manage.delete_input_placeholder")}
                             class="block w-full rounded-md border border-red-200 px-3 py-2 text-center font-mono text-sm tracking-widest focus:border-red-400 focus:outline-none" />
                         <button
                             type="submit"
                             class="flex w-full justify-center rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50"
                             onclick={(e) => {
-                                if (!confirm("TOTP 인증기와 모든 백업 코드가 삭제됩니다. 계속하시겠습니까?")) {
+                                if (!confirm(t("mfa_manage.delete_confirm"))) {
                                     e.preventDefault();
                                 }
                             }}>
-                            인증기 삭제
+                            {t("mfa_manage.delete_button")}
                         </button>
                     </form>
                 </div>
-
-                <!-- 미등록 상태 -->
             {:else}
                 <div class="space-y-5">
                     <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                        <p class="text-sm text-gray-600">2단계 인증을 활성화하면 계정 보안이 강화됩니다. Google Authenticator, Authy 등의 인증 앱이 필요합니다.</p>
+                        <p class="text-sm text-gray-600">{t("mfa_manage.not_enrolled_hint")}</p>
                     </div>
 
                     <form method="POST" action="?/setup" use:enhance>
                         <button type="submit" class="flex w-full justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700">
-                            인증기 등록 시작
+                            {t("mfa_manage.start_setup")}
                         </button>
                     </form>
                 </div>
