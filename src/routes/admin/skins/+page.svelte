@@ -1,6 +1,7 @@
 <script lang="ts">
 import { enhance } from "$app/forms";
 import { resolve } from "$app/paths";
+import { untrack } from "svelte";
 import type { ActionData, PageData } from "./$types";
 import { t } from "$lib/i18n.svelte";
 
@@ -9,7 +10,7 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" });
 
 let showCreate = $state(false);
-const firstClientId = data.oidcList[0]?.id ?? data.samlList[0]?.id ?? "";
+const firstClientId = untrack(() => data.oidcList[0]?.id ?? data.samlList[0]?.id ?? "");
 let selectedClientRefId = $state(firstClientId);
 const derivedClientType = $derived(data.oidcList.some((c: { id: string }) => c.id === selectedClientRefId) ? "oidc" : "saml");
 
