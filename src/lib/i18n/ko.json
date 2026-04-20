@@ -355,6 +355,18 @@
         "title": "Workers 환경 PoC",
         "subtitle": "킥오프 M0 사전 점검. 각 엔드포인트는 GET 요청 시 JSON 으로 결과를 반환."
     },
+    "signup": {
+        "title": "회원가입",
+        "not_available": "현재 이 서비스는 관리자를 통해서만 계정을 생성할 수 있습니다."
+    },
+    "find_id": {
+        "title": "아이디 찾기",
+        "not_available": "아이디 찾기 기능은 현재 지원되지 않습니다. 관리자에게 문의해 주세요."
+    },
+    "find_password": {
+        "title": "비밀번호 찾기",
+        "not_available": "비밀번호 찾기 기능은 현재 지원되지 않습니다. 관리자에게 문의해 주세요."
+    },
     "skins": {
         "title": "로그인 스킨",
         "add_btn": "+ 스킨 추가",
@@ -367,6 +379,11 @@
         "fetch_secret_label": "인증 시크릿 (X-IDP-Token)",
         "fetch_secret_placeholder": "없으면 비워두세요",
         "cache_ttl_label": "캐시 TTL (초)",
+        "skin_type_label": "스킨 타입",
+        "skin_type_login": "로그인",
+        "skin_type_signup": "회원가입",
+        "skin_type_find_id": "아이디 찾기",
+        "skin_type_find_password": "비밀번호 찾기",
         "col_client": "클라이언트",
         "col_skin_type": "스킨 타입",
         "col_fetch_url": "스킨 URL",

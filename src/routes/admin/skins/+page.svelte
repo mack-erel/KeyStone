@@ -67,6 +67,15 @@ function clientLabel(clientType: string, clientRefId: string): string {
                     </select>
                 </div>
                 <div>
+                    <label for="c-skinType" class="block text-xs font-medium text-gray-700">{t("skins.skin_type_label")}</label>
+                    <select id="c-skinType" name="skinType" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+                        <option value="login">{t("skins.skin_type_login")}</option>
+                        <option value="signup">{t("skins.skin_type_signup")}</option>
+                        <option value="find_id">{t("skins.skin_type_find_id")}</option>
+                        <option value="find_password">{t("skins.skin_type_find_password")}</option>
+                    </select>
+                </div>
+                <div>
                     <label for="c-clientRefId" class="block text-xs font-medium text-gray-700">{t("skins.client_label")}</label>
                     <select id="c-clientRefId" name="clientRefId" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
                         {#if data.oidcList.length > 0}
@@ -146,7 +155,7 @@ function clientLabel(clientType: string, clientRefId: string): string {
                                 <span class="mr-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{CLIENT_TYPE_LABEL[skin.clientType]}</span>
                                 <span class="text-sm text-gray-800">{clientLabel(skin.clientType, skin.clientRefId)}</span>
                             </td>
-                            <td class="px-4 py-3 text-xs text-gray-600">{skin.skinType}</td>
+                            <td class="px-4 py-3 text-xs text-gray-600">{t(`skins.skin_type_${skin.skinType}`)}</td>
                             <td class="max-w-xs truncate px-4 py-3 font-mono text-xs text-gray-500" title={skin.fetchUrl}>{skin.fetchUrl}</td>
                             <td class="px-4 py-3 text-xs text-gray-500">{skin.cacheTtlSeconds}s</td>
                             <td class="px-4 py-3">

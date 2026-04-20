@@ -24,7 +24,7 @@ export const actions: Actions = {
 
         const clientType = fd.get("clientType") as "oidc" | "saml";
         const clientRefId = String(fd.get("clientRefId") ?? "").trim();
-        const skinType = "login" as const;
+        const skinType = (fd.get("skinType") ?? "login") as "login" | "signup" | "find_id" | "find_password";
         const fetchUrl = String(fd.get("fetchUrl") ?? "").trim();
         const fetchSecret = String(fd.get("fetchSecret") ?? "").trim() || null;
         const cacheTtlSeconds = Number(fd.get("cacheTtlSeconds") ?? 3600);
