@@ -1,5 +1,6 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
+import { resolve } from "$app/paths";
 import { t } from "$lib/i18n.svelte";
 import type { ActionData, PageData } from "./$types";
 
@@ -74,6 +75,18 @@ async function loginWithPasskey() {
             {#if !data.dbReady && data.runtimeError}
                 <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     {data.runtimeError}
+                </div>
+            {/if}
+
+            {#if data.registered}
+                <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                    {t("login.registered_success")}
+                </div>
+            {/if}
+
+            {#if data.passwordReset}
+                <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                    {t("login.password_reset_success")}
                 </div>
             {/if}
 
@@ -154,6 +167,14 @@ async function loginWithPasskey() {
                     패스키로 로그인
                 {/if}
             </button>
+
+            <div class="mt-5 flex justify-center gap-4 text-sm text-gray-500">
+                <a href={resolve("/signup")} class="hover:text-blue-600">{t("signup.title")}</a>
+                <span>·</span>
+                <a href={resolve("/find-id")} class="hover:text-blue-600">{t("find_id.title")}</a>
+                <span>·</span>
+                <a href={resolve("/find-password")} class="hover:text-blue-600">{t("find_password.title")}</a>
+            </div>
         </div>
     </div>
 {/if}

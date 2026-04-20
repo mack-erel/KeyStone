@@ -66,6 +66,8 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
         skinHtml,
         dbReady: Boolean(locals.db),
         runtimeError: locals.runtimeError,
+        registered: url.searchParams.get("registered") === "1",
+        passwordReset: url.searchParams.get("passwordReset") === "1",
     };
 };
 

@@ -687,6 +687,29 @@ export const clientSkins = sqliteTable(
     (t) => [uniqueIndex("client_skins_unique").on(t.tenantId, t.clientType, t.clientRefId, t.skinType)],
 );
 
+// ---------- Password Reset ----------
+
+export const passwordResetTokens = sqliteTable(
+    "password_reset_tokens",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: text("token_hash").notNull(),
+        expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+        usedAt: integer("used_at", { mode: "timestamp_ms" }),
+        createdAt: integer("created_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+    },
+    (t) => [index("password_reset_tokens_user_idx").on(t.userId), uniqueIndex("password_reset_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;
 export type Identity = typeof identities.$inferSelect;

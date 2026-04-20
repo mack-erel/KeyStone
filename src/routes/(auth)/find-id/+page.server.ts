@@ -1,6 +1,10 @@
 import { fail } from "@sveltejs/kit";
+import { eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
+import { requireDbContext } from "$lib/server/auth/guards";
+import { users } from "$lib/server/db/schema";
+import { sendFindIdEmail, maskUsername } from "$lib/server/email";
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     const skinHint = url.searchParams.get("skinHint");
@@ -27,7 +31,32 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
 };
 
 export const actions: Actions = {
-    default: async () => {
-        return fail(501, { error: "아이디 찾기 기능은 아직 구현되지 않았습니다." });
+    default: async (event) => {
+        const { db, tenant } = requireDbContext(event.locals);
+
+        const formData = await event.request.formData();
+        const email = String(formData.get("email") ?? "")
+            .trim()
+            .toLowerCase();
+
+        if (!email) return fail(400, { error: "이메일을 입력해 주세요." });
+
+        const [user] = await db
+            .select({ username: users.username })
+            .from(users)
+            .where(and(eq(users.tenantId, tenant.id), eq(users.email, email)))
+            .limit(1);
+
+        if (user?.username) {
+            try {
+                await sendFindIdEmail(email, user.username);
+            } catch {
+                // 메일 발송 실패는 조용히 무시
+            }
+            return { sent: true, maskedUsername: maskUsername(user.username) };
+        }
+
+        // 계정 존재 여부 노출 방지
+        return { sent: true, maskedUsername: null };
     },
 };

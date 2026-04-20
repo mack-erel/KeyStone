@@ -1,6 +1,14 @@
 import { fail } from "@sveltejs/kit";
+import { eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
+import { requireDbContext } from "$lib/server/auth/guards";
+import { users, passwordResetTokens } from "$lib/server/db/schema";
+import { sendPasswordResetEmail, generateToken } from "$lib/server/email";
+import { env } from "$env/dynamic/private";
+import { resolve } from "$app/paths";
+
+const RESET_EXPIRY_MS = 60 * 60 * 1000;
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     const skinHint = url.searchParams.get("skinHint");
@@ -27,7 +35,38 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
 };
 
 export const actions: Actions = {
-    default: async () => {
-        return fail(501, { error: "비밀번호 찾기 기능은 아직 구현되지 않았습니다." });
+    default: async (event) => {
+        const { db, tenant } = requireDbContext(event.locals);
+
+        const formData = await event.request.formData();
+        const email = String(formData.get("email") ?? "")
+            .trim()
+            .toLowerCase();
+        const username = String(formData.get("username") ?? "")
+            .trim()
+            .toLowerCase();
+
+        if (!email || !username) return fail(400, { error: "이메일과 아이디를 모두 입력해 주세요." });
+
+        const [user] = await db
+            .select({ id: users.id, email: users.email })
+            .from(users)
+            .where(and(eq(users.tenantId, tenant.id), eq(users.email, email), eq(users.username, username)))
+            .limit(1);
+
+        if (user) {
+            try {
+                const { token, tokenHash } = await generateToken();
+                const expiresAt = new Date(Date.now() + RESET_EXPIRY_MS);
+                await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
+                const issuer = env.IDP_ISSUER_URL ?? event.url.origin;
+                const resetUrl = `${issuer}${resolve("/reset-password")}?token=${token}`;
+                await sendPasswordResetEmail(user.email, resetUrl);
+            } catch {
+                // 조용히 무시
+            }
+        }
+
+        return { sent: true };
     },
 };
