@@ -57,7 +57,7 @@ jobs:
               run: bun run format
 
             - name: Commit formatted files
-              uses: stefanzweifel/git-auto-commit-action@v5
+              uses: stefanzweifel/git-auto-commit-action@v7
               with:
                   commit_message: "style: 코드 자동 포맷 적용 [skip ci]"
 
