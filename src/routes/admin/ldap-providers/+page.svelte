@@ -2,6 +2,7 @@
 import { enhance } from "$app/forms";
 import type { ActionData, PageData } from "./$types";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
+import { t } from "$lib/i18n.svelte";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
@@ -24,7 +25,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
 
 <div class="space-y-6">
     <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-gray-900">LDAP 프로바이더</h1>
+        <h1 class="text-2xl font-bold text-gray-900">{t("ldap.title")}</h1>
         <button
             type="button"
             onclick={() => {
@@ -32,16 +33,16 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                 editingId = null;
             }}
             class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
-            {showCreate ? "취소" : "+ 프로바이더 추가"}
+            {showCreate ? t("common.cancel") : t("ldap.add_btn")}
         </button>
     </div>
 
     {#if (form as { create?: boolean } | null)?.create && !createErr}
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">LDAP 프로바이더가 추가되었습니다. 테스트 후 활성화하세요.</div>
+        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{t("ldap.added_success")}</div>
     {/if}
 
     {#if (form as { update?: boolean } | null)?.update}
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">저장되었습니다.</div>
+        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{t("ldap.saved")}</div>
     {/if}
 
     {#if globalErr}
@@ -50,10 +51,9 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
         </div>
     {/if}
 
-    <!-- 생성 폼 -->
     {#if showCreate}
         <div class="rounded-xl border border-blue-100 bg-blue-50 p-5">
-            <h2 class="mb-4 font-semibold text-blue-900">새 LDAP 프로바이더</h2>
+            <h2 class="mb-4 font-semibold text-blue-900">{t("ldap.create_title")}</h2>
             {#if createErr}
                 <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     {createErr}
@@ -68,10 +68,9 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                         if (result.type === "success") showCreate = false;
                     }}
                 class="space-y-4">
-                <!-- 기본 정보 -->
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                        <label for="c-name" class="block text-xs font-medium text-gray-700">이름 *</label>
+                        <label for="c-name" class="block text-xs font-medium text-gray-700">{t("ldap.name_label")}</label>
                         <input
                             id="c-name"
                             type="text"
@@ -81,15 +80,15 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                     </div>
                     <div>
-                        <label for="c-tlsMode" class="block text-xs font-medium text-gray-700">TLS 모드</label>
+                        <label for="c-tlsMode" class="block text-xs font-medium text-gray-700">{t("ldap.tls_label")}</label>
                         <select id="c-tlsMode" name="tlsMode" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-                            <option value="none">없음 (ldap://)</option>
-                            <option value="tls">TLS (ldaps://)</option>
-                            <option value="starttls">STARTTLS</option>
+                            <option value="none">{t("ldap.tls_none")}</option>
+                            <option value="tls">{t("ldap.tls_tls")}</option>
+                            <option value="starttls">{t("ldap.tls_starttls")}</option>
                         </select>
                     </div>
                     <div>
-                        <label for="c-host" class="block text-xs font-medium text-gray-700">호스트 *</label>
+                        <label for="c-host" class="block text-xs font-medium text-gray-700">{t("ldap.host_label")}</label>
                         <input
                             id="c-host"
                             type="text"
@@ -99,7 +98,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                     </div>
                     <div>
-                        <label for="c-port" class="block text-xs font-medium text-gray-700">포트</label>
+                        <label for="c-port" class="block text-xs font-medium text-gray-700">{t("ldap.port_label")}</label>
                         <input
                             id="c-port"
                             type="number"
@@ -108,7 +107,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                     </div>
                     <div>
-                        <label for="c-baseDN" class="block text-xs font-medium text-gray-700">Base DN</label>
+                        <label for="c-baseDN" class="block text-xs font-medium text-gray-700">{t("ldap.base_dn_label")}</label>
                         <input
                             id="c-baseDN"
                             type="text"
@@ -118,14 +117,13 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                     </div>
                 </div>
 
-                <!-- 인증 방식 (접이식) -->
                 <details class="rounded-lg border border-gray-200 bg-white" open>
-                    <summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"> 인증 방식 — Admin Bind + Search (ou가 여러 개인 경우) 또는 DN 패턴 </summary>
+                    <summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">{t("ldap.auth_section")}</summary>
                     <div class="space-y-3 p-4">
-                        <p class="text-xs text-gray-500">Admin Bind DN을 입력하면 Search 방식을 사용합니다. 비워두면 유저 DN 패턴을 사용합니다.</p>
+                        <p class="text-xs text-gray-500">{t("ldap.auth_hint")}</p>
                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
-                                <label for="c-bindDN" class="block text-xs font-medium text-gray-700">Admin Bind DN</label>
+                                <label for="c-bindDN" class="block text-xs font-medium text-gray-700">{t("ldap.bind_dn_label")}</label>
                                 <input
                                     id="c-bindDN"
                                     type="text"
@@ -134,7 +132,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                             </div>
                             <div>
-                                <label for="c-bindPw" class="block text-xs font-medium text-gray-700">Admin Bind 패스워드</label>
+                                <label for="c-bindPw" class="block text-xs font-medium text-gray-700">{t("ldap.bind_pw_label")}</label>
                                 <input
                                     id="c-bindPw"
                                     type="password"
@@ -142,9 +140,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                             </div>
                             <div>
-                                <label for="c-filter" class="block text-xs font-medium text-gray-700">
-                                    유저 검색 필터 <span class="text-gray-400">(기본: (uid=&#123;username&#125;))</span>
-                                </label>
+                                <label for="c-filter" class="block text-xs font-medium text-gray-700">{t("ldap.search_filter_label")}</label>
                                 <input
                                     id="c-filter"
                                     type="text"
@@ -153,9 +149,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                             </div>
                             <div>
-                                <label for="c-pattern2" class="block text-xs font-medium text-gray-700">
-                                    유저 DN 패턴 <span class="text-gray-400">(Admin Bind 미사용 시)</span>
-                                </label>
+                                <label for="c-pattern2" class="block text-xs font-medium text-gray-700">{t("ldap.dn_pattern_label")}</label>
                                 <input
                                     id="c-pattern2"
                                     type="text"
@@ -167,12 +161,11 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                     </div>
                 </details>
 
-                <!-- 속성 매핑 (접이식) -->
                 <details class="rounded-lg border border-gray-200 bg-white">
-                    <summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">속성 매핑 (기본값: mail, cn, givenName, sn)</summary>
+                    <summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">{t("ldap.attr_section")}</summary>
                     <div class="grid grid-cols-2 gap-3 p-4">
                         <div>
-                            <label for="c-attrEmail" class="block text-xs font-medium text-gray-700">이메일 속성</label>
+                            <label for="c-attrEmail" class="block text-xs font-medium text-gray-700">{t("ldap.attr_email")}</label>
                             <input
                                 id="c-attrEmail"
                                 type="text"
@@ -181,7 +174,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                         </div>
                         <div>
-                            <label for="c-attrDisplay" class="block text-xs font-medium text-gray-700">표시 이름 속성</label>
+                            <label for="c-attrDisplay" class="block text-xs font-medium text-gray-700">{t("ldap.attr_display")}</label>
                             <input
                                 id="c-attrDisplay"
                                 type="text"
@@ -190,7 +183,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                         </div>
                         <div>
-                            <label for="c-attrGiven" class="block text-xs font-medium text-gray-700">이름 속성</label>
+                            <label for="c-attrGiven" class="block text-xs font-medium text-gray-700">{t("ldap.attr_given")}</label>
                             <input
                                 id="c-attrGiven"
                                 type="text"
@@ -199,7 +192,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                         </div>
                         <div>
-                            <label for="c-attrFamily" class="block text-xs font-medium text-gray-700">성 속성</label>
+                            <label for="c-attrFamily" class="block text-xs font-medium text-gray-700">{t("ldap.attr_family")}</label>
                             <input
                                 id="c-attrFamily"
                                 type="text"
@@ -211,29 +204,28 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                 </details>
 
                 <div class="flex justify-end">
-                    <button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">추가</button>
+                    <button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t("common.add")}</button>
                 </div>
             </form>
         </div>
     {/if}
 
-    <!-- 테이블 -->
     <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
                 <tr>
-                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">이름</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">호스트</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">유저 DN 패턴</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">상태</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">생성</th>
-                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">작업</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("ldap.col_name")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("ldap.col_host")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("ldap.col_dn_pattern")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("common.status")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("ldap.col_created")}</th>
+                    <th class="px-4 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">{t("common.actions")}</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-200">
                 {#if data.providers.length === 0}
                     <tr>
-                        <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500"> 등록된 LDAP 프로바이더가 없습니다. </td>
+                        <td colspan="6" class="px-6 py-8 text-center text-sm text-gray-500">{t("ldap.empty")}</td>
                     </tr>
                 {:else}
                     {#each data.providers as provider (provider.id)}
@@ -250,14 +242,14 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                             </td>
                             <td class="px-4 py-3">
                                 <span class="rounded-full px-2 py-0.5 text-xs font-medium {provider.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">
-                                    {provider.enabled ? "활성" : "비활성"}
+                                    {provider.enabled ? t("common.status_active") : t("common.status_inactive")}
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-xs text-gray-400">{dateFormatter.format(provider.createdAt)}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
                                     <button type="button" onclick={() => (editingId = editingId === provider.id ? null : provider.id)} class="text-xs text-blue-500 hover:text-blue-700">
-                                        {editingId === provider.id ? "접기" : "편집"}
+                                        {editingId === provider.id ? t("common.collapse") : t("common.expand")}
                                     </button>
                                     <form method="POST" action="?/delete" use:enhance>
                                         <input type="hidden" name="id" value={provider.id} />
@@ -265,16 +257,15 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                             type="submit"
                                             class="text-xs text-red-400 hover:text-red-600"
                                             onclick={(e) => {
-                                                if (!confirm("LDAP 프로바이더를 삭제하시겠습니까?")) e.preventDefault();
+                                                if (!confirm(t("ldap.delete_confirm"))) e.preventDefault();
                                             }}>
-                                            삭제
+                                            {t("common.delete")}
                                         </button>
                                     </form>
                                 </div>
                             </td>
                         </tr>
 
-                        <!-- 편집 인라인 폼 -->
                         {#if editingId === provider.id}
                             {@const c = parseConfig(provider.configJson)}
                             <tr class="bg-gray-50">
@@ -291,7 +282,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                         <input type="hidden" name="id" value={provider.id} />
                                         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                             <div>
-                                                <label for="e-name-{provider.id}" class="block text-xs font-medium text-gray-700">이름 *</label>
+                                                <label for="e-name-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.name_label")}</label>
                                                 <input
                                                     id="e-name-{provider.id}"
                                                     type="text"
@@ -301,18 +292,18 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                             </div>
                                             <div>
-                                                <label for="e-tls-{provider.id}" class="block text-xs font-medium text-gray-700">TLS 모드</label>
+                                                <label for="e-tls-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.tls_label")}</label>
                                                 <select
                                                     id="e-tls-{provider.id}"
                                                     name="tlsMode"
                                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-                                                    <option value="none" selected={c.tlsMode === "none"}>없음 (ldap://)</option>
-                                                    <option value="tls" selected={c.tlsMode === "tls"}>TLS (ldaps://)</option>
-                                                    <option value="starttls" selected={c.tlsMode === "starttls"}>STARTTLS</option>
+                                                    <option value="none" selected={c.tlsMode === "none"}>{t("ldap.tls_none")}</option>
+                                                    <option value="tls" selected={c.tlsMode === "tls"}>{t("ldap.tls_tls")}</option>
+                                                    <option value="starttls" selected={c.tlsMode === "starttls"}>{t("ldap.tls_starttls")}</option>
                                                 </select>
                                             </div>
                                             <div>
-                                                <label for="e-host-{provider.id}" class="block text-xs font-medium text-gray-700">호스트 *</label>
+                                                <label for="e-host-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.host_label")}</label>
                                                 <input
                                                     id="e-host-{provider.id}"
                                                     type="text"
@@ -322,7 +313,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                             </div>
                                             <div>
-                                                <label for="e-port-{provider.id}" class="block text-xs font-medium text-gray-700">포트</label>
+                                                <label for="e-port-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.port_label")}</label>
                                                 <input
                                                     id="e-port-{provider.id}"
                                                     type="number"
@@ -331,7 +322,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                     class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                             </div>
                                             <div>
-                                                <label for="e-base-{provider.id}" class="block text-xs font-medium text-gray-700">Base DN</label>
+                                                <label for="e-base-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.base_dn_label")}</label>
                                                 <input
                                                     id="e-base-{provider.id}"
                                                     type="text"
@@ -342,11 +333,11 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                         </div>
 
                                         <details class="rounded-lg border border-gray-200 bg-white" open>
-                                            <summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50"> 인증 방식 </summary>
+                                            <summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">{t("ldap.auth_section")}</summary>
                                             <div class="space-y-3 p-4">
                                                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                                     <div>
-                                                        <label for="e-bindDN-{provider.id}" class="block text-xs font-medium text-gray-700">Admin Bind DN</label>
+                                                        <label for="e-bindDN-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.bind_dn_label")}</label>
                                                         <input
                                                             id="e-bindDN-{provider.id}"
                                                             type="text"
@@ -356,7 +347,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                                     </div>
                                                     <div>
-                                                        <label for="e-bindPw-{provider.id}" class="block text-xs font-medium text-gray-700">Admin Bind 패스워드</label>
+                                                        <label for="e-bindPw-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.bind_pw_label")}</label>
                                                         <input
                                                             id="e-bindPw-{provider.id}"
                                                             type="password"
@@ -365,7 +356,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                                     </div>
                                                     <div>
-                                                        <label for="e-filter-{provider.id}" class="block text-xs font-medium text-gray-700"> 유저 검색 필터 </label>
+                                                        <label for="e-filter-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.search_filter_label")}</label>
                                                         <input
                                                             id="e-filter-{provider.id}"
                                                             type="text"
@@ -375,9 +366,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                                     </div>
                                                     <div>
-                                                        <label for="e-pattern-{provider.id}" class="block text-xs font-medium text-gray-700">
-                                                            유저 DN 패턴 <span class="text-gray-400">(Admin Bind 미사용 시)</span>
-                                                        </label>
+                                                        <label for="e-pattern-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.dn_pattern_label")}</label>
                                                         <input
                                                             id="e-pattern-{provider.id}"
                                                             type="text"
@@ -391,10 +380,10 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                         </details>
 
                                         <details class="rounded-lg border border-gray-200 bg-white">
-                                            <summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">속성 매핑</summary>
+                                            <summary class="cursor-pointer px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">{t("ldap.attr_section")}</summary>
                                             <div class="grid grid-cols-2 gap-3 p-4">
                                                 <div>
-                                                    <label for="e-attrEmail-{provider.id}" class="block text-xs font-medium text-gray-700">이메일 속성</label>
+                                                    <label for="e-attrEmail-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.attr_email")}</label>
                                                     <input
                                                         id="e-attrEmail-{provider.id}"
                                                         type="text"
@@ -404,7 +393,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                                 </div>
                                                 <div>
-                                                    <label for="e-attrDisplay-{provider.id}" class="block text-xs font-medium text-gray-700">표시 이름 속성</label>
+                                                    <label for="e-attrDisplay-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.attr_display")}</label>
                                                     <input
                                                         id="e-attrDisplay-{provider.id}"
                                                         type="text"
@@ -414,7 +403,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                                 </div>
                                                 <div>
-                                                    <label for="e-attrGiven-{provider.id}" class="block text-xs font-medium text-gray-700">이름 속성</label>
+                                                    <label for="e-attrGiven-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.attr_given")}</label>
                                                     <input
                                                         id="e-attrGiven-{provider.id}"
                                                         type="text"
@@ -424,7 +413,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                                                 </div>
                                                 <div>
-                                                    <label for="e-attrFamily-{provider.id}" class="block text-xs font-medium text-gray-700">성 속성</label>
+                                                    <label for="e-attrFamily-{provider.id}" class="block text-xs font-medium text-gray-700">{t("ldap.attr_family")}</label>
                                                     <input
                                                         id="e-attrFamily-{provider.id}"
                                                         type="text"
@@ -445,12 +434,12 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                                                     value="true"
                                                     checked={provider.enabled}
                                                     class="h-4 w-4 rounded border-gray-300 text-blue-600" />
-                                                <label for="e-enabled-{provider.id}" class="text-xs text-gray-700">활성화</label>
+                                                <label for="e-enabled-{provider.id}" class="text-xs text-gray-700">{t("ldap.enable")}</label>
                                             </div>
                                             <div class="flex gap-2">
                                                 <button type="button" onclick={() => (editingId = null)} class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"
-                                                    >취소</button>
-                                                <button type="submit" class="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">저장</button>
+                                                    >{t("common.cancel")}</button>
+                                                <button type="submit" class="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">{t("common.save")}</button>
                                             </div>
                                         </div>
                                     </form>
