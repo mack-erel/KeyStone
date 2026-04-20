@@ -220,8 +220,8 @@ Fixed Window 구현 특성상 윈도우 경계에서 최대 2x burst 가능. Sli
 - [x] H-1: 세션 토큰 SHA-256 해싱 저장
 - [x] H-2: OIDC 클라이언트 update 시 PKCE 다운그레이드 방지
 - [x] H-3: LDAP STARTTLS `rejectUnauthorized: true` 적용
-- [ ] M-1: CSP nonce 도입 (장기 과제)
-- [ ] M-3: SAML SSO rate limit 추가
-- [ ] M-4: end-session `id_token_hint` 검증
-- [ ] L-1: PBKDF2 → argon2id 전환 검토
+- [ ] M-1: CSP nonce 도입 (장기 과제 — SvelteKit hydration 제약)
+- [x] M-3: SAML SSO rate limit 추가 (IP당 30회/분)
+- [x] M-4: end-session `id_token_hint` RS256 서명 검증 및 sub 일치 확인
+- [ ] L-1: PBKDF2 반복 횟수 — Workers WebCrypto 상한(100,000회)으로 코드 수준 개선 불가
 - [ ] L-3: Sliding Window rate limit 전환
