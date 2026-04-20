@@ -25,7 +25,7 @@ const config = {
         },
         // OIDC/SAML 엔드포인트는 서비스 프로바이더(SP)에서 cross-origin으로 호출하므로
         // SvelteKit CSRF 체크를 비활성화한다. UI 폼의 CSRF는 OIDC state 파라미터가 보호한다.
-        csrf: { checkOrigin: false },
+        csrf: { trustedOrigins: ["*"] },
         typescript: {
             config: (config) => ({
                 ...config,
