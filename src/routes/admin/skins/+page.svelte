@@ -9,6 +9,9 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" });
 
 let showCreate = $state(false);
+const firstClientId = data.oidcList[0]?.id ?? data.samlList[0]?.id ?? "";
+let selectedClientRefId = $state(firstClientId);
+const derivedClientType = $derived(data.oidcList.some((c: { id: string }) => c.id === selectedClientRefId) ? "oidc" : "saml");
 
 const createErr = $derived((form as { create?: boolean; error?: string } | null)?.create ? ((form as { error?: string } | null)?.error ?? null) : null);
 const globalErr = $derived(createErr ? null : ((form as { error?: string } | null)?.error ?? null));
@@ -63,13 +66,7 @@ function clientLabel(clientType: string, clientRefId: string): string {
                         if (result.type === "success") showCreate = false;
                     }}
                 class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                    <label for="c-clientType" class="block text-xs font-medium text-gray-700">{t("skins.client_type_label")}</label>
-                    <select id="c-clientType" name="clientType" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
-                        <option value="oidc">OIDC</option>
-                        <option value="saml">SAML</option>
-                    </select>
-                </div>
+                <input type="hidden" name="clientType" value={derivedClientType} />
                 <div>
                     <label for="c-skinType" class="block text-xs font-medium text-gray-700">{t("skins.skin_type_label")}</label>
                     <select id="c-skinType" name="skinType" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
@@ -81,7 +78,11 @@ function clientLabel(clientType: string, clientRefId: string): string {
                 </div>
                 <div>
                     <label for="c-clientRefId" class="block text-xs font-medium text-gray-700">{t("skins.client_label")}</label>
-                    <select id="c-clientRefId" name="clientRefId" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+                    <select
+                        id="c-clientRefId"
+                        name="clientRefId"
+                        bind:value={selectedClientRefId}
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
                         {#if data.oidcList.length > 0}
                             <optgroup label="OIDC">
                                 {#each data.oidcList as c (c.id)}
