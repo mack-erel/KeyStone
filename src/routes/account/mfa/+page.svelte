@@ -121,7 +121,6 @@ const isSetupMode = $derived(!!otpauthUri);
                         <button type="submit" class="w-full text-center text-sm text-gray-500 hover:underline">{t("mfa_manage.new_qr")}</button>
                     </form>
                 </div>
-
             {:else if data.enrolled}
                 <div class="space-y-5">
                     <div class="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4">
@@ -132,7 +131,8 @@ const isSetupMode = $derived(!!otpauthUri);
                             <p class="font-medium text-green-900">{t("mfa_manage.enrolled_badge")}</p>
                             {#if data.enrolledAt}
                                 <p class="text-xs text-green-700">
-                                    {t("mfa_manage.enrolled_date")} {new Date(data.enrolledAt).toLocaleDateString("ko-KR")}
+                                    {t("mfa_manage.enrolled_date")}
+                                    {new Date(data.enrolledAt).toLocaleDateString("ko-KR")}
                                 </p>
                             {/if}
                         </div>
@@ -195,7 +195,6 @@ const isSetupMode = $derived(!!otpauthUri);
                         </button>
                     </form>
                 </div>
-
             {:else}
                 <div class="space-y-5">
                     <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">

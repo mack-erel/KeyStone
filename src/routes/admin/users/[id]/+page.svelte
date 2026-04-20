@@ -179,7 +179,11 @@ const TIMEZONE_OPTIONS = [
                     <option value={p.id}>{p.name}</option>
                 {/each}
             </select>
-            <input type="text" name="jobTitle" placeholder={t("user_detail.job_title_placeholder")} class="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+            <input
+                type="text"
+                name="jobTitle"
+                placeholder={t("user_detail.job_title_placeholder")}
+                class="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
             <div class="flex items-center gap-2">
                 <label class="flex items-center gap-1 text-xs text-gray-600">
                     <input type="checkbox" name="isPrimary" value="true" class="rounded" />
@@ -222,7 +226,11 @@ const TIMEZONE_OPTIONS = [
                     <option value={tm.id}>{teamLabel(tm)}</option>
                 {/each}
             </select>
-            <input type="text" name="jobTitle" placeholder={t("user_detail.job_title_placeholder")} class="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+            <input
+                type="text"
+                name="jobTitle"
+                placeholder={t("user_detail.job_title_placeholder")}
+                class="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
             <div class="flex items-center gap-2">
                 <label class="flex items-center gap-1 text-xs text-gray-600">
                     <input type="checkbox" name="isPrimary" value="true" class="rounded" />
@@ -265,7 +273,11 @@ const TIMEZONE_OPTIONS = [
                     <option value={p.id}>{partLabel(p)}</option>
                 {/each}
             </select>
-            <input type="text" name="jobTitle" placeholder={t("user_detail.part_job_title_placeholder")} class="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+            <input
+                type="text"
+                name="jobTitle"
+                placeholder={t("user_detail.part_job_title_placeholder")}
+                class="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
             <div class="flex items-center gap-2">
                 <label class="flex items-center gap-1 text-xs text-gray-600">
                     <input type="checkbox" name="isPrimary" value="true" class="rounded" />

@@ -373,7 +373,13 @@ const NAME_ID_OPTIONS = [
                                         </div>
                                         <div class="flex flex-col gap-2">
                                             <div class="flex items-center gap-2">
-                                                <input id="e-signAssertion-{sp.id}" type="checkbox" name="signAssertion" value="true" checked={sp.signAssertion} class="h-4 w-4 rounded border-gray-300" />
+                                                <input
+                                                    id="e-signAssertion-{sp.id}"
+                                                    type="checkbox"
+                                                    name="signAssertion"
+                                                    value="true"
+                                                    checked={sp.signAssertion}
+                                                    class="h-4 w-4 rounded border-gray-300" />
                                                 <label for="e-signAssertion-{sp.id}" class="text-xs text-gray-700">{t("saml.sign_assertion")}</label>
                                             </div>
                                             <div class="flex items-center gap-2">
@@ -381,7 +387,13 @@ const NAME_ID_OPTIONS = [
                                                 <label for="e-signResponse-{sp.id}" class="text-xs text-gray-700">{t("saml.sign_response")}</label>
                                             </div>
                                             <div class="flex items-center gap-2">
-                                                <input id="e-wantSigned-{sp.id}" type="checkbox" name="wantAuthnRequestsSigned" value="true" checked={sp.wantAuthnRequestsSigned} class="h-4 w-4 rounded border-gray-300" />
+                                                <input
+                                                    id="e-wantSigned-{sp.id}"
+                                                    type="checkbox"
+                                                    name="wantAuthnRequestsSigned"
+                                                    value="true"
+                                                    checked={sp.wantAuthnRequestsSigned}
+                                                    class="h-4 w-4 rounded border-gray-300" />
                                                 <label for="e-wantSigned-{sp.id}" class="text-xs text-gray-700">{t("saml.want_signed")}</label>
                                             </div>
                                             <div class="flex items-center gap-2">

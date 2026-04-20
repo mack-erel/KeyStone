@@ -93,7 +93,8 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                                         {pk.label ?? t("account.passkeys")}
                                     </p>
                                     <p class="text-xs text-gray-400">
-                                        {t("passkeys.registered_date")} {new Date(pk.createdAt).toLocaleDateString("ko-KR")}
+                                        {t("passkeys.registered_date")}
+                                        {new Date(pk.createdAt).toLocaleDateString("ko-KR")}
                                         {#if pk.lastUsedAt}
                                             {t("passkeys.last_used")} {new Date(pk.lastUsedAt).toLocaleDateString("ko-KR")}
                                         {/if}
