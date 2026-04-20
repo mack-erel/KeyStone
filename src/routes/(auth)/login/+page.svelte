@@ -60,6 +60,7 @@ async function loginWithPasskey() {
             {form.error}
         </div>
     {/if}
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
     {@html data.skinHtml}
 {:else}
     <!-- 기본 스킨 -->
