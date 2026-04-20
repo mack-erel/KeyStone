@@ -1,7 +1,7 @@
 import { fail } from "@sveltejs/kit";
 import { desc, eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireDbContext } from "$lib/server/auth/guards";
+import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { users, credentials } from "$lib/server/db/schema";
 import { hashPassword } from "$lib/server/auth/password";
@@ -10,7 +10,7 @@ import { PASSWORD_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
 
 export const load: PageServerLoad = async ({ locals }) => {
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant } = requireAdminContext(locals);
     const rows = await db
         .select({
             id: users.id,
@@ -32,7 +32,7 @@ export const actions: Actions = {
     // ── 사용자 생성 ────────────────────────────────────────────────────────────
     create: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const email = normalizeEmail(String(fd.get("email") ?? ""));
@@ -108,7 +108,7 @@ export const actions: Actions = {
     // ── 상태 변경 ─────────────────────────────────────────────────────────────
     updateStatus: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
@@ -151,7 +151,7 @@ export const actions: Actions = {
     // ── 역할 변경 ─────────────────────────────────────────────────────────────
     updateRole: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
@@ -192,7 +192,7 @@ export const actions: Actions = {
     // ── 비밀번호 초기화 ──────────────────────────────────────────────────────
     resetPassword: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
@@ -252,7 +252,7 @@ export const actions: Actions = {
     // ── 삭제 ─────────────────────────────────────────────────────────────────
     delete: async (event) => {
         const { locals } = event;
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");

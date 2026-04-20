@@ -1,12 +1,15 @@
 /**
- * D1 기반 고정 윈도우 레이트 리밋.
+ * D1 기반 슬라이딩 윈도우 레이트 리밋 (두 버킷 근사법).
  *
- * 테이블: rate_limits(key PK, count, expires_at)
- * - 윈도우가 만료됐으면 카운터 리셋
- * - 윈도우 내 count > limit 이면 차단
+ * 윈도우를 고정 인덱스(Math.floor(now/windowMs))로 분할해 두 버킷을 유지:
+ *   - 현재 버킷 카운터를 원자적으로 증가
+ *   - 이전 버킷 카운트에 경과 비율의 역수를 가중치로 적용
+ *   count ≈ prev * (1 - elapsed/window) + current
+ *
+ * Fixed Window 대비 경계 burst(최대 2x) 문제를 제거.
  */
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
 import { rateLimits } from "$lib/server/db/schema";
 
@@ -23,40 +26,44 @@ export interface RateLimitOptions {
     limit: number;
 }
 
-/**
- * 지정된 key 에 대해 레이트 리밋을 확인하고 카운터를 증가시킨다.
- *
- * SELECT→UPDATE 분리 대신 단일 INSERT...ON CONFLICT DO UPDATE...RETURNING 으로
- * 원자적으로 처리해 동시 요청 race condition 을 제거한다.
- */
 export async function checkRateLimit(db: DB, key: string, options: RateLimitOptions): Promise<RateLimitResult> {
     const now = Date.now();
-    const newExpiresAt = new Date(now + options.windowMs);
+    const windowIndex = Math.floor(now / options.windowMs);
+    const windowStart = windowIndex * options.windowMs;
+    const elapsed = now - windowStart;
 
-    // 단일 문으로 삽입/리셋/증가를 원자적으로 수행
-    const [row] = await db
+    const currentKey = `${key}:${windowIndex}`;
+    const prevKey = `${key}:${windowIndex - 1}`;
+    // 두 윈도우가 지나면 만료
+    const currentExpiresAt = new Date(windowStart + options.windowMs * 2);
+
+    // 현재 버킷 원자적 증가
+    const [currentRow] = await db
         .insert(rateLimits)
-        .values({ key, count: 1, expiresAt: newExpiresAt })
+        .values({ key: currentKey, count: 1, expiresAt: currentExpiresAt })
         .onConflictDoUpdate({
             target: rateLimits.key,
-            set: {
-                count: sql`CASE WHEN ${rateLimits.expiresAt} <= ${now} THEN 1 ELSE ${rateLimits.count} + 1 END`,
-                expiresAt: sql`CASE WHEN ${rateLimits.expiresAt} <= ${now} THEN ${newExpiresAt.getTime()} ELSE ${rateLimits.expiresAt} END`,
-            },
+            set: { count: sql`${rateLimits.count} + 1` },
         })
-        .returning({ count: rateLimits.count, expiresAt: rateLimits.expiresAt });
+        .returning({ count: rateLimits.count });
 
-    if (row.count > options.limit) {
+    // 이전 버킷 조회 (best-effort)
+    const [prevRow] = await db.select({ count: rateLimits.count }).from(rateLimits).where(eq(rateLimits.key, prevKey)).limit(1);
+
+    const prevCount = prevRow?.count ?? 0;
+    const slidingCount = Math.floor(prevCount * (1 - elapsed / options.windowMs)) + currentRow.count;
+
+    if (slidingCount > options.limit) {
         return {
             allowed: false,
             remaining: 0,
-            retryAfterMs: row.expiresAt.getTime() - now,
+            retryAfterMs: options.windowMs - elapsed,
         };
     }
 
     return {
         allowed: true,
-        remaining: options.limit - row.count,
+        remaining: Math.max(0, options.limit - slidingCount),
         retryAfterMs: 0,
     };
 }

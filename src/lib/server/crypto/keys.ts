@@ -124,6 +124,36 @@ export async function signJwt(payload: Record<string, unknown>, privateKey: Cryp
     return `${signingInput}.${b64uEncode(sig)}`;
 }
 
+export async function verifyIdToken(db: DB, tenantId: string, token: string): Promise<Record<string, unknown> | null> {
+    try {
+        const parts = token.split(".");
+        if (parts.length !== 3) return null;
+        const [headerB64, payloadB64, sigB64] = parts;
+        const dec = new TextDecoder();
+        const header = JSON.parse(dec.decode(b64uDecode(headerB64))) as { kid?: string; alg?: string };
+        if (header.alg !== "RS256" || !header.kid) return null;
+
+        const [row] = await db
+            .select({ publicJwk: signingKeys.publicJwk })
+            .from(signingKeys)
+            .where(and(eq(signingKeys.kid, header.kid), eq(signingKeys.tenantId, tenantId)))
+            .limit(1);
+        if (!row?.publicJwk) return null;
+
+        const jwk = JSON.parse(row.publicJwk) as JsonWebKey;
+        const publicKey = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+        const enc = new TextEncoder();
+        const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, b64uDecode(sigB64), enc.encode(`${headerB64}.${payloadB64}`));
+        if (!valid) return null;
+
+        const claims = JSON.parse(dec.decode(b64uDecode(payloadB64))) as Record<string, unknown>;
+        if (typeof claims.exp === "number" && claims.exp < Math.floor(Date.now() / 1000)) return null;
+        return claims;
+    } catch {
+        return null;
+    }
+}
+
 // ── opaque access token (HMAC-SHA256) ─────────────────────────────────────────
 
 export interface AccessTokenClaims {

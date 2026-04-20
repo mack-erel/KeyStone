@@ -1,11 +1,11 @@
 import { fail, error } from "@sveltejs/kit";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireDbContext } from "$lib/server/auth/guards";
+import { requireAdminContext } from "$lib/server/auth/guards";
 import { departments, parts, positions, teams, userDepartments, userParts, userTeams, users } from "$lib/server/db/schema";
 
 export const load: PageServerLoad = async ({ locals, params }) => {
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant } = requireAdminContext(locals);
     const userId = params.id;
 
     // 유저 조회
@@ -104,7 +104,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 export const actions: Actions = {
     // 프로필 수정
     updateProfile: async ({ locals, params, request }) => {
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
 
@@ -152,7 +152,7 @@ export const actions: Actions = {
 
     // 부서 소속 추가
     addDept: async ({ locals, params, request }) => {
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
         const departmentId = String(fd.get("departmentId") ?? "");
@@ -191,7 +191,7 @@ export const actions: Actions = {
 
     // 부서 소속 제거 (endedAt 설정)
     removeDept: async ({ locals, request }) => {
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");
         if (!membershipId) return fail(400, { error: "잘못된 요청입니다." });
@@ -205,7 +205,7 @@ export const actions: Actions = {
 
     // 팀 소속 추가
     addTeam: async ({ locals, params, request }) => {
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
         const teamId = String(fd.get("teamId") ?? "");
@@ -234,7 +234,7 @@ export const actions: Actions = {
 
     // 팀 소속 제거
     removeTeam: async ({ locals, request }) => {
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");
         if (!membershipId) return fail(400, { error: "잘못된 요청입니다." });
@@ -248,7 +248,7 @@ export const actions: Actions = {
 
     // 파트 소속 추가
     addPart: async ({ locals, params, request }) => {
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
         const partId = String(fd.get("partId") ?? "");
@@ -277,7 +277,7 @@ export const actions: Actions = {
 
     // 파트 소속 제거
     removePart: async ({ locals, request }) => {
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");
         if (!membershipId) return fail(400, { error: "잘못된 요청입니다." });

@@ -11,7 +11,7 @@ function createLdapClient(config: LdapProviderConfig): ldap.Client {
         url: buildUrl(config),
         connectTimeout: 5000,
         timeout: 5000,
-        ...(config.tlsMode === "tls" ? { tlsOptions: { rejectUnauthorized: true } } : {}),
+        ...(config.tlsMode === "tls" || config.tlsMode === "starttls" ? { tlsOptions: { rejectUnauthorized: true } } : {}),
     });
 }
 

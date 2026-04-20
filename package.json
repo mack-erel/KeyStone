@@ -56,5 +56,8 @@
         "wrangler": "^4.81.0",
         "xmldsigjs": "^2.8.7",
         "xpath": "^0.0.34"
+    },
+    "dependencies": {
+        "@hicaru/argon2-pure.js": "^0.0.4"
     }
 }

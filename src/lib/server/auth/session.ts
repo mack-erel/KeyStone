@@ -11,6 +11,12 @@ function bytesToBase64Url(bytes: Uint8Array): string {
         .replace(/=+$/g, "");
 }
 
+async function hashSessionToken(token: string): Promise<string> {
+    const data = new TextEncoder().encode(token);
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    return bytesToBase64Url(new Uint8Array(hash));
+}
+
 function cookieOptions(url: URL, expiresAt: Date) {
     return {
         path: "/",
@@ -42,11 +48,13 @@ export async function createSessionRecord(
     const expiresAt = new Date(now + SESSION_TTL_MS);
     const sessionToken = createSessionToken();
 
+    const tokenHash = await hashSessionToken(sessionToken);
+
     await db.insert(sessions).values({
         id: crypto.randomUUID(),
         tenantId: params.tenantId,
         userId: params.userId,
-        idpSessionId: sessionToken,
+        idpSessionId: tokenHash,
         amr: params.amr ? params.amr.join(" ") : null,
         acr: params.acr ?? null,
         ip: params.ip ?? null,
@@ -60,11 +68,12 @@ export async function createSessionRecord(
 
 export async function getSessionContext(db: DB, sessionToken: string) {
     const now = new Date();
+    const tokenHash = await hashSessionToken(sessionToken);
     const [row] = await db
         .select({ session: sessions, user: users })
         .from(sessions)
         .innerJoin(users, eq(sessions.userId, users.id))
-        .where(and(eq(sessions.idpSessionId, sessionToken), gt(sessions.expiresAt, now), isNull(sessions.revokedAt), eq(users.status, "active")))
+        .where(and(eq(sessions.idpSessionId, tokenHash), gt(sessions.expiresAt, now), isNull(sessions.revokedAt), eq(users.status, "active")))
         .limit(1);
 
     return row ?? null;
