@@ -59,7 +59,7 @@ export const actions: Actions = {
                 const { token, tokenHash } = await generateToken();
                 const expiresAt = new Date(Date.now() + RESET_EXPIRY_MS);
                 await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
-                const issuer = env.IDP_ISSUER_URL ?? event.url.origin;
+                const issuer = (env.IDP_ISSUER_URL ?? event.url.origin).replace(/\.+$/, "").replace(/\/+$/, "");
                 const resetUrl = `${issuer}${resolve("/reset-password")}?token=${token}`;
                 await sendPasswordResetEmail(user.email, resetUrl);
             } catch {
