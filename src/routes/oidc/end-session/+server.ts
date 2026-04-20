@@ -3,10 +3,30 @@ import type { RequestHandler } from "./$types";
 import { and, eq } from "drizzle-orm";
 import { oidcClients } from "$lib/server/db/schema";
 import { clearSessionCookie, revokeSession } from "$lib/server/auth/session";
+import { verifyIdToken } from "$lib/server/crypto/keys";
 
 async function handleEndSession(locals: App.Locals, url: URL, cookies: Parameters<RequestHandler>[0]["cookies"]): Promise<never> {
     const postLogoutRedirectUri = url.searchParams.get("post_logout_redirect_uri");
     const clientId = url.searchParams.get("client_id");
+    const idTokenHint = url.searchParams.get("id_token_hint");
+
+    // id_token_hint 제공 시 서명 검증 및 sub 일치 확인
+    if (idTokenHint && locals.db && locals.tenant) {
+        const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint);
+        if (!claims) {
+            return new Response(JSON.stringify({ error: "invalid_id_token_hint" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" },
+            }) as unknown as never;
+        }
+        // 현재 세션 사용자와 불일치 시 거부
+        if (locals.user && claims.sub !== locals.user.id) {
+            return new Response(JSON.stringify({ error: "id_token_hint_mismatch" }), {
+                status: 400,
+                headers: { "Content-Type": "application/json" },
+            }) as unknown as never;
+        }
+    }
 
     // IdP 세션 폐기
     if (locals.session && locals.db) {

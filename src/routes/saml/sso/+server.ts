@@ -10,6 +10,7 @@ import type { RequestHandler } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
+import { checkRateLimit } from "$lib/server/ratelimit";
 import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { acrSatisfies } from "$lib/server/auth/constants";
 import { parseAuthnRequest, verifySamlRedirectSignature } from "$lib/server/saml/parse-authn-request";
@@ -21,6 +22,13 @@ export const GET: RequestHandler = async (event) => {
     const { locals, url, platform } = event;
     const { db, tenant } = requireDbContext(locals);
     const config = getRuntimeConfig(platform);
+
+    // IP당 30회/분 — AuthnRequest 파싱·서명 검증 연산 DoS 방지
+    const { ip } = getRequestMetadata(event);
+    const rl = await checkRateLimit(db, `saml-sso:${ip ?? "unknown"}`, { windowMs: 60 * 1000, limit: 30 });
+    if (!rl.allowed) {
+        throw error(429, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+    }
 
     if (!config.issuerUrl) throw error(503, "IDP_ISSUER_URL 미설정");
     if (!config.signingKeySecret) throw error(503, "IDP_SIGNING_KEY_SECRET 미설정");
