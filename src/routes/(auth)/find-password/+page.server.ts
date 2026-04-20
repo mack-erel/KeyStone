@@ -6,7 +6,6 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { users, passwordResetTokens } from "$lib/server/db/schema";
 import { sendPasswordResetEmail, generateToken } from "$lib/server/email";
 import { env } from "$env/dynamic/private";
-import { resolve } from "$app/paths";
 
 const RESET_EXPIRY_MS = 60 * 60 * 1000;
 
@@ -60,7 +59,7 @@ export const actions: Actions = {
                 const expiresAt = new Date(Date.now() + RESET_EXPIRY_MS);
                 await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
                 const issuer = (env.IDP_ISSUER_URL ?? event.url.origin).replace(/\.+$/, "").replace(/\/+$/, "");
-                const resetUrl = `${issuer}${resolve("/reset-password")}?token=${token}`;
+                const resetUrl = `${issuer}/reset-password?token=${token}`;
                 await sendPasswordResetEmail(user.email, resetUrl);
             } catch {
                 // 조용히 무시
