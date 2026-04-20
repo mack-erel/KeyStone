@@ -36,6 +36,15 @@
 		// OIDC/SAML 토큰 발급 issuer URL (배포 도메인과 일치시킬 것)
 		"IDP_ISSUER_URL": "https://keystone.example.com"
 	},
+	"r2_buckets": [
+		{
+			// 커스텀 로그인 스킨 R2 캐시 버킷
+			// 생성: wrangler r2 bucket create keystone-skin-cache
+			"binding": "SKIN_CACHE",
+			"bucket_name": "keystone-skin-cache",
+			"remote": true
+		}
+	],
 	"d1_databases": [
 		{
 			"binding": "DB",
