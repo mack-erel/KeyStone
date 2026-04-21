@@ -18,7 +18,7 @@ const config = {
                 "font-src": ["self", "data:"],
                 "connect-src": ["self"],
                 "frame-ancestors": ["none"],
-                "form-action": ["self"], // SAML ACS auto-submit은 raw Response라 SvelteKit CSP 비적용
+                "form-action": ["self", "https:", "http://localhost:*"], // SAML ACS + OIDC 리다이렉트 체인 허용 (Chrome은 form-action을 redirect chain 전체에 적용)
                 "base-uri": ["self"],
                 "object-src": ["none"],
             },
