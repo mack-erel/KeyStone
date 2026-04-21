@@ -9,7 +9,7 @@
 
 import "reflect-metadata";
 import { DOMParser } from "@xmldom/xmldom";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
 import { samlSessions, samlSps } from "$lib/server/db/schema";
 
@@ -272,4 +272,53 @@ export async function getActiveSamlSessionsForSession(db: DB, sessionId: string)
             cert: r.cert,
         },
     }));
+}
+
+/**
+ * SLO 체인 진행 중 samlSloStates.pendingSpDataJson 에 직렬화되는 SP 단위 데이터.
+ */
+export interface PendingSpData {
+    spId: string;
+    entityId: string;
+    sloUrl: string;
+    nameId: string;
+    nameIdFormat: string;
+    sessionIndex: string;
+}
+
+/**
+ * 주어진 IdP 세션에 묶여 있으면서 HTTP-Redirect SLO 가 가능한 (sloUrl 이 있는) 활성 SAML 세션을
+ * PendingSpData[] 로 수집한다. excludeSpEntityId 가 주어지면 해당 SP 는 제외한다 (예: SP-initiated
+ * SLO 에서 최초 요청자 SP 를 체인에서 빼고 싶을 때).
+ */
+export async function collectPendingSpData(db: DB, sessionId: string, excludeSpEntityId?: string): Promise<PendingSpData[]> {
+    const baseCond = and(eq(samlSessions.sessionId, sessionId), isNull(samlSessions.endedAt));
+    const whereCond = excludeSpEntityId ? and(baseCond, ne(samlSps.entityId, excludeSpEntityId)) : baseCond;
+
+    const rows = await db
+        .select({
+            spId: samlSessions.spId,
+            sessionIndex: samlSessions.sessionIndex,
+            nameId: samlSessions.nameId,
+            nameIdFormat: samlSessions.nameIdFormat,
+            entityId: samlSps.entityId,
+            sloUrl: samlSps.sloUrl,
+        })
+        .from(samlSessions)
+        .innerJoin(samlSps, eq(samlSessions.spId, samlSps.id))
+        .where(whereCond);
+
+    const result: PendingSpData[] = [];
+    for (const r of rows) {
+        if (!r.sloUrl) continue;
+        result.push({
+            spId: r.spId,
+            entityId: r.entityId,
+            sloUrl: r.sloUrl,
+            nameId: r.nameId,
+            nameIdFormat: r.nameIdFormat ?? "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+            sessionIndex: r.sessionIndex,
+        });
+    }
+    return result;
 }
