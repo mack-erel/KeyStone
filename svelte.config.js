@@ -18,7 +18,7 @@ const config = {
                 "font-src": ["self", "data:"],
                 "connect-src": ["self"],
                 "frame-ancestors": ["none"],
-                "form-action": ["self", "https:"], // SAML ACS HTTP-POST 바인딩
+                "form-action": ["self"], // SAML ACS auto-submit은 raw Response라 SvelteKit CSP 비적용
                 "base-uri": ["self"],
                 "object-src": ["none"],
             },
