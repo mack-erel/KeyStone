@@ -36,6 +36,10 @@ export const load: PageServerLoad = async ({ locals }) => {
             name: oidcClients.name,
             redirectUris: oidcClients.redirectUris,
             postLogoutRedirectUris: oidcClients.postLogoutRedirectUris,
+            frontchannelLogoutUri: oidcClients.frontchannelLogoutUri,
+            frontchannelLogoutSessionRequired: oidcClients.frontchannelLogoutSessionRequired,
+            backchannelLogoutUri: oidcClients.backchannelLogoutUri,
+            backchannelLogoutSessionRequired: oidcClients.backchannelLogoutSessionRequired,
             scopes: oidcClients.scopes,
             tokenEndpointAuthMethod: oidcClients.tokenEndpointAuthMethod,
             requirePkce: oidcClients.requirePkce,
@@ -59,6 +63,10 @@ export const actions: Actions = {
         const name = String(fd.get("name") ?? "").trim();
         const redirectUrisRaw = String(fd.get("redirectUris") ?? "").trim();
         const postLogoutUrisRaw = String(fd.get("postLogoutRedirectUris") ?? "").trim();
+        const frontchannelLogoutUri = String(fd.get("frontchannelLogoutUri") ?? "").trim();
+        const backchannelLogoutUri = String(fd.get("backchannelLogoutUri") ?? "").trim();
+        const frontchannelLogoutSessionRequired = fd.get("frontchannelLogoutSessionRequired") === "true";
+        const backchannelLogoutSessionRequired = fd.get("backchannelLogoutSessionRequired") === "true";
         const scopes = String(fd.get("scopes") ?? "openid").trim();
         const tokenMethod = String(fd.get("tokenEndpointAuthMethod") ?? "client_secret_basic") as "client_secret_basic" | "client_secret_post" | "none";
         // public client(none)는 PKCE 필수
@@ -79,6 +87,10 @@ export const actions: Actions = {
             name,
             redirectUris: parseUris(redirectUrisRaw),
             postLogoutRedirectUris: postLogoutUrisRaw ? parseUris(postLogoutUrisRaw) : null,
+            frontchannelLogoutUri: frontchannelLogoutUri || null,
+            frontchannelLogoutSessionRequired,
+            backchannelLogoutUri: backchannelLogoutUri || null,
+            backchannelLogoutSessionRequired,
             scopes,
             tokenEndpointAuthMethod: tokenMethod,
             requirePkce,
@@ -110,6 +122,10 @@ export const actions: Actions = {
         const name = String(fd.get("name") ?? "").trim();
         const redirectUrisRaw = String(fd.get("redirectUris") ?? "").trim();
         const postLogoutUrisRaw = String(fd.get("postLogoutRedirectUris") ?? "").trim();
+        const frontchannelLogoutUri = String(fd.get("frontchannelLogoutUri") ?? "").trim();
+        const backchannelLogoutUri = String(fd.get("backchannelLogoutUri") ?? "").trim();
+        const frontchannelLogoutSessionRequired = fd.get("frontchannelLogoutSessionRequired") === "true";
+        const backchannelLogoutSessionRequired = fd.get("backchannelLogoutSessionRequired") === "true";
         const scopes = String(fd.get("scopes") ?? "openid").trim();
         const enabled = fd.get("enabled") === "true";
 
@@ -130,6 +146,10 @@ export const actions: Actions = {
                 name,
                 redirectUris: parseUris(redirectUrisRaw),
                 postLogoutRedirectUris: postLogoutUrisRaw ? parseUris(postLogoutUrisRaw) : null,
+                frontchannelLogoutUri: frontchannelLogoutUri || null,
+                frontchannelLogoutSessionRequired,
+                backchannelLogoutUri: backchannelLogoutUri || null,
+                backchannelLogoutSessionRequired,
                 scopes,
                 requirePkce,
                 enabled,

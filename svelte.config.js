@@ -18,14 +18,14 @@ const config = {
                 "font-src": ["self", "data:"],
                 "connect-src": ["self"],
                 "frame-ancestors": ["none"],
-                "form-action": ["self", "https:"], // SAML ACS HTTP-POST 바인딩
+                "form-action": ["self", "https:", "http://localhost:*"], // SAML ACS + OIDC 리다이렉트 체인 허용 (Chrome은 form-action을 redirect chain 전체에 적용)
                 "base-uri": ["self"],
                 "object-src": ["none"],
             },
         },
         // OIDC/SAML 엔드포인트는 서비스 프로바이더(SP)에서 cross-origin으로 호출하므로
         // SvelteKit CSRF 체크를 비활성화한다. UI 폼의 CSRF는 OIDC state 파라미터가 보호한다.
-        csrf: { checkOrigin: false },
+        csrf: { trustedOrigins: ["*"] },
         typescript: {
             config: (config) => ({
                 ...config,

@@ -76,6 +76,7 @@ export const GET: RequestHandler = async (event) => {
     if (!locals.user || !locals.session) {
         const loginUrl = new URL("/login", url);
         loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
+        loginUrl.searchParams.set("skinHint", `oidc:${client.id}`);
         throw redirect(302, loginUrl.toString());
     }
 

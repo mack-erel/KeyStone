@@ -116,6 +116,32 @@ function urisToText(json: string | null): string {
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"></textarea>
                 </div>
                 <div>
+                    <label for="c-fcLogout" class="block text-xs font-medium text-gray-700">Front-channel Logout URI</label>
+                    <input
+                        id="c-fcLogout"
+                        type="url"
+                        name="frontchannelLogoutUri"
+                        placeholder="https://sp.example.com/logout"
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                    <div class="mt-1 flex items-center gap-2">
+                        <input id="c-fcSession" type="checkbox" name="frontchannelLogoutSessionRequired" value="true" class="h-4 w-4 rounded border-gray-300" />
+                        <label for="c-fcSession" class="text-xs text-gray-600">session required (append sid)</label>
+                    </div>
+                </div>
+                <div>
+                    <label for="c-bcLogout" class="block text-xs font-medium text-gray-700">Back-channel Logout URI</label>
+                    <input
+                        id="c-bcLogout"
+                        type="url"
+                        name="backchannelLogoutUri"
+                        placeholder="https://sp.example.com/backchannel-logout"
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                    <div class="mt-1 flex items-center gap-2">
+                        <input id="c-bcSession" type="checkbox" name="backchannelLogoutSessionRequired" value="true" class="h-4 w-4 rounded border-gray-300" />
+                        <label for="c-bcSession" class="text-xs text-gray-600">session required (include sid)</label>
+                    </div>
+                </div>
+                <div>
                     <label for="c-authMethod" class="block text-xs font-medium text-gray-700">{t("oidc.auth_method_label")}</label>
                     <select id="c-authMethod" name="tokenEndpointAuthMethod" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
                         <option value="client_secret_basic">client_secret_basic</option>
@@ -247,6 +273,44 @@ function urisToText(json: string | null): string {
                                                 rows="2"
                                                 class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none"
                                                 >{urisToText(client.postLogoutRedirectUris)}</textarea>
+                                        </div>
+                                        <div>
+                                            <label for="e-fcLogout-{client.id}" class="block text-xs font-medium text-gray-700">Front-channel Logout URI</label>
+                                            <input
+                                                id="e-fcLogout-{client.id}"
+                                                type="url"
+                                                name="frontchannelLogoutUri"
+                                                value={client.frontchannelLogoutUri ?? ""}
+                                                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                                            <div class="mt-1 flex items-center gap-2">
+                                                <input
+                                                    id="e-fcSession-{client.id}"
+                                                    type="checkbox"
+                                                    name="frontchannelLogoutSessionRequired"
+                                                    value="true"
+                                                    checked={client.frontchannelLogoutSessionRequired}
+                                                    class="h-4 w-4 rounded border-gray-300" />
+                                                <label for="e-fcSession-{client.id}" class="text-xs text-gray-600">session required (append sid)</label>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label for="e-bcLogout-{client.id}" class="block text-xs font-medium text-gray-700">Back-channel Logout URI</label>
+                                            <input
+                                                id="e-bcLogout-{client.id}"
+                                                type="url"
+                                                name="backchannelLogoutUri"
+                                                value={client.backchannelLogoutUri ?? ""}
+                                                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                                            <div class="mt-1 flex items-center gap-2">
+                                                <input
+                                                    id="e-bcSession-{client.id}"
+                                                    type="checkbox"
+                                                    name="backchannelLogoutSessionRequired"
+                                                    value="true"
+                                                    checked={client.backchannelLogoutSessionRequired}
+                                                    class="h-4 w-4 rounded border-gray-300" />
+                                                <label for="e-bcSession-{client.id}" class="text-xs text-gray-600">session required (include sid)</label>
+                                            </div>
                                         </div>
                                         <div class="flex items-center gap-4">
                                             <div class="flex items-center gap-2">

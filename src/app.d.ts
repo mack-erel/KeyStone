@@ -3,7 +3,7 @@
 declare global {
     namespace App {
         interface Platform {
-            env: Env;
+            env: Env & { SKIN_CACHE?: R2Bucket };
             ctx: ExecutionContext;
             caches: CacheStorage;
             cf?: IncomingRequestCfProperties;

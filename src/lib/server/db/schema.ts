@@ -208,6 +208,10 @@ export const oidcClients = sqliteTable(
         name: text("name").notNull(),
         redirectUris: text("redirect_uris").notNull(),
         postLogoutRedirectUris: text("post_logout_redirect_uris"),
+        frontchannelLogoutUri: text("frontchannel_logout_uri"),
+        frontchannelLogoutSessionRequired: integer("frontchannel_logout_session_required", { mode: "boolean" }).notNull().default(false),
+        backchannelLogoutUri: text("backchannel_logout_uri"),
+        backchannelLogoutSessionRequired: integer("backchannel_logout_session_required", { mode: "boolean" }).notNull().default(false),
         scopes: text("scopes").notNull().default("openid"),
         grantTypes: text("grant_types").notNull().default("authorization_code,refresh_token"),
         responseTypes: text("response_types").notNull().default("code"),
@@ -352,6 +356,38 @@ export const samlSessions = sqliteTable(
     },
     (t) => [uniqueIndex("saml_sessions_session_index_uidx").on(t.sessionIndex), index("saml_sessions_tenant_sp_idx").on(t.tenantId, t.spId)],
 );
+
+/**
+ * SAML SLO 체인 상태. 여러 SP 를 순차적으로 로그아웃하기 위한 리다이렉트 체인을
+ * DB 에 저장해 둔다. id 값이 RelayState 로 전달되어 체인 전반에 걸쳐 식별자 역할을 한다.
+ */
+export const samlSloStates = sqliteTable("saml_slo_states", {
+    id: text("id")
+        .primaryKey()
+        .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+        .notNull()
+        .references(() => tenants.id, { onDelete: "cascade" }),
+    // sessions.id — FK 로 걸지 않는다 (체인 중간에 세션이 revoke 될 수 있음)
+    idpSessionRecordId: text("idp_session_record_id").notNull(),
+    userId: text("user_id")
+        .notNull()
+        .references(() => users.id, { onDelete: "cascade" }),
+    // SP-initiated SLO 일 때만 값이 있다.
+    initiatingSpEntityId: text("initiating_sp_entity_id"),
+    // 최초 SP 가 보낸 LogoutRequest ID (InResponseTo 에 사용)
+    inResponseTo: text("in_response_to"),
+    // 체인 종료 시 LogoutResponse 를 보낼 SP 의 SLO URL (SP-initiated)
+    initiatorSloUrl: text("initiator_slo_url"),
+    // 체인 종료 시 최종적으로 리다이렉트할 URI (예: "/login")
+    completionUri: text("completion_uri").notNull(),
+    // JSON array: [{spId, entityId, sloUrl, nameId, nameIdFormat, sessionIndex}]
+    pendingSpDataJson: text("pending_sp_data_json").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+        .notNull()
+        .default(sql`(unixepoch() * 1000)`),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+});
 
 // ---------- Keys & Audit ----------
 
@@ -662,6 +698,54 @@ export const rateLimits = sqliteTable("rate_limits", {
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+export const clientSkins = sqliteTable(
+    "client_skins",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        tenantId: text("tenant_id")
+            .notNull()
+            .references(() => tenants.id, { onDelete: "cascade" }),
+        clientType: text("client_type", { enum: ["oidc", "saml"] }).notNull(),
+        clientRefId: text("client_ref_id").notNull(),
+        skinType: text("skin_type", { enum: ["login", "signup", "find_id", "find_password"] })
+            .notNull()
+            .default("login"),
+        fetchUrl: text("fetch_url").notNull(),
+        fetchSecret: text("fetch_secret"),
+        cacheTtlSeconds: integer("cache_ttl_seconds").notNull().default(3600),
+        enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+        createdAt: integer("created_at", { mode: "timestamp" })
+            .notNull()
+            .$defaultFn(() => new Date()),
+    },
+    (t) => [uniqueIndex("client_skins_unique").on(t.tenantId, t.clientType, t.clientRefId, t.skinType)],
+);
+
+// ---------- Password Reset ----------
+
+export const passwordResetTokens = sqliteTable(
+    "password_reset_tokens",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: text("token_hash").notNull(),
+        expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+        usedAt: integer("used_at", { mode: "timestamp_ms" }),
+        createdAt: integer("created_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+    },
+    (t) => [index("password_reset_tokens_user_idx").on(t.userId), uniqueIndex("password_reset_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;
 export type Identity = typeof identities.$inferSelect;
@@ -672,6 +756,7 @@ export type OidcGrant = typeof oidcGrants.$inferSelect;
 export type OidcRefreshToken = typeof oidcRefreshTokens.$inferSelect;
 export type SamlSp = typeof samlSps.$inferSelect;
 export type SamlSession = typeof samlSessions.$inferSelect;
+export type SamlSloState = typeof samlSloStates.$inferSelect;
 export type SigningKey = typeof signingKeys.$inferSelect;
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type Position = typeof positions.$inferSelect;
@@ -682,3 +767,4 @@ export type UserTeam = typeof userTeams.$inferSelect;
 export type Part = typeof parts.$inferSelect;
 export type UserPart = typeof userParts.$inferSelect;
 export type WebauthnChallenge = typeof webauthnChallenges.$inferSelect;
+export type ClientSkin = typeof clientSkins.$inferSelect;

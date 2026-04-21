@@ -51,6 +51,8 @@ interface Args {
     noPreview: boolean;
     migrate?: boolean;
     migratePreview?: boolean;
+    r2BucketName?: string;
+    noR2: boolean;
     signingKey?: string;
     tenantName?: string;
     adminUsername?: string;
@@ -65,6 +67,7 @@ interface Args {
 function parseArgs(argv: string[]): Args {
     const args: Args = {
         noPreview: false,
+        noR2: false,
         yes: false,
         help: false,
     };
@@ -98,6 +101,12 @@ function parseArgs(argv: string[]): Args {
                 break;
             case "--no-migrate-preview":
                 args.migratePreview = false;
+                break;
+            case "--r2-bucket-name":
+                args.r2BucketName = argv[++i];
+                break;
+            case "--no-r2":
+                args.noR2 = true;
                 break;
             case "--signing-key":
                 args.signingKey = argv[++i];
@@ -148,6 +157,8 @@ ${cyan("옵션:")}
   --no-migrate              마이그레이션 건너뜀
   --migrate-preview         프리뷰 DB 마이그레이션 자동 진행
   --no-migrate-preview      프리뷰 DB 마이그레이션 건너뜀
+  --r2-bucket-name <name>   R2 버킷 이름 (기본값: keystone-skin-cache)
+  --no-r2                   R2 버킷 생성 건너뜀
   --signing-key <secret>    IDP_SIGNING_KEY_SECRET 값
   --tenant-name <name>      조직(테넌트) 이름
   --admin-username <id>     초기 관리자 아이디
@@ -586,6 +597,44 @@ async function step4_updateFiles(dbId: string, previewDbId: string | null, accou
 
     writeFile(ENV_FILE, envContent);
     console.log(green("  ✓ .env 업데이트 완료"));
+}
+
+async function step4b_r2Setup(args: Args) {
+    console.log(`\n${cyan("─── 4b. R2 버킷 설정 (스킨 캐시) ─────────────────────────────")}`);
+
+    if (args.noR2) {
+        console.log("  R2 버킷 생성 건너뜀");
+        return;
+    }
+
+    const doCreate = args.yes || (await confirm("커스텀 스킨 캐시용 R2 버킷을 생성하시겠습니까?", true));
+    if (!doCreate) {
+        console.log("  R2 버킷 생성 건너뜀");
+        return;
+    }
+
+    const bucketName = args.r2BucketName ?? (await ask("R2 버킷 이름", "keystone-skin-cache"));
+
+    const result = await runWithSpinner(`R2 버킷 생성 중: ${bucketName}`, "wrangler", ["r2", "bucket", "create", bucketName]);
+    if (!result.success) {
+        const combined = result.stdout + result.stderr;
+        if (combined.includes("already exists")) {
+            console.log(yellow(`  버킷 '${bucketName}'이 이미 존재합니다. 기존 버킷을 사용합니다.`));
+        } else {
+            console.error(red(`  R2 버킷 생성 실패:\n${result.stderr}`));
+            return;
+        }
+    } else {
+        console.log(green(`  ✓ R2 버킷 '${bucketName}' 생성 완료`));
+    }
+
+    // wrangler.jsonc의 bucket_name 업데이트
+    if (fs.existsSync(WRANGLER_JSONC)) {
+        let content = readFile(WRANGLER_JSONC);
+        content = replaceAll(content, "keystone-skin-cache", bucketName);
+        writeFile(WRANGLER_JSONC, content);
+        console.log(green(`  ✓ wrangler.jsonc bucket_name 업데이트 완료`));
+    }
 }
 
 // ─── Migration Conflict Detection ────────────────────────────────────────────
@@ -1048,6 +1097,9 @@ async function main() {
 
     // Step 4: Update files
     await step4_updateFiles(dbId, previewDbId, accountId);
+
+    // Step 4b: R2 bucket
+    await step4b_r2Setup(args);
 
     // Step 5: Migration
     await step5_migrate(args, previewDbId !== null, dbName, previewDbName);
