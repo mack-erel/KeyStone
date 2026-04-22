@@ -10,8 +10,9 @@ import { checkRateLimit } from "$lib/server/ratelimit";
 import { AMR_PASSWORD, AMR_TOTP, AMR_BACKUP_CODE, amrToAcr, TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { credentials, users } from "$lib/server/db/schema";
+import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 
-export const load: PageServerLoad = async ({ locals, cookies, platform }) => {
+export const load: PageServerLoad = async ({ locals, cookies, platform, url }) => {
     const mfaToken = cookies.get(MFA_PENDING_COOKIE);
 
     // MFA pending 토큰이 없는 경우에만 자동 리다이렉트.
@@ -34,7 +35,27 @@ export const load: PageServerLoad = async ({ locals, cookies, platform }) => {
         throw redirect(303, "/login");
     }
 
-    return {};
+    const skinHint = url.searchParams.get("skinHint");
+    let skinHtml: string | null = null;
+
+    if (skinHint && locals.db && locals.tenant) {
+        const colonIdx = skinHint.indexOf(":");
+        if (colonIdx > 0) {
+            const clientType = skinHint.slice(0, colonIdx) as "oidc" | "saml";
+            const clientRefId = skinHint.slice(colonIdx + 1);
+            if ((clientType === "oidc" || clientType === "saml") && clientRefId) {
+                const raw = await resolveSkinHtml(locals.db, platform, locals.tenant.id, clientType, clientRefId, "mfa");
+                if (raw) {
+                    skinHtml = replacePlaceholders(raw, {
+                        IDP_FORM_ACTION: "",
+                        IDP_SKIN_HINT: escapeHtml(skinHint),
+                    });
+                }
+            }
+        }
+    }
+
+    return { skinHtml };
 };
 
 export const actions: Actions = {

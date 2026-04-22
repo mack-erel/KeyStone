@@ -75,6 +75,7 @@ function clientLabel(clientType: string, clientRefId: string): string {
                         <option value="signup">{t("skins.skin_type_signup")}</option>
                         <option value="find_id">{t("skins.skin_type_find_id")}</option>
                         <option value="find_password">{t("skins.skin_type_find_password")}</option>
+                        <option value="mfa">{t("skins.skin_type_mfa")}</option>
                     </select>
                 </div>
                 <div>

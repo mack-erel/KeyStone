@@ -412,6 +412,7 @@
         "skin_type_signup": "회원가입",
         "skin_type_find_id": "아이디 찾기",
         "skin_type_find_password": "비밀번호 찾기",
+        "skin_type_mfa": "OTP (MFA)",
         "col_client": "클라이언트",
         "col_skin_type": "스킨 타입",
         "col_fetch_url": "스킨 URL",
