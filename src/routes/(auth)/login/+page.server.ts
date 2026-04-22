@@ -50,10 +50,14 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
             if ((clientType === "oidc" || clientType === "saml") && clientRefId) {
                 const raw = await resolveSkinHtml(locals.db, platform, locals.tenant.id, clientType, clientRefId);
                 if (raw) {
+                    const registered = url.searchParams.get("registered") === "1";
+                    const passwordReset = url.searchParams.get("passwordReset") === "1";
                     skinHtml = replacePlaceholders(raw, {
                         IDP_FORM_ACTION: "",
                         IDP_REDIRECT_TO: escapeHtml(redirectTo ?? ""),
                         IDP_SKIN_HINT: escapeHtml(skinHint),
+                        IDP_REGISTERED: registered ? "1" : "",
+                        IDP_PASSWORD_RESET: passwordReset ? "1" : "",
                     });
                 }
             }
@@ -180,7 +184,9 @@ export const actions: Actions = {
                 maxAge: 5 * 60, // 5분
             });
 
-            throw redirect(303, "/mfa");
+            const skinHintParam = event.url.searchParams.get("skinHint");
+            const mfaUrl = skinHintParam ? `/mfa?skinHint=${encodeURIComponent(skinHintParam)}` : "/mfa";
+            throw redirect(303, mfaUrl);
         }
 
         // MFA 없음 — 세션 바로 생성

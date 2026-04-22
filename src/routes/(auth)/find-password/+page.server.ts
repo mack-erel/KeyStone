@@ -33,6 +33,23 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
     return { skinHint, skinHtml };
 };
 
+async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean): Promise<string | null> {
+    const skinHint = event.url.searchParams.get("skinHint");
+    if (!skinHint || !event.locals.db || !event.locals.tenant) return null;
+    const colonIdx = skinHint.indexOf(":");
+    if (colonIdx <= 0) return null;
+    const clientType = skinHint.slice(0, colonIdx) as "oidc" | "saml";
+    const clientRefId = skinHint.slice(colonIdx + 1);
+    if ((clientType !== "oidc" && clientType !== "saml") || !clientRefId) return null;
+    const raw = await resolveSkinHtml(event.locals.db, event.platform, event.locals.tenant.id, clientType, clientRefId, "find_password");
+    if (!raw) return null;
+    return replacePlaceholders(raw, {
+        IDP_FORM_ACTION: "",
+        IDP_SKIN_HINT: escapeHtml(skinHint),
+        IDP_FIND_PASSWORD_SENT: sent ? "1" : "",
+    });
+}
+
 export const actions: Actions = {
     default: async (event) => {
         const { db, tenant } = requireDbContext(event.locals);
@@ -66,6 +83,6 @@ export const actions: Actions = {
             }
         }
 
-        return { sent: true };
+        return { sent: true, skinHtml: await resolveSkinForAction(event, true) };
     },
 };

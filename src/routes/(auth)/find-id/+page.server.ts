@@ -30,6 +30,24 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
     return { skinHint, skinHtml };
 };
 
+async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean, maskedUsername: string | null): Promise<string | null> {
+    const skinHint = event.url.searchParams.get("skinHint");
+    if (!skinHint || !event.locals.db || !event.locals.tenant) return null;
+    const colonIdx = skinHint.indexOf(":");
+    if (colonIdx <= 0) return null;
+    const clientType = skinHint.slice(0, colonIdx) as "oidc" | "saml";
+    const clientRefId = skinHint.slice(colonIdx + 1);
+    if ((clientType !== "oidc" && clientType !== "saml") || !clientRefId) return null;
+    const raw = await resolveSkinHtml(event.locals.db, event.platform, event.locals.tenant.id, clientType, clientRefId, "find_id");
+    if (!raw) return null;
+    return replacePlaceholders(raw, {
+        IDP_FORM_ACTION: "",
+        IDP_SKIN_HINT: escapeHtml(skinHint),
+        IDP_FIND_ID_SENT: sent ? "1" : "",
+        IDP_MASKED_USERNAME: maskedUsername ? escapeHtml(maskedUsername) : "",
+    });
+}
+
 export const actions: Actions = {
     default: async (event) => {
         const { db, tenant } = requireDbContext(event.locals);
@@ -53,10 +71,11 @@ export const actions: Actions = {
             } catch {
                 // 메일 발송 실패는 조용히 무시
             }
-            return { sent: true, maskedUsername: maskUsername(user.username) };
+            const masked = maskUsername(user.username);
+            return { sent: true, maskedUsername: masked, skinHtml: await resolveSkinForAction(event, true, masked) };
         }
 
         // 계정 존재 여부 노출 방지
-        return { sent: true, maskedUsername: null };
+        return { sent: true, maskedUsername: null, skinHtml: await resolveSkinForAction(event, true, null) };
     },
 };

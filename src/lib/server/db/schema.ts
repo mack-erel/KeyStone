@@ -709,7 +709,7 @@ export const clientSkins = sqliteTable(
             .references(() => tenants.id, { onDelete: "cascade" }),
         clientType: text("client_type", { enum: ["oidc", "saml"] }).notNull(),
         clientRefId: text("client_ref_id").notNull(),
-        skinType: text("skin_type", { enum: ["login", "signup", "find_id", "find_password"] })
+        skinType: text("skin_type", { enum: ["login", "signup", "find_id", "find_password", "mfa"] })
             .notNull()
             .default("login"),
         fetchUrl: text("fetch_url").notNull(),

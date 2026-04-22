@@ -14,7 +14,7 @@ const result = $derived(form as { sent?: boolean; maskedUsername?: string | null
         </div>
     {/if}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-    {@html data.skinHtml}
+    {@html form?.skinHtml ?? data.skinHtml}
 {:else}
     <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
         <div class="w-full max-w-md space-y-6 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
