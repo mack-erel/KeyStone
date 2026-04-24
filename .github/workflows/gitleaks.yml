@@ -6,6 +6,10 @@ on:
     push:
         branches: [main]
 
+concurrency:
+    group: gitleaks-${{ github.head_ref || github.ref }}
+    cancel-in-progress: true
+
 jobs:
     gitleaks:
         name: Gitleaks

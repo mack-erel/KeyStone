@@ -5,6 +5,10 @@ on:
         branches: [main]
     workflow_dispatch:
 
+concurrency:
+    group: deploy-${{ github.ref }}
+    cancel-in-progress: false
+
 env:
     # 2026-06-02부터 Actions 런타임이 Node 24로 강제 전환됨. 선제 opt-in으로
     # actions/checkout 외 dorny/paths-filter 등 미업그레이드 액션도 Node 24에서 실행
