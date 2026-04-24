@@ -28,11 +28,6 @@ const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.sk
 </script>
 
 {#if data.skinHtml}
-    {#if form?.error}
-        <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg">
-            {form.error}
-        </div>
-    {/if}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
     {@html form?.skinHtml ?? data.skinHtml}
 {:else}

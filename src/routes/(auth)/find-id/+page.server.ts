@@ -21,6 +21,10 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
                     skinHtml = replacePlaceholders(raw, {
                         IDP_FORM_ACTION: "",
                         IDP_SKIN_HINT: escapeHtml(skinHint),
+                        IDP_REDIRECT_TO: "",
+                        IDP_FIND_ID_SENT: "",
+                        IDP_MASKED_USERNAME: "",
+                        IDP_FLASH_MSG: "",
                     });
                 }
             }
@@ -31,7 +35,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
     return { skinHint, skinHtml, redirectTo };
 };
 
-async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean, maskedUsername: string | null): Promise<string | null> {
+async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean, maskedUsername: string | null, flashMsg = ""): Promise<string | null> {
     const skinHint = event.url.searchParams.get("skinHint");
     if (!skinHint || !event.locals.db || !event.locals.tenant) return null;
     const colonIdx = skinHint.indexOf(":");
@@ -44,8 +48,10 @@ async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], se
     return replacePlaceholders(raw, {
         IDP_FORM_ACTION: "",
         IDP_SKIN_HINT: escapeHtml(skinHint),
+        IDP_REDIRECT_TO: "",
         IDP_FIND_ID_SENT: sent ? "1" : "",
         IDP_MASKED_USERNAME: maskedUsername ? escapeHtml(maskedUsername) : "",
+        IDP_FLASH_MSG: escapeHtml(flashMsg),
     });
 }
 
@@ -58,7 +64,10 @@ export const actions: Actions = {
             .trim()
             .toLowerCase();
 
-        if (!email) return fail(400, { error: "이메일을 입력해 주세요." });
+        if (!email) {
+            const msg = "이메일을 입력해 주세요.";
+            return fail(400, { error: msg, skinHtml: await resolveSkinForAction(event, false, null, msg) });
+        }
 
         const [user] = await db
             .select({ username: users.username })

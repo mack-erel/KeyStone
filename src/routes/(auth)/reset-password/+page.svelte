@@ -7,8 +7,10 @@ import type { ActionData, PageData } from "./$types";
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const err = $derived((form as { error?: string } | null)?.error ?? null);
 
+const skinHtmlEffective = $derived((form as { skinHtml?: string | null } | null)?.skinHtml ?? data.skinHtml);
+
 onMount(() => {
-    if (!data.skinHtml) return;
+    if (!skinHtmlEffective) return;
     const s = document.createElement("script");
     s.src = "/api/skin-scripts";
     document.head.appendChild(s);
@@ -27,19 +29,14 @@ const findPasswordHref = $derived(
 );
 </script>
 
-{#if data.skinHtml}
-    {#if err}
-        <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg">
-            {err}
-        </div>
-    {/if}
+{#if skinHtmlEffective}
     {#if !data.valid}
         <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg">
             {t("reset_password.invalid_link")}
         </div>
     {/if}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-    {@html data.skinHtml}
+    {@html skinHtmlEffective}
 {:else}
     <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
         <div class="w-full max-w-md space-y-6 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">

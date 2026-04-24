@@ -24,6 +24,10 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
                     skinHtml = replacePlaceholders(raw, {
                         IDP_FORM_ACTION: "",
                         IDP_SKIN_HINT: escapeHtml(skinHint),
+                        IDP_REDIRECT_TO: "",
+                        IDP_FIND_PASSWORD_SENT: "",
+                        IDP_SUBMITTED_EMAIL: "",
+                        IDP_FLASH_MSG: "",
                     });
                 }
             }
@@ -34,7 +38,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
     return { skinHint, skinHtml, redirectTo };
 };
 
-async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean, submittedEmail?: string): Promise<string | null> {
+async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean, submittedEmail?: string, flashMsg = ""): Promise<string | null> {
     const skinHint = event.url.searchParams.get("skinHint");
     if (!skinHint || !event.locals.db || !event.locals.tenant) return null;
     const colonIdx = skinHint.indexOf(":");
@@ -47,8 +51,10 @@ async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], se
     return replacePlaceholders(raw, {
         IDP_FORM_ACTION: "",
         IDP_SKIN_HINT: escapeHtml(skinHint),
+        IDP_REDIRECT_TO: "",
         IDP_FIND_PASSWORD_SENT: sent ? "1" : "",
         IDP_SUBMITTED_EMAIL: submittedEmail ? escapeHtml(submittedEmail) : "",
+        IDP_FLASH_MSG: escapeHtml(flashMsg),
     });
 }
 
@@ -64,7 +70,10 @@ export const actions: Actions = {
             .trim()
             .toLowerCase();
 
-        if (!email || !username) return fail(400, { error: "이메일과 아이디를 모두 입력해 주세요." });
+        if (!email || !username) {
+            const msg = "이메일과 아이디를 모두 입력해 주세요.";
+            return fail(400, { error: msg, skinHtml: await resolveSkinForAction(event, false, undefined, msg) });
+        }
 
         const [user] = await db
             .select({ id: users.id, email: users.email })

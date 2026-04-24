@@ -9,7 +9,7 @@ import { resolve } from "$app/paths";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 
-async function resolveSkin(skinHint: string | null, locals: App.Locals, platform: App.Platform | undefined, token: string | null, redirectTo: string | null): Promise<string | null> {
+async function resolveSkin(skinHint: string | null, locals: App.Locals, platform: App.Platform | undefined, token: string | null, redirectTo: string | null, flashMsg = ""): Promise<string | null> {
     if (!skinHint || !locals.db || !locals.tenant) return null;
     const colonIdx = skinHint.indexOf(":");
     if (colonIdx <= 0) return null;
@@ -23,6 +23,7 @@ async function resolveSkin(skinHint: string | null, locals: App.Locals, platform
         IDP_REDIRECT_TO: escapeHtml(redirectTo ?? ""),
         IDP_SKIN_HINT: escapeHtml(skinHint),
         IDP_TOKEN: escapeHtml(token ?? ""),
+        IDP_FLASH_MSG: escapeHtml(flashMsg),
     });
 }
 
@@ -69,9 +70,12 @@ export const actions: Actions = {
         const redirectTo = sanitizeRedirectTarget(String(formData.get("redirectTo") ?? ""));
         const skinHint = String(formData.get("skinHint") ?? "");
 
-        if (!token) return fail(400, { error: "유효하지 않은 요청입니다." });
-        if (password.length < 8) return fail(400, { error: "비밀번호는 8자 이상이어야 합니다." });
-        if (password !== confirmPassword) return fail(400, { error: "비밀번호가 일치하지 않습니다." });
+        const failWithSkin = async (msg: string) =>
+            fail(400, { error: msg, skinHtml: await resolveSkin(skinHint || null, event.locals, event.platform, token || null, redirectTo, msg) });
+
+        if (!token) return failWithSkin("유효하지 않은 요청입니다.");
+        if (password.length < 8) return failWithSkin("비밀번호는 8자 이상이어야 합니다.");
+        if (password !== confirmPassword) return failWithSkin("비밀번호가 일치하지 않습니다.");
 
         const tokenHash = await hashToken(token);
         const now = new Date();
@@ -82,7 +86,7 @@ export const actions: Actions = {
             .where(and(eq(passwordResetTokens.tokenHash, tokenHash), isNull(passwordResetTokens.usedAt)))
             .limit(1);
 
-        if (!record || record.expiresAt < now) return fail(400, { error: "링크가 만료되었거나 이미 사용된 링크입니다." });
+        if (!record || record.expiresAt < now) return failWithSkin("링크가 만료되었거나 이미 사용된 링크입니다.");
 
         const hashedPw = await hashPassword(password);
 
