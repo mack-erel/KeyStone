@@ -70,8 +70,7 @@ export const actions: Actions = {
         const redirectTo = sanitizeRedirectTarget(String(formData.get("redirectTo") ?? ""));
         const skinHint = String(formData.get("skinHint") ?? "");
 
-        const failWithSkin = async (msg: string) =>
-            fail(400, { error: msg, skinHtml: await resolveSkin(skinHint || null, event.locals, event.platform, token || null, redirectTo, msg) });
+        const failWithSkin = async (msg: string) => fail(400, { error: msg, skinHtml: await resolveSkin(skinHint || null, event.locals, event.platform, token || null, redirectTo, msg) });
 
         if (!token) return failWithSkin("유효하지 않은 요청입니다.");
         if (password.length < 8) return failWithSkin("비밀번호는 8자 이상이어야 합니다.");
