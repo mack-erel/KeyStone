@@ -53,12 +53,17 @@ const script = `
       showError(e&&e.message?e.message:'패스키 인증에 실패했습니다.');
     }
   }
-  document.addEventListener('DOMContentLoaded',function(){
+  function init(){
     var btn=document.getElementById('idp-passkey-btn');
     if(!btn)return;
     var redir=(document.querySelector('[name="redirectTo"]')||{}).value||'';
     btn.addEventListener('click',function(){passkeyLogin(btn,redir);});
-  });
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',init);
+  }else{
+    init();
+  }
 })();
 `;
 
