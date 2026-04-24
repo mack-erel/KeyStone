@@ -34,11 +34,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
     return { skinHint, skinHtml, redirectTo };
 };
 
-async function resolveSkinForAction(
-    event: Parameters<Actions["default"]>[0],
-    sent: boolean,
-    submittedEmail?: string,
-): Promise<string | null> {
+async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean, submittedEmail?: string): Promise<string | null> {
     const skinHint = event.url.searchParams.get("skinHint");
     if (!skinHint || !event.locals.db || !event.locals.tenant) return null;
     const colonIdx = skinHint.indexOf(":");
