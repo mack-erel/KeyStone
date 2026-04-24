@@ -1,0 +1,65 @@
+name: Deploy
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch:
+
+env:
+    # 2026-06-02부터 Actions 런타임이 Node 24로 강제 전환됨. 선제 opt-in으로
+    # actions/checkout 외 dorny/paths-filter 등 미업그레이드 액션도 Node 24에서 실행
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+    deploy:
+        name: Deploy to Cloudflare
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+
+            - name: Setup Bun
+              uses: oven-sh/setup-bun@v2
+
+            - name: Install dependencies
+              run: bun install
+
+            - name: Setup Wrangler config
+              run: cp wrangler.example.jsonc wrangler.jsonc
+
+            - name: Generate Wrangler types
+              run: bunx wrangler types
+              env:
+                  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+                  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+            - name: Build
+              run: bun run build
+              env:
+                  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+                  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+            - name: Deploy
+              run: bunx wrangler deploy
+              env:
+                  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+                  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+            - name: Purge Cloudflare cache
+              env:
+                  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+                  CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+              run: |
+                  if [ -z "$CLOUDFLARE_ZONE_ID" ]; then
+                    echo "CLOUDFLARE_ZONE_ID 시크릿이 없으므로 캐시 퍼지를 건너뜁니다."
+                    exit 0
+                  fi
+                  PURGE_RESP=$(curl -s -X POST \
+                    "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
+                    -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                    -H "Content-Type: application/json" \
+                    --data '{"purge_everything":true}')
+                  echo "$PURGE_RESP" | jq -c '.'
+                  if [ "$(echo "$PURGE_RESP" | jq -r '.success')" != "true" ]; then
+                    echo "::warning::캐시 퍼지 실패: $(echo "$PURGE_RESP" | jq -c '.errors')"
+                  fi
