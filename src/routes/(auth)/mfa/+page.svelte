@@ -1,10 +1,21 @@
 <script lang="ts">
 import type { ActionData, PageData } from "./$types";
+import { onMount } from "svelte";
 import { t } from "$lib/i18n.svelte";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
 let useBackup = $state(false);
+
+onMount(() => {
+    if (!data.skinHtml) return;
+    const s = document.createElement("script");
+    s.src = "/api/skin-scripts";
+    document.head.appendChild(s);
+    return () => {
+        if (s.parentNode) s.parentNode.removeChild(s);
+    };
+});
 
 const loginHref = $derived(
     (() => {

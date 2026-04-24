@@ -9,11 +9,17 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
 onMount(() => {
     if (!data.skinHtml) return;
-    const s = document.createElement("script");
-    s.src = "/api/webauthn/passkey-client";
-    document.head.appendChild(s);
+    const scripts: HTMLScriptElement[] = [];
+    for (const src of ["/api/skin-scripts", "/api/webauthn/passkey-client"]) {
+        const s = document.createElement("script");
+        s.src = src;
+        document.head.appendChild(s);
+        scripts.push(s);
+    }
     return () => {
-        if (s.parentNode) s.parentNode.removeChild(s);
+        scripts.forEach((s) => {
+            if (s.parentNode) s.parentNode.removeChild(s);
+        });
     };
 });
 

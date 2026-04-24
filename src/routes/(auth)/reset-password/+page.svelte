@@ -1,10 +1,21 @@
 <script lang="ts">
 import { resolve } from "$app/paths";
+import { onMount } from "svelte";
 import { t } from "$lib/i18n.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const err = $derived((form as { error?: string } | null)?.error ?? null);
+
+onMount(() => {
+    if (!data.skinHtml) return;
+    const s = document.createElement("script");
+    s.src = "/api/skin-scripts";
+    document.head.appendChild(s);
+    return () => {
+        if (s.parentNode) s.parentNode.removeChild(s);
+    };
+});
 
 const findPasswordHref = $derived(
     (() => {

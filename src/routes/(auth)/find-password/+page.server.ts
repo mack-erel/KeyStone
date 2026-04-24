@@ -34,7 +34,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
     return { skinHint, skinHtml, redirectTo };
 };
 
-async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean): Promise<string | null> {
+async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean, submittedEmail?: string): Promise<string | null> {
     const skinHint = event.url.searchParams.get("skinHint");
     if (!skinHint || !event.locals.db || !event.locals.tenant) return null;
     const colonIdx = skinHint.indexOf(":");
@@ -48,6 +48,7 @@ async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], se
         IDP_FORM_ACTION: "",
         IDP_SKIN_HINT: escapeHtml(skinHint),
         IDP_FIND_PASSWORD_SENT: sent ? "1" : "",
+        IDP_SUBMITTED_EMAIL: submittedEmail ? escapeHtml(submittedEmail) : "",
     });
 }
 
@@ -89,6 +90,6 @@ export const actions: Actions = {
             }
         }
 
-        return { sent: true, skinHtml: await resolveSkinForAction(event, true) };
+        return { sent: true, skinHtml: await resolveSkinForAction(event, true, email) };
     },
 };
