@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>$ ctrls signup --new</title>
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #141414; --surface-alt: #1c1c1c;
+    --border: #2a2a2a; --text: #e8e8e8; --text-sub: #a0a0a0; --text-muted: #707070;
+    --accent: #64c88c; --accent-hover: #7ad89e;
+    --danger: #e56b6b; --success: #64c88c;
+    --font: "JetBrains Mono", "D2Coding", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-ui: "Inter", "Noto Sans KR", -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: var(--font);
+    display: flex; align-items: center; justify-content: center;
+    padding: 40px 16px; position: relative; overflow-x: hidden;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 32px 32px; opacity: .4;
+    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+            mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+  }
+  .card {
+    width: 100%; max-width: 420px; position: relative;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 36px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.02), 0 8px 40px rgba(0,0,0,.4);
+  }
+  @media (max-width: 480px) { .card { padding: 28px 20px; } }
+  .dots { position: absolute; top: 10px; left: 12px; display: flex; gap: 6px; }
+  .dots i {
+    width: 8px; height: 8px; border-radius: 4px; opacity: .8; display: inline-block;
+  }
+  .dots i:nth-child(1) { background: #ff5f57; }
+  .dots i:nth-child(2) { background: #febc2e; }
+  .dots i:nth-child(3) { background: #28c840; }
+
+  .header { margin-bottom: 24px; }
+  .cmd {
+    font-size: 11px; color: var(--accent); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 6px; letter-spacing: .5px;
+  }
+  .cmd-dot {
+    width: 6px; height: 6px; border-radius: 3px; background: var(--accent);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.3px; }
+  .subtitle { font-size: 12px; color: var(--text-sub); font-family: var(--font-ui); margin: 0; }
+  .subtitle .slash { opacity: .5; }
+
+  .field { margin-bottom: 14px; }
+  .field-label {
+    font-size: 11px; font-weight: 500; color: var(--text-sub); margin-bottom: 5px;
+    display: flex; gap: 6px; align-items: center;
+  }
+  .field-label .caret { color: var(--accent); opacity: .7; }
+  .field-wrap {
+    position: relative; border: 1px solid var(--border); background: var(--bg);
+    transition: border-color .12s, box-shadow .12s;
+  }
+  .field-wrap:focus-within {
+    border-color: var(--accent); box-shadow: 0 0 0 2px rgba(100,200,140,.13);
+  }
+  .field.error .field-wrap {
+    border-color: var(--danger); box-shadow: 0 0 0 2px rgba(229,107,107,.13);
+  }
+  .field input {
+    width: 100%; border: none; background: transparent; outline: none;
+    padding: 11px 12px; font-size: 13.5px; color: var(--text);
+    font-family: inherit; letter-spacing: .2px;
+  }
+  .msg { font-size: 11px; margin-top: 5px; display: none; }
+  .msg.err { color: var(--danger); }
+  .msg.err .tag { opacity: .7; }
+  .msg.hint { color: var(--text-muted); }
+  .msg.hint .slash { opacity: .6; }
+  .field.error .msg.err { display: block; }
+  .field.ok .msg.hint { display: block; }
+  .msg.hint.always { display: block; }
+
+  .strength { margin: -8px 0 12px; }
+  .strength-row {
+    font-family: var(--font); font-size: 11px;
+    display: flex; gap: 8px; align-items: center;
+  }
+  .strength-bars { display: flex; gap: 2px; flex: 1; }
+  .strength-bars .bar { flex: 1; height: 3px; background: var(--border); transition: background .2s; }
+  .strength-label { min-width: 60px; text-align: right; }
+
+  .btn {
+    height: 40px; padding: 0 20px; width: 100%; margin-top: 4px;
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    gap: 8px; transition: all .12s; letter-spacing: .3px; border-radius: 2px;
+    border: 1px solid var(--accent); background: var(--accent); color: var(--bg);
+  }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn:not(:disabled):hover { background: var(--accent-hover); }
+
+  .footer {
+    margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border);
+    text-align: center; font-size: 12px; color: var(--text-sub);
+  }
+  .footer .slash { opacity: .6; }
+  a.link {
+    color: var(--accent); text-decoration: none; font-size: 12px;
+    letter-spacing: .2px;
+  }
+  a.link:hover { text-decoration: underline; text-underline-offset: 3px; }
+  *:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+  html[data-theme="light"] {
+    --bg: #fafafa; --surface: #ffffff; --surface-alt: #f2f2f2;
+    --border: #e5e5e5; --border-strong: #cfcfcf;
+    --text: #111111; --text-sub: #555555; --text-muted: #888888;
+    --accent: #2f8f5c; --accent-hover: #247047;
+    --accent-soft: rgba(47,143,92,.1);
+    --danger: #c64545; --danger-soft: rgba(198,69,69,.08);
+    --success: #2f8f5c; --success-soft: rgba(47,143,92,.08);
+  }
+  html[data-theme="light"] body::before { opacity: .5; }
+  html[data-theme="light"] .card {
+    box-shadow: 0 1px 3px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.04);
+  }
+  html[data-theme="light"] .verified-icon svg { stroke: #2f8f5c; }
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px; z-index: 10;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-sub); cursor: pointer;
+    font-family: var(--font); font-size: 11px;
+    padding: 6px 10px; border-radius: 2px;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: all .12s;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .theme-toggle .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+</style>
+</head>
+<body>
+
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="테마 전환">
+    <span class="dot"></span><span id="themeLabel">dark</span>
+  </button>
+  <main class="card">
+    <div class="dots"><i></i><i></i><i></i></div>
+    <header class="header">
+      <div class="cmd"><span class="cmd-dot"></span><span>$ ctrls signup --new</span></div>
+      <h1>계정 만들기</h1>
+      <p class="subtitle"><span class="slash">// </span>새 계정을 생성합니다</p>
+    </header>
+
+    <form id="form" novalidate>
+      <div class="field" id="f-username">
+        <div class="field-label"><span class="caret">&gt;</span><span>username</span></div>
+        <div class="field-wrap">
+          <input id="username" type="text" autocomplete="username" autofocus />
+        </div>
+        <div class="msg hint always" data-default>// [a-zA-Z0-9_]{4,20}</div>
+        <div class="msg err"><span class="tag">[error]</span>&nbsp;<span data-err></span></div>
+      </div>
+
+      <div class="field" id="f-email">
+        <div class="field-label"><span class="caret">&gt;</span><span>email</span></div>
+        <div class="field-wrap">
+          <input id="email" type="email" autocomplete="email" />
+        </div>
+        <div class="msg err"><span class="tag">[error]</span>&nbsp;<span data-err></span></div>
+      </div>
+
+      <div class="field" id="f-password">
+        <div class="field-label"><span class="caret">&gt;</span><span>password</span></div>
+        <div class="field-wrap">
+          <input id="password" type="password" autocomplete="new-password" />
+        </div>
+        <div class="msg err"><span class="tag">[error]</span>&nbsp;<span data-err></span></div>
+      </div>
+
+      <div class="strength" id="strength" hidden>
+        <div class="strength-row">
+          <div class="strength-bars">
+            <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            <div class="bar"></div><div class="bar"></div>
+          </div>
+          <div class="strength-label" id="strengthLabel">—</div>
+        </div>
+      </div>
+
+      <div class="field" id="f-confirm">
+        <div class="field-label"><span class="caret">&gt;</span><span>confirm</span></div>
+        <div class="field-wrap">
+          <input id="confirm" type="password" autocomplete="new-password" />
+        </div>
+        <div class="msg err"><span class="tag">[error]</span>&nbsp;<span data-err></span></div>
+        <div class="msg hint"><span class="slash">// </span><span data-hint></span></div>
+      </div>
+
+      <button id="submit" class="btn" type="submit" disabled>create account →</button>
+    </form>
+
+    <div class="footer">
+      <span class="slash">// </span>이미 계정이 있으신가요?
+      <a class="link" href="login.html">login</a>
+    </div>
+  </main>
+
+<script>
+(function () {
+  var USERNAME_RE = /^[a-zA-Z0-9_]{4,20}$/;
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  function vU(v) {
+    if (!v) return { ok: false, msg: '' };
+    if (v.length < 4) return { ok: false, msg: '4자 이상 입력해주세요' };
+    if (v.length > 20) return { ok: false, msg: '20자 이하로 입력해주세요' };
+    if (!USERNAME_RE.test(v)) return { ok: false, msg: '영문, 숫자, 밑줄(_)만 사용 가능합니다' };
+    return { ok: true, msg: 'available' };
+  }
+  function vE(v) {
+    if (!v) return { ok: false, msg: '' };
+    if (!EMAIL_RE.test(v)) return { ok: false, msg: '올바른 이메일 형식이 아닙니다' };
+    return { ok: true, msg: '' };
+  }
+  function vP(v) {
+    if (!v) return { ok: false, msg: '' };
+    if (v.length < 8) return { ok: false, msg: '8자 이상 입력해주세요' };
+    if (v.length > 64) return { ok: false, msg: '64자 이하로 입력해주세요' };
+    return { ok: true, msg: '' };
+  }
+  function vM(pw, c) {
+    if (!c) return { ok: false, msg: '' };
+    if (pw !== c) return { ok: false, msg: '비밀번호가 일치하지 않습니다' };
+    return { ok: true, msg: 'match' };
+  }
+  function strength(pw) {
+    if (!pw) return { score: 0, label: '' };
+    var s = 0;
+    if (pw.length >= 8) s++;
+    if (pw.length >= 12) s++;
+    if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) s++;
+    if (/\d/.test(pw)) s++;
+    if (/[^A-Za-z0-9]/.test(pw)) s++;
+    s = Math.min(4, s);
+    return { score: s, label: ['너무 약함','약함','보통','강함','매우 강함'][s] };
+  }
+
+  var u = document.getElementById('username');
+  var e = document.getElementById('email');
+  var p = document.getElementById('password');
+  var c = document.getElementById('confirm');
+  var btn = document.getElementById('submit');
+  var strengthBox = document.getElementById('strength');
+  var strengthBars = strengthBox.querySelectorAll('.bar');
+  var strengthLabel = document.getElementById('strengthLabel');
+  var colors = ['#e56b6b','#e89a4e','#e8c34e','#64c88c','#64c88c'];
+
+  function apply(id, res) {
+    var field = document.getElementById(id);
+    var errSpan = field.querySelector('[data-err]');
+    var hintSpan = field.querySelector('[data-hint]');
+    var inp = field.querySelector('input');
+    field.classList.remove('error','ok');
+    if (errSpan) errSpan.textContent = '';
+    if (hintSpan) hintSpan.textContent = '';
+    if (!inp.value) return;
+    if (!res.ok && res.msg) {
+      field.classList.add('error');
+      if (errSpan) errSpan.textContent = res.msg;
+    } else if (res.ok && res.msg && hintSpan) {
+      field.classList.add('ok');
+      hintSpan.textContent = res.msg;
+    }
+  }
+  function applyUsername(res) {
+    var field = document.getElementById('f-username');
+    var errSpan = field.querySelector('[data-err]');
+    var def = field.querySelector('[data-default]');
+    field.classList.remove('error','ok');
+    errSpan.textContent = '';
+    def.textContent = '// [a-zA-Z0-9_]{4,20}';
+    def.style.color = '';
+    if (!u.value) return;
+    if (!res.ok) { field.classList.add('error'); errSpan.textContent = res.msg; }
+    else { def.textContent = '// ' + res.msg; def.style.color = 'var(--success)'; }
+  }
+
+  function update() {
+    var ru = vU(u.value), re = vE(e.value), rp = vP(p.value), rm = vM(p.value, c.value);
+    applyUsername(ru);
+    apply('f-email', re);
+    apply('f-password', rp);
+    apply('f-confirm', rm);
+
+    if (p.value) {
+      strengthBox.hidden = false;
+      var s = strength(p.value);
+      strengthLabel.textContent = s.label;
+      strengthLabel.style.color = colors[s.score];
+      strengthBars.forEach(function (b, i) {
+        b.style.background = i <= s.score ? colors[s.score] : 'var(--border)';
+      });
+    } else { strengthBox.hidden = true; }
+
+    btn.disabled = !(ru.ok && re.ok && rp.ok && rm.ok);
+  }
+
+  [u, e, p, c].forEach(function (inp) { inp.addEventListener('input', update); });
+
+  document.getElementById('form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (btn.disabled) return;
+    location.href = 'login.html?signed_up=1';
+  });
+})();
+</script>
+
+  <script>
+    (function () {
+      var KEY = 'ctrls-theme';
+      var saved = localStorage.getItem(KEY) || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+      document.addEventListener('DOMContentLoaded', function () {
+        var btn = document.getElementById('themeToggle');
+        var label = document.getElementById('themeLabel');
+        if (!btn) return;
+        function sync() {
+          var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+          label.textContent = cur;
+        }
+        sync();
+        btn.addEventListener('click', function () {
+          var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+          var next = cur === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem(KEY, next);
+          sync();
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>$ ctrls --index</title>
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #141414; --border: #2a2a2a;
+    --text: #e8e8e8; --text-sub: #a0a0a0; --text-muted: #707070;
+    --accent: #64c88c;
+    --font: "JetBrains Mono", "D2Coding", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: var(--font);
+    display: flex; align-items: center; justify-content: center;
+    padding: 40px 16px; position: relative; overflow-x: hidden;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 32px 32px; opacity: .4;
+    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+            mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+  }
+  .card {
+    width: 100%; max-width: 560px; position: relative;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 4px; padding: 36px;
+  }
+  .cmd { font-size: 11px; color: var(--accent); margin-bottom: 14px; letter-spacing: .5px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.3px; }
+  p { color: var(--text-sub); font-size: 12px; margin: 0 0 24px; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { border-top: 1px solid var(--border); }
+  li:first-child { border-top: none; }
+  a {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 4px; text-decoration: none; color: var(--text);
+    font-size: 13px; transition: color .12s;
+  }
+  a:hover { color: var(--accent); }
+  .path { color: var(--text-muted); font-size: 11px; }
+
+  html[data-theme="light"] {
+    --bg: #fafafa; --surface: #ffffff; --surface-alt: #f2f2f2;
+    --border: #e5e5e5; --border-strong: #cfcfcf;
+    --text: #111111; --text-sub: #555555; --text-muted: #888888;
+    --accent: #2f8f5c; --accent-hover: #247047;
+    --accent-soft: rgba(47,143,92,.1);
+    --danger: #c64545; --danger-soft: rgba(198,69,69,.08);
+    --success: #2f8f5c; --success-soft: rgba(47,143,92,.08);
+  }
+  html[data-theme="light"] body::before { opacity: .5; }
+  html[data-theme="light"] .card {
+    box-shadow: 0 1px 3px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.04);
+  }
+  html[data-theme="light"] .verified-icon svg { stroke: #2f8f5c; }
+  .theme-toggle {
+    position: fixed; top: 16px; right: 16px; z-index: 10;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text-sub); cursor: pointer;
+    font-family: var(--font); font-size: 11px;
+    padding: 6px 10px; border-radius: 2px;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: all .12s;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  .theme-toggle .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+</style>
+</head>
+<body>
+
+  <button class="theme-toggle" id="themeToggle" type="button" aria-label="테마 전환">
+    <span class="dot"></span><span id="themeLabel">dark</span>
+  </button>
+  <main class="card">
+    <div class="cmd">$ ls routes/</div>
+    <h1>Mono Terminal — 정적 HTML</h1>
+    <p><span style="opacity:.6">// </span>외부 의존성 없이 각 파일이 독립적으로 동작합니다.</p>
+    <ul>
+      <li><a href="login.html">login <span class="path">login.html</span></a></li>
+      <li><a href="signup.html">signup <span class="path">signup.html</span></a></li>
+      <li><a href="find-id.html">find-id <span class="path">find-id.html</span></a></li>
+      <li><a href="find-password.html">reset-password <span class="path">find-password.html</span></a></li>
+      <li><a href="verify.html">verify <span class="path">verify.html</span></a></li>
+    </ul>
+  </main>
+
+  <script>
+    (function () {
+      var KEY = 'ctrls-theme';
+      var saved = localStorage.getItem(KEY) || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+      document.addEventListener('DOMContentLoaded', function () {
+        var btn = document.getElementById('themeToggle');
+        var label = document.getElementById('themeLabel');
+        if (!btn) return;
+        function sync() {
+          var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+          label.textContent = cur;
+        }
+        sync();
+        btn.addEventListener('click', function () {
+          var cur = document.documentElement.getAttribute('data-theme') || 'dark';
+          var next = cur === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem(KEY, next);
+          sync();
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

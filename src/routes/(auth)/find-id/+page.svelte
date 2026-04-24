@@ -1,10 +1,21 @@
 <script lang="ts">
 import { resolve } from "$app/paths";
+import { onMount } from "svelte";
 import { t } from "$lib/i18n.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const result = $derived(form as { sent?: boolean; maskedUsername?: string | null; error?: string } | null);
+
+onMount(() => {
+    if (!data.skinHtml && !(form as { skinHtml?: string } | null)?.skinHtml) return;
+    const s = document.createElement("script");
+    s.src = "/api/skin-scripts";
+    document.head.appendChild(s);
+    return () => {
+        if (s.parentNode) s.parentNode.removeChild(s);
+    };
+});
 
 function buildAuthSuffix(redirectTo: string | null, skinHint: string | null): string {
     const parts: string[] = [];
