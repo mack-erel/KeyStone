@@ -55,9 +55,16 @@ const script = `
   }
   function init(){
     var btn=document.getElementById('idp-passkey-btn');
-    if(!btn)return;
-    var redir=(document.querySelector('[name="redirectTo"]')||{}).value||'';
-    btn.addEventListener('click',function(){passkeyLogin(btn,redir);});
+    if(btn){
+      var redir=(document.querySelector('[name="redirectTo"]')||{}).value||'';
+      btn.addEventListener('click',function(){passkeyLogin(btn,redir);});
+    }
+    // 커스텀 스킨(skin-scripts)이 호출할 수 있도록 전역 함수 노출
+    window.idpPasskeyLogin=function(){
+      var b=document.getElementById('passkey')||document.getElementById('idp-passkey-btn')||document.createElement('button');
+      var r=(document.querySelector('[name="redirectTo"]')||{}).value||'';
+      passkeyLogin(b,r);
+    };
   }
   if(document.readyState==='loading'){
     document.addEventListener('DOMContentLoaded',init);
