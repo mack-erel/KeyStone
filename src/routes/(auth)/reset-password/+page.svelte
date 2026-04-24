@@ -5,8 +5,31 @@ import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const err = $derived((form as { error?: string } | null)?.error ?? null);
+
+const findPasswordHref = $derived(
+    (() => {
+        const parts: string[] = [];
+        if (data.redirectTo) parts.push(`redirectTo=${encodeURIComponent(data.redirectTo)}`);
+        if (data.skinHint) parts.push(`skinHint=${encodeURIComponent(data.skinHint)}`);
+        return resolve("/find-password") + (parts.length ? `?${parts.join("&")}` : "");
+    })(),
+);
 </script>
 
+{#if data.skinHtml}
+    {#if err}
+        <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg">
+            {err}
+        </div>
+    {/if}
+    {#if !data.valid}
+        <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg">
+            {t("reset_password.invalid_link")}
+        </div>
+    {/if}
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+    {@html data.skinHtml}
+{:else}
 <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
     <div class="w-full max-w-md space-y-6 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
         <div>
@@ -18,7 +41,8 @@ const err = $derived((form as { error?: string } | null)?.error ?? null);
             <div class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                 {t("reset_password.invalid_link")}
             </div>
-            <a href={resolve("/find-password")} class="block text-center text-sm text-blue-600 hover:underline">
+            <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+            <a href={findPasswordHref} class="block text-center text-sm text-blue-600 hover:underline">
                 {t("find_password.title")} →
             </a>
         {:else}
@@ -27,6 +51,8 @@ const err = $derived((form as { error?: string } | null)?.error ?? null);
             {/if}
             <form method="POST" class="space-y-4">
                 <input type="hidden" name="token" value={data.token} />
+                {#if data.redirectTo}<input type="hidden" name="redirectTo" value={data.redirectTo} />{/if}
+                {#if data.skinHint}<input type="hidden" name="skinHint" value={data.skinHint} />{/if}
                 <div>
                     <label for="password" class="block text-sm font-medium text-gray-700">{t("reset_password.password_label")}</label>
                     <input
@@ -55,3 +81,4 @@ const err = $derived((form as { error?: string } | null)?.error ?? null);
         {/if}
     </div>
 </div>
+{/if}

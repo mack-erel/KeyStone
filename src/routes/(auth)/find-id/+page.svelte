@@ -5,6 +5,15 @@ import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const result = $derived(form as { sent?: boolean; maskedUsername?: string | null; error?: string } | null);
+
+function buildAuthSuffix(redirectTo: string | null, skinHint: string | null): string {
+    const parts: string[] = [];
+    if (redirectTo) parts.push(`redirectTo=${encodeURIComponent(redirectTo)}`);
+    if (skinHint) parts.push(`skinHint=${encodeURIComponent(skinHint)}`);
+    return parts.length ? `?${parts.join("&")}` : "";
+}
+
+const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.skinHint ?? null));
 </script>
 
 {#if data.skinHtml}
@@ -56,9 +65,11 @@ const result = $derived(form as { sent?: boolean; maskedUsername?: string | null
             {/if}
 
             <div class="flex justify-center gap-4 text-sm text-gray-500">
-                <a href={resolve("/login")} class="hover:text-blue-600">{t("login.submit")}</a>
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                <a href={resolve("/login") + authLinkSuffix} class="hover:text-blue-600">{t("login.submit")}</a>
                 <span>·</span>
-                <a href={resolve("/find-password")} class="hover:text-blue-600">{t("find_password.title")}</a>
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                <a href={resolve("/find-password") + authLinkSuffix} class="hover:text-blue-600">{t("find_password.title")}</a>
             </div>
         </div>
     </div>

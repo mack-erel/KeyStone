@@ -6,12 +6,46 @@ import { users, passwordResetTokens } from "$lib/server/db/schema";
 import { hashPassword } from "$lib/server/auth/password";
 import { hashToken } from "$lib/server/email";
 import { resolve } from "$app/paths";
+import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
+import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+async function resolveSkin(
+    skinHint: string | null,
+    locals: App.Locals,
+    platform: App.Platform | undefined,
+    token: string | null,
+    redirectTo: string | null,
+): Promise<string | null> {
+    if (!skinHint || !locals.db || !locals.tenant) return null;
+    const colonIdx = skinHint.indexOf(":");
+    if (colonIdx <= 0) return null;
+    const clientType = skinHint.slice(0, colonIdx) as "oidc" | "saml";
+    const clientRefId = skinHint.slice(colonIdx + 1);
+    if (clientType !== "oidc" && clientType !== "saml") return null;
+    const raw = await resolveSkinHtml(locals.db, platform, locals.tenant.id, clientType, clientRefId, "reset_password");
+    if (!raw) return null;
+    return replacePlaceholders(raw, {
+        IDP_FORM_ACTION: "",
+        IDP_REDIRECT_TO: escapeHtml(redirectTo ?? ""),
+        IDP_SKIN_HINT: escapeHtml(skinHint),
+        IDP_TOKEN: escapeHtml(token ?? ""),
+    });
+}
+
+export const load: PageServerLoad = async ({ locals, url, platform }) => {
+    const redirectTo = sanitizeRedirectTarget(url.searchParams.get("redirectTo"));
+    const skinHint = url.searchParams.get("skinHint") ?? null;
+
     const token = url.searchParams.get("token");
-    if (!token) return { valid: false, token: null };
+    if (!token) {
+        const skinHtml = await resolveSkin(skinHint, locals, platform, null, redirectTo);
+        return { valid: false, token: null, redirectTo, skinHint, skinHtml };
+    }
 
-    if (!locals.db) return { valid: false, token: null };
+    if (!locals.db) {
+        const skinHtml = await resolveSkin(skinHint, locals, platform, token, redirectTo);
+        return { valid: false, token: null, redirectTo, skinHint, skinHtml };
+    }
 
     const tokenHash = await hashToken(token);
     const now = new Date();
@@ -22,9 +56,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
         .where(and(eq(passwordResetTokens.tokenHash, tokenHash), isNull(passwordResetTokens.usedAt)))
         .limit(1);
 
-    if (!record || record.expiresAt < now) return { valid: false, token };
+    const valid = !!(record && record.expiresAt >= now);
+    const skinHtml = await resolveSkin(skinHint, locals, platform, valid ? token : null, redirectTo);
 
-    return { valid: true, token };
+    if (!valid) return { valid: false, token, redirectTo, skinHint, skinHtml };
+
+    return { valid: true, token, redirectTo, skinHint, skinHtml };
 };
 
 export const actions: Actions = {
@@ -35,6 +72,8 @@ export const actions: Actions = {
         const token = String(formData.get("token") ?? "");
         const password = String(formData.get("password") ?? "");
         const confirmPassword = String(formData.get("confirmPassword") ?? "");
+        const redirectTo = sanitizeRedirectTarget(String(formData.get("redirectTo") ?? ""));
+        const skinHint = String(formData.get("skinHint") ?? "");
 
         if (!token) return fail(400, { error: "유효하지 않은 요청입니다." });
         if (password.length < 8) return fail(400, { error: "비밀번호는 8자 이상이어야 합니다." });
@@ -71,6 +110,10 @@ export const actions: Actions = {
 
         await db.update(passwordResetTokens).set({ usedAt: now }).where(eq(passwordResetTokens.id, record.id));
 
-        throw redirect(302, resolve("/login") + "?passwordReset=1");
+        const extra = new URLSearchParams();
+        if (redirectTo) extra.set("redirectTo", redirectTo);
+        if (skinHint) extra.set("skinHint", skinHint);
+        const extraStr = extra.toString();
+        throw redirect(302, resolve("/login") + "?passwordReset=1" + (extraStr ? `&${extraStr}` : ""));
     },
 };

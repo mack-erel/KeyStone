@@ -27,7 +27,8 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
         }
     }
 
-    return { skinHint, skinHtml };
+    const redirectTo = url.searchParams.get("redirectTo") ?? null;
+    return { skinHint, skinHtml, redirectTo };
 };
 
 async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean, maskedUsername: string | null): Promise<string | null> {

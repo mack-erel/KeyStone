@@ -15,21 +15,7 @@ import { provisionLdapUser } from "$lib/server/ldap/provision";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
 import { decryptSecret } from "$lib/server/crypto/keys";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
-
-function sanitizeRedirectTarget(target: string | null): string | null {
-    if (!target) return null;
-    // URL 디코딩 후 재검사 — /%2f, /\ 등 우회 패턴 차단
-    let decoded: string;
-    try {
-        decoded = decodeURIComponent(target);
-    } catch {
-        return null;
-    }
-    if (!decoded.startsWith("/") || decoded.startsWith("//") || decoded.includes("\\")) {
-        return null;
-    }
-    return target;
-}
+import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     // forceAuthn=true 이면 이미 로그인된 사용자도 재인증을 진행해야 하므로 자동 리다이렉트 생략

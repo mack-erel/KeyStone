@@ -30,7 +30,8 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
         }
     }
 
-    return { skinHint, skinHtml };
+    const redirectTo = url.searchParams.get("redirectTo") ?? null;
+    return { skinHint, skinHtml, redirectTo };
 };
 
 async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], sent: boolean): Promise<string | null> {
@@ -76,7 +77,12 @@ export const actions: Actions = {
                 const expiresAt = new Date(Date.now() + RESET_EXPIRY_MS);
                 await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
                 const issuer = (env.IDP_ISSUER_URL ?? event.url.origin).replace(/\.+$/, "").replace(/\/+$/, "");
-                const resetUrl = `${issuer}/reset-password?token=${token}`;
+                const resetParams = new URLSearchParams({ token });
+                const redirectTo = event.url.searchParams.get("redirectTo");
+                const skinHint = event.url.searchParams.get("skinHint");
+                if (redirectTo) resetParams.set("redirectTo", redirectTo);
+                if (skinHint) resetParams.set("skinHint", skinHint);
+                const resetUrl = `${issuer}/reset-password?${resetParams.toString()}`;
                 await sendPasswordResetEmail(user.email, resetUrl);
             } catch {
                 // 조용히 무시
