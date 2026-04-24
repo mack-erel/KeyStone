@@ -282,9 +282,9 @@ const JS = `(function(){
 })();`;
 
 export const GET: RequestHandler = () =>
-	new Response(JS, {
-		headers: {
-			"Content-Type": "application/javascript; charset=utf-8",
-			"Cache-Control": "public, max-age=3600",
-		},
-	});
+    new Response(JS, {
+        headers: {
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Cache-Control": "public, max-age=3600",
+        },
+    });
