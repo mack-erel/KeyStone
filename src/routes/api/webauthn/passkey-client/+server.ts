@@ -14,6 +14,16 @@ const script = `
     return btoa(bin).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=/g,'');
   }
   function showError(msg){
+    // 1) 스킨이 제공하는 #flash 우선 사용 (로그인 실패와 동일한 UX)
+    var flash=document.getElementById('flash');
+    var flashMsg=document.getElementById('flash-msg');
+    if(flash&&flashMsg){
+      flashMsg.textContent=msg;
+      flash.classList.add('show');
+      clearTimeout(flash._t);flash._t=setTimeout(function(){flash.classList.remove('show');},4000);
+      return;
+    }
+    // 2) fallback: 스킨에 #flash 가 없을 때만 토스트 생성
     var t=document.getElementById('idp-passkey-err');
     if(!t){
       t=document.createElement('div');t.id='idp-passkey-err';
