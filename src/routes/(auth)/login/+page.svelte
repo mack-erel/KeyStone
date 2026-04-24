@@ -1,10 +1,21 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
+import { onMount } from "svelte";
 import { t } from "$lib/i18n.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
+
+onMount(() => {
+    if (!data.skinHtml) return;
+    const s = document.createElement("script");
+    s.src = "/api/webauthn/passkey-client";
+    document.head.appendChild(s);
+    return () => {
+        if (s.parentNode) s.parentNode.removeChild(s);
+    };
+});
 
 let passkeyLoading = $state(false);
 let passkeyError = $state("");
