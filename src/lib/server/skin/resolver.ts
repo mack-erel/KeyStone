@@ -22,7 +22,7 @@ export async function resolveSkinHtml(
     tenantId: string,
     clientType: "oidc" | "saml",
     clientRefId: string,
-    skinType: "login" | "signup" | "find_id" | "find_password" | "mfa" = "login",
+    skinType: "login" | "signup" | "find_id" | "find_password" | "mfa" | "reset_password" = "login",
 ): Promise<string | null> {
     const [skin] = await db
         .select()
@@ -93,7 +93,7 @@ export async function invalidateSkinCache(
     tenantId: string,
     clientType: "oidc" | "saml",
     clientRefId: string,
-    skinType: "login" | "signup" | "find_id" | "find_password" | "mfa" = "login",
+    skinType: "login" | "signup" | "find_id" | "find_password" | "mfa" | "reset_password" = "login",
 ): Promise<void> {
     const r2 = (platform?.env as Record<string, unknown> | undefined)?.SKIN_CACHE as R2Bucket | undefined;
     if (!r2) return;

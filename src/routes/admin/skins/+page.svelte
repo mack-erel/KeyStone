@@ -14,8 +14,11 @@ const firstClientId = untrack(() => data.oidcList[0]?.id ?? data.samlList[0]?.id
 let selectedClientRefId = $state(firstClientId);
 const derivedClientType = $derived(data.oidcList.some((c: { id: string }) => c.id === selectedClientRefId) ? "oidc" : "saml");
 
+let editingId = $state<string | null>(null);
+
 const createErr = $derived((form as { create?: boolean; error?: string } | null)?.create ? ((form as { error?: string } | null)?.error ?? null) : null);
-const globalErr = $derived(createErr ? null : ((form as { error?: string } | null)?.error ?? null));
+const updateErr = $derived((form as { update?: boolean; updateId?: string; error?: string } | null)?.update ? ((form as { error?: string } | null)?.error ?? null) : null);
+const globalErr = $derived(createErr || updateErr ? null : ((form as { error?: string } | null)?.error ?? null));
 
 const CLIENT_TYPE_LABEL: Record<string, string> = { oidc: "OIDC", saml: "SAML" };
 
@@ -52,6 +55,10 @@ function clientLabel(clientType: string, clientRefId: string): string {
         <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">{t("skins.cache_invalidated")}</div>
     {/if}
 
+    {#if (form as { updated?: boolean } | null)?.updated}
+        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">스킨이 수정되었습니다. (캐시도 자동으로 초기화되었습니다.)</div>
+    {/if}
+
     {#if showCreate}
         <div class="rounded-xl border border-blue-100 bg-blue-50 p-5">
             <h2 class="mb-4 font-semibold text-blue-900">{t("skins.create_title")}</h2>
@@ -76,6 +83,7 @@ function clientLabel(clientType: string, clientRefId: string): string {
                         <option value="find_id">{t("skins.skin_type_find_id")}</option>
                         <option value="find_password">{t("skins.skin_type_find_password")}</option>
                         <option value="mfa">{t("skins.skin_type_mfa")}</option>
+                        <option value="reset_password">{t("skins.skin_type_reset_password")}</option>
                     </select>
                 </div>
                 <div>
@@ -173,6 +181,9 @@ function clientLabel(clientType: string, clientRefId: string): string {
                             <td class="px-4 py-3 text-xs text-gray-400">{dateFormatter.format(skin.createdAt)}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
+                                    <button type="button" class="text-xs text-indigo-500 hover:text-indigo-700" onclick={() => (editingId = editingId === skin.id ? null : skin.id)}>
+                                        {editingId === skin.id ? t("common.cancel") : t("common.edit")}
+                                    </button>
                                     <form method="POST" action="?/toggleEnabled" use:enhance>
                                         <input type="hidden" name="id" value={skin.id} />
                                         <button type="submit" class="text-xs text-gray-500 hover:text-gray-800">
@@ -197,6 +208,60 @@ function clientLabel(clientType: string, clientRefId: string): string {
                                 </div>
                             </td>
                         </tr>
+                        {#if editingId === skin.id}
+                            <tr class="bg-indigo-50">
+                                <td colspan="7" class="px-4 py-4">
+                                    {#if updateErr && (form as { updateId?: string } | null)?.updateId === skin.id}
+                                        <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{updateErr}</div>
+                                    {/if}
+                                    <form
+                                        method="POST"
+                                        action="?/update"
+                                        use:enhance={() =>
+                                            ({ result, update }) => {
+                                                update();
+                                                if (result.type === "success") editingId = null;
+                                            }}
+                                        class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                        <input type="hidden" name="id" value={skin.id} />
+                                        <div class="sm:col-span-3">
+                                            <label for="e-fetchUrl-{skin.id}" class="block text-xs font-medium text-gray-700">{t("skins.fetch_url_label")}</label>
+                                            <input
+                                                id="e-fetchUrl-{skin.id}"
+                                                type="url"
+                                                name="fetchUrl"
+                                                value={skin.fetchUrl}
+                                                required
+                                                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none" />
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <label for="e-fetchSecret-{skin.id}" class="block text-xs font-medium text-gray-700">{t("skins.fetch_secret_label")}</label>
+                                            <input
+                                                id="e-fetchSecret-{skin.id}"
+                                                type="password"
+                                                name="fetchSecret"
+                                                placeholder={t("skins.fetch_secret_placeholder")}
+                                                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none" />
+                                        </div>
+                                        <div>
+                                            <label for="e-cacheTtl-{skin.id}" class="block text-xs font-medium text-gray-700">{t("skins.cache_ttl_label")}</label>
+                                            <input
+                                                id="e-cacheTtl-{skin.id}"
+                                                type="number"
+                                                name="cacheTtlSeconds"
+                                                value={skin.cacheTtlSeconds}
+                                                min="60"
+                                                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none" />
+                                        </div>
+                                        <div class="flex items-end justify-end sm:col-span-3">
+                                            <button type="submit" class="rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">
+                                                {t("common.save")}
+                                            </button>
+                                        </div>
+                                    </form>
+                                </td>
+                            </tr>
+                        {/if}
                     {/each}
                 {/if}
             </tbody>

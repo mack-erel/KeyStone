@@ -5,6 +5,15 @@ import { t } from "$lib/i18n.svelte";
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
 let useBackup = $state(false);
+
+const loginHref = $derived(
+    (() => {
+        const parts: string[] = [];
+        if (data.redirectTo) parts.push(`redirectTo=${encodeURIComponent(data.redirectTo)}`);
+        if (data.skinHint) parts.push(`skinHint=${encodeURIComponent(data.skinHint)}`);
+        return "/login" + (parts.length ? `?${parts.join("&")}` : "");
+    })(),
+);
 </script>
 
 {#if data.skinHtml}
@@ -78,7 +87,7 @@ let useBackup = $state(false);
 
             <div class="mt-3 text-center">
                 <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-                <a href="/login" class="text-sm text-gray-500 hover:underline">{t("mfa_login.back_to_login")}</a>
+                <a href={loginHref} class="text-sm text-gray-500 hover:underline">{t("mfa_login.back_to_login")}</a>
             </div>
         </div>
     </div>

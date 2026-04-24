@@ -55,7 +55,7 @@ export const load: PageServerLoad = async ({ locals, cookies, platform, url }) =
         }
     }
 
-    return { skinHtml };
+    return { skinHtml, skinHint, redirectTo: claims.redirectTo ?? null };
 };
 
 export const actions: Actions = {

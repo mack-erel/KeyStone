@@ -4,6 +4,15 @@ import { t } from "$lib/i18n.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
+
+function buildAuthSuffix(redirectTo: string | null, skinHint: string | null): string {
+    const parts: string[] = [];
+    if (redirectTo) parts.push(`redirectTo=${encodeURIComponent(redirectTo)}`);
+    if (skinHint) parts.push(`skinHint=${encodeURIComponent(skinHint)}`);
+    return parts.length ? `?${parts.join("&")}` : "";
+}
+
+const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.skinHint ?? null));
 </script>
 
 {#if data.skinHtml}
@@ -76,7 +85,8 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
             <p class="text-center text-sm text-gray-500">
                 {t("signup.have_account")}
-                <a href={resolve("/login")} class="text-blue-600 hover:underline">{t("login.submit")}</a>
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                <a href={resolve("/login") + authLinkSuffix} class="text-blue-600 hover:underline">{t("login.submit")}</a>
             </p>
         </div>
     </div>

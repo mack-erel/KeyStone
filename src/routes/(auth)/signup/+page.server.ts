@@ -6,9 +6,11 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { hashPassword } from "$lib/server/auth/password";
 import { users, credentials, identities } from "$lib/server/db/schema";
 import { resolve } from "$app/paths";
+import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     const skinHint = url.searchParams.get("skinHint");
+    const redirectTo = sanitizeRedirectTarget(url.searchParams.get("redirectTo"));
     let skinHtml: string | null = null;
 
     if (skinHint && locals.db && locals.tenant) {
@@ -22,13 +24,14 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
                     skinHtml = replacePlaceholders(raw, {
                         IDP_FORM_ACTION: "",
                         IDP_SKIN_HINT: escapeHtml(skinHint),
+                        IDP_REDIRECT_TO: escapeHtml(redirectTo ?? ""),
                     });
                 }
             }
         }
     }
 
-    return { skinHint, skinHtml };
+    return { skinHint, skinHtml, redirectTo };
 };
 
 export const actions: Actions = {
@@ -73,6 +76,12 @@ export const actions: Actions = {
         await db.insert(credentials).values({ userId, type: "password", secret: hashedPw, label: "비밀번호", createdAt: now });
         await db.insert(identities).values({ tenantId: tenant.id, userId, provider: "local", subject: email, email, linkedAt: now });
 
-        throw redirect(302, resolve("/login") + "?registered=1");
+        const redirectTo = sanitizeRedirectTarget(event.url.searchParams.get("redirectTo"));
+        const skinHint = event.url.searchParams.get("skinHint") ?? "";
+        const extra = new URLSearchParams();
+        if (redirectTo) extra.set("redirectTo", redirectTo);
+        if (skinHint) extra.set("skinHint", skinHint);
+        const extraStr = extra.toString();
+        throw redirect(302, resolve("/login") + "?registered=1" + (extraStr ? `&${extraStr}` : ""));
     },
 };

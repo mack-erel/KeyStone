@@ -24,7 +24,7 @@ export const actions: Actions = {
 
         const clientType = fd.get("clientType") as "oidc" | "saml";
         const clientRefId = String(fd.get("clientRefId") ?? "").trim();
-        const skinType = (fd.get("skinType") ?? "login") as "login" | "signup" | "find_id" | "find_password";
+        const skinType = (fd.get("skinType") ?? "login") as "login" | "signup" | "find_id" | "find_password" | "mfa" | "reset_password";
         const fetchUrl = String(fd.get("fetchUrl") ?? "").trim();
         const fetchSecret = String(fd.get("fetchSecret") ?? "").trim() || null;
         const cacheTtlSeconds = Number(fd.get("cacheTtlSeconds") ?? 3600);
@@ -117,5 +117,43 @@ export const actions: Actions = {
         await invalidateSkinCache(platform, tenant.id, skin.clientType, skin.clientRefId, skin.skinType);
 
         return { invalidated: true };
+    },
+
+    update: async ({ request, locals, platform }) => {
+        const { db, tenant } = requireAdminContext(locals);
+        const fd = await request.formData();
+        const id = String(fd.get("id") ?? "").trim();
+        const fetchUrl = String(fd.get("fetchUrl") ?? "").trim();
+        const fetchSecret = String(fd.get("fetchSecret") ?? "").trim() || null;
+        const cacheTtlSeconds = Number(fd.get("cacheTtlSeconds") ?? 3600);
+
+        if (!fetchUrl) return fail(400, { update: true, updateId: id, error: "URL을 입력해 주세요." });
+
+        let url: URL;
+        try {
+            url = new URL(fetchUrl);
+        } catch {
+            return fail(400, { update: true, updateId: id, error: "유효한 URL을 입력해 주세요." });
+        }
+        if (url.protocol !== "https:" && url.protocol !== "http:") {
+            return fail(400, { update: true, updateId: id, error: "http 또는 https URL만 허용됩니다." });
+        }
+
+        const [skin] = await db
+            .select()
+            .from(clientSkins)
+            .where(and(eq(clientSkins.id, id), eq(clientSkins.tenantId, tenant.id)))
+            .limit(1);
+
+        if (!skin) return fail(404, { update: true, updateId: id, error: "스킨을 찾을 수 없습니다." });
+
+        await db
+            .update(clientSkins)
+            .set({ fetchUrl, fetchSecret, cacheTtlSeconds: isNaN(cacheTtlSeconds) ? 3600 : cacheTtlSeconds })
+            .where(eq(clientSkins.id, id));
+
+        await invalidateSkinCache(platform, tenant.id, skin.clientType, skin.clientRefId, skin.skinType);
+
+        return { updated: true };
     },
 };

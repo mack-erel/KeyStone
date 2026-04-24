@@ -1,13 +1,33 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
+import { onMount } from "svelte";
 import { t } from "$lib/i18n.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
+onMount(() => {
+    if (!data.skinHtml) return;
+    const s = document.createElement("script");
+    s.src = "/api/webauthn/passkey-client";
+    document.head.appendChild(s);
+    return () => {
+        if (s.parentNode) s.parentNode.removeChild(s);
+    };
+});
+
 let passkeyLoading = $state(false);
 let passkeyError = $state("");
+
+function buildAuthSuffix(redirectTo: string | null, skinHint: string | null): string {
+    const parts: string[] = [];
+    if (redirectTo) parts.push(`redirectTo=${encodeURIComponent(redirectTo)}`);
+    if (skinHint) parts.push(`skinHint=${encodeURIComponent(skinHint)}`);
+    return parts.length ? `?${parts.join("&")}` : "";
+}
+
+const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo, data.skinHint));
 
 async function loginWithPasskey() {
     passkeyError = "";
@@ -169,11 +189,14 @@ async function loginWithPasskey() {
             </button>
 
             <div class="mt-5 flex justify-center gap-4 text-sm text-gray-500">
-                <a href={resolve("/signup")} class="hover:text-blue-600">{t("signup.title")}</a>
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                <a href={resolve("/signup") + authLinkSuffix} class="hover:text-blue-600">{t("signup.title")}</a>
                 <span>·</span>
-                <a href={resolve("/find-id")} class="hover:text-blue-600">{t("find_id.title")}</a>
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                <a href={resolve("/find-id") + authLinkSuffix} class="hover:text-blue-600">{t("find_id.title")}</a>
                 <span>·</span>
-                <a href={resolve("/find-password")} class="hover:text-blue-600">{t("find_password.title")}</a>
+                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                <a href={resolve("/find-password") + authLinkSuffix} class="hover:text-blue-600">{t("find_password.title")}</a>
             </div>
         </div>
     </div>
