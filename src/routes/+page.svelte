@@ -5,7 +5,6 @@ import { t } from "$lib/i18n.svelte";
 const quickLinks = [
     { route: "/login" as const, label: "관리자 로그인" },
     { route: "/admin" as const, label: "관리자 콘솔" },
-    { route: "/poc" as const, label: "Workers PoC" },
 ];
 </script>
 

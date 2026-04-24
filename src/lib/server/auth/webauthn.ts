@@ -11,26 +11,10 @@ import type { AuthenticatorTransportFuture, AuthenticationResponseJSON, Registra
 import type { DB } from "$lib/server/db";
 import { credentials, users, webauthnChallenges } from "$lib/server/db/schema";
 import { eq, and, isNull, gt, sql } from "drizzle-orm";
+import { b64uEncode, b64uDecode } from "$lib/server/crypto/keys";
 
 export const WEBAUTHN_CHALLENGE_COOKIE = "idp_webauthn_challenge";
 const CHALLENGE_TTL_MS = 5 * 60 * 1000; // 5분
-
-// ── b64u 헬퍼 ─────────────────────────────────────────────────────────────────
-
-function b64uEncode(buf: Uint8Array): string {
-    return btoa(String.fromCharCode(...buf))
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/, "");
-}
-
-function b64uDecode(s: string): Uint8Array<ArrayBuffer> {
-    const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
-    const bin = atob(b64);
-    const arr = new Uint8Array(bin.length) as Uint8Array<ArrayBuffer>;
-    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-    return arr;
-}
 
 // ── Challenge cookie ──────────────────────────────────────────────────────────
 

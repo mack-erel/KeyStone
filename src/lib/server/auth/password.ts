@@ -88,23 +88,3 @@ async function verifyPbkdf2(password: string, record: string): Promise<boolean> 
     return timingSafeEqual(new Uint8Array(bits), storedHash);
 }
 
-// ── 관리자 전용: 순수 PBKDF2 파싱 (하위 호환 포맷 유지) ─────────────────────
-
-function parseHashRecord(record: string) {
-    const [algorithm, params, saltB64, hashB64] = record.split("$");
-    const [digest, iterationsString] = params?.split(":") ?? [];
-    const iterations = Number(iterationsString);
-    if (algorithm !== "pbkdf2" || digest !== "sha256" || !Number.isFinite(iterations) || !saltB64 || !hashB64) return null;
-    return { iterations, salt: base64ToBytes(saltB64), hash: base64ToBytes(hashB64) };
-}
-
-export async function verifyPasswordLegacy(password: string, record: string): Promise<boolean> {
-    if (record.startsWith("$argon2")) {
-        return verifyEncoded(record, new TextEncoder().encode(password));
-    }
-    const parsed = parseHashRecord(record);
-    if (!parsed) return false;
-    const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), { name: "PBKDF2" }, false, ["deriveBits"]);
-    const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: parsed.salt.buffer as ArrayBuffer, iterations: parsed.iterations }, keyMaterial, 256);
-    return timingSafeEqual(new Uint8Array(bits), parsed.hash);
-}
