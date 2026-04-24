@@ -7,8 +7,10 @@ import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
+const skinHtmlEffective = $derived((form as { skinHtml?: string | null } | null)?.skinHtml ?? data.skinHtml);
+
 onMount(() => {
-    if (!data.skinHtml) return;
+    if (!skinHtmlEffective) return;
     const scripts: HTMLScriptElement[] = [];
     for (const src of ["/api/skin-scripts", "/api/webauthn/passkey-client"]) {
         const s = document.createElement("script");
@@ -75,20 +77,15 @@ async function loginWithPasskey() {
 }
 </script>
 
-{#if data.skinHtml}
-    <!-- 커스텀 스킨 -->
+{#if skinHtmlEffective}
+    <!-- 커스텀 스킨 — 에러/성공 메시지는 스킨 내부 #flash 로 표시됨 -->
     {#if !data.dbReady && data.runtimeError}
         <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
             {data.runtimeError}
         </div>
     {/if}
-    {#if form?.error}
-        <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg">
-            {form.error}
-        </div>
-    {/if}
     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-    {@html data.skinHtml}
+    {@html skinHtmlEffective}
 {:else}
     <!-- 기본 스킨 -->
     <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">

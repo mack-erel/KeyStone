@@ -19,6 +19,19 @@ const JS = `(function(){
     });
   }
 
+  // ── Flash (server-filled IDP_FLASH_MSG) ───────────────────────────────
+  function initFlash(){
+    var flashMsgEl=document.getElementById('flash-msg');
+    var flashEl=document.getElementById('flash');
+    if(!flashMsgEl||!flashEl)return false;
+    var txt=(flashMsgEl.textContent||'').trim();
+    if(txt){
+      flashEl.classList.add('show');
+      return true;
+    }
+    return false;
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
   function setField(id,errMsg,okMsg){
     var field=document.getElementById(id);
@@ -56,10 +69,12 @@ const JS = `(function(){
 
   // ── Login ─────────────────────────────────────────────────────────────
   function initLogin(){
+    // 서버가 채운 flash 메시지가 있으면 그걸 우선 표시(에러 스타일 유지).
+    var hadServerFlash=initFlash();
     var meta=document.getElementById('skin-meta');
-    if(meta){
-      var flash=document.getElementById('flash');
-      var flashMsg=document.getElementById('flash-msg');
+    var flash=document.getElementById('flash');
+    var flashMsg=document.getElementById('flash-msg');
+    if(meta&&!hadServerFlash){
       if(meta.dataset.registered==='1'&&flash&&flashMsg){
         flash.classList.add('ok','show');
         var tag=flash.querySelector('.tag');if(tag)tag.textContent='[ok]';
@@ -72,15 +87,29 @@ const JS = `(function(){
     }
     var u=document.querySelector('input[name="username"]');
     var p=document.querySelector('input[name="password"]');
-    var btn=document.getElementById('login-submit');
+    var btn=document.getElementById('submit');
     if(!u||!p||!btn)return;
     function upd(){btn.disabled=!(u.value.trim()&&p.value);}
     u.addEventListener('input',upd);p.addEventListener('input',upd);
     upd();
+    // passkey button — trigger WebAuthn flow if global client is loaded
+    var pkBtn=document.getElementById('passkey');
+    if(pkBtn){
+      pkBtn.addEventListener('click',function(){
+        var w=window;
+        if(typeof w.idpPasskeyLogin==='function'){
+          w.idpPasskeyLogin();
+        }else if(flash&&flashMsg){
+          flashMsg.textContent='패스키 클라이언트를 불러올 수 없습니다.';
+          flash.classList.remove('ok');flash.classList.add('show');
+        }
+      });
+    }
   }
 
   // ── Signup ────────────────────────────────────────────────────────────
   function initSignup(){
+    initFlash();
     var USERNAME_RE=/^[a-zA-Z0-9_]{4,20}$/;
     var EMAIL_RE=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
     var u=document.getElementById('username');
@@ -88,27 +117,44 @@ const JS = `(function(){
     var p=document.getElementById('password');
     var c=document.getElementById('confirm');
     var btn=document.getElementById('submit');
+
+    function applyUsername(okRes){
+      var field=document.getElementById('f-username');
+      if(!field)return;
+      var errSpan=field.querySelector('[data-err]');
+      var def=field.querySelector('[data-default]');
+      field.classList.remove('error','ok');
+      if(errSpan)errSpan.textContent='';
+      if(def){def.textContent='// [a-zA-Z0-9_]{4,20}';def.style.color='';}
+      if(!u||!u.value)return;
+      if(!okRes.ok){
+        field.classList.add('error');
+        if(errSpan)errSpan.textContent=okRes.msg;
+      }else if(def){
+        def.textContent='// '+okRes.msg;
+        def.style.color='var(--success)';
+      }
+    }
+
     function upd(){
-      var okU=u&&USERNAME_RE.test(u.value);
-      var okE=e&&EMAIL_RE.test(e.value);
       var pw=p?p.value:'';
+      var uv=u?u.value:'';
+      var ev=e?e.value:'';
+      var cv=c?c.value:'';
+      var okU=USERNAME_RE.test(uv);
+      var okE=EMAIL_RE.test(ev);
       var okP=pw.length>=8&&pw.length<=64;
-      var okC=c&&c.value&&c.value===pw;
-      if(u&&u.value)setField('f-username',okU?null:'영문·숫자·밑줄(_) 4~20자',null);
-      else setField('f-username',null,null);
-      if(e&&e.value)setField('f-email',okE?null:'올바른 이메일 형식이 아닙니다',null);
+      var okC=cv.length>0&&cv===pw;
+      applyUsername(okU?{ok:true,msg:'available'}:{ok:false,msg:uv.length<4?'4자 이상 입력해주세요':(uv.length>20?'20자 이하로 입력해주세요':'영문, 숫자, 밑줄(_)만 사용 가능합니다')});
+      if(ev)setField('f-email',okE?null:'올바른 이메일 형식이 아닙니다',null);
       else setField('f-email',null,null);
-      updateStrength(pw,'strength','strengthLabel');
-      toggleRule('r-len',pw.length>=8&&pw.length<=64);
-      toggleRule('r-upper',/[A-Z]/.test(pw));
-      toggleRule('r-lower',/[a-z]/.test(pw));
-      toggleRule('r-num',/\\d/.test(pw));
-      if(p&&p.value)setField('f-password',okP?null:'8~64자로 입력해주세요',null);
+      if(pw)setField('f-password',okP?null:(pw.length<8?'8자 이상 입력해주세요':'64자 이하로 입력해주세요'),null);
       else setField('f-password',null,null);
-      if(c&&c.value){
-        if(c.value===pw)setField('f-confirm',null,'match');
+      if(cv){
+        if(cv===pw)setField('f-confirm',null,'match');
         else setField('f-confirm','비밀번호가 일치하지 않습니다',null);
       }else setField('f-confirm',null,null);
+      updateStrength(pw,'strength','strengthLabel');
       if(btn)btn.disabled=!(okU&&okE&&okP&&okC);
     }
     [u,e,p,c].forEach(function(el){if(el)el.addEventListener('input',upd);});
@@ -122,12 +168,13 @@ const JS = `(function(){
 
   // ── Find-id ───────────────────────────────────────────────────────────
   function initFindId(){
+    initFlash();
     var EMAIL_RE=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
     var meta=document.getElementById('skin-meta');
     var sent=meta&&meta.dataset.findIdSent==='1';
     var masked=(meta&&meta.dataset.maskedUsername)||'';
     if(sent){
-      var form=document.getElementById('find-id-form');
+      var form=document.getElementById('form');
       if(form)form.hidden=true;
       var resultEl=document.getElementById('result');
       if(resultEl){
@@ -159,6 +206,7 @@ const JS = `(function(){
 
   // ── Find-password ─────────────────────────────────────────────────────
   function initFindPassword(){
+    initFlash();
     var USERNAME_RE=/^[a-zA-Z0-9_]{4,20}$/;
     var EMAIL_RE=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;
     var meta=document.getElementById('skin-meta');
@@ -168,7 +216,7 @@ const JS = `(function(){
       var formWrap=document.getElementById('form-wrap');
       if(formWrap)formWrap.hidden=true;
       var sentEl=document.getElementById('sent');
-      if(sentEl){sentEl.hidden=false;sentEl.className='sent';}
+      if(sentEl)sentEl.hidden=false;
       var sentEmailEl=document.getElementById('sent-email');
       if(sentEmailEl&&submittedEmail)sentEmailEl.textContent=submittedEmail;
       var footer=document.getElementById('footer');
@@ -197,11 +245,18 @@ const JS = `(function(){
 
   // ── MFA ───────────────────────────────────────────────────────────────
   function initMfa(){
+    initFlash();
     var inputs=Array.prototype.slice.call(document.querySelectorAll('.otp input'));
     var otpVal=document.getElementById('otp-value');
     var submitBtn=document.getElementById('submit');
+    var errEl=document.getElementById('err');
     function code(){return inputs.map(function(i){return i.value;}).join('');}
-    function upd(){var c=code();if(otpVal)otpVal.value=c;if(submitBtn)submitBtn.disabled=c.length!==6;}
+    function upd(){
+      var c=code();
+      if(otpVal)otpVal.value=c;
+      if(submitBtn)submitBtn.disabled=c.length!==6;
+      if(errEl)errEl.classList.remove('show');
+    }
     inputs.forEach(function(inp,i){
       inp.addEventListener('input',function(){
         if(inp.value&&!/^\\d$/.test(inp.value)){inp.value='';upd();return;}
@@ -228,6 +283,7 @@ const JS = `(function(){
 
   // ── Reset-password ────────────────────────────────────────────────────
   function initResetPassword(){
+    initFlash();
     var params=new URLSearchParams(location.search);
     var token=params.get('token')||'';
     var tokenPreview=document.getElementById('token-preview');
@@ -275,6 +331,7 @@ const JS = `(function(){
     else if(skinType==='find_password')initFindPassword();
     else if(skinType==='mfa')initMfa();
     else if(skinType==='reset_password')initResetPassword();
+    else initFlash();
   }
 
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',run);}

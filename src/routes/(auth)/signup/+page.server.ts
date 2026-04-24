@@ -25,6 +25,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
                         IDP_FORM_ACTION: "",
                         IDP_SKIN_HINT: escapeHtml(skinHint),
                         IDP_REDIRECT_TO: escapeHtml(redirectTo ?? ""),
+                        IDP_FLASH_MSG: "",
                     });
                 }
             }
@@ -33,6 +34,25 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
 
     return { skinHint, skinHtml, redirectTo };
 };
+
+async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], flashMsg: string): Promise<string | null> {
+    const skinHint = event.url.searchParams.get("skinHint");
+    if (!skinHint || !event.locals.db || !event.locals.tenant) return null;
+    const colonIdx = skinHint.indexOf(":");
+    if (colonIdx <= 0) return null;
+    const clientType = skinHint.slice(0, colonIdx) as "oidc" | "saml";
+    const clientRefId = skinHint.slice(colonIdx + 1);
+    if ((clientType !== "oidc" && clientType !== "saml") || !clientRefId) return null;
+    const raw = await resolveSkinHtml(event.locals.db, event.platform, event.locals.tenant.id, clientType, clientRefId, "signup");
+    if (!raw) return null;
+    const redirectTo = sanitizeRedirectTarget(event.url.searchParams.get("redirectTo"));
+    return replacePlaceholders(raw, {
+        IDP_FORM_ACTION: "",
+        IDP_SKIN_HINT: escapeHtml(skinHint),
+        IDP_REDIRECT_TO: escapeHtml(redirectTo ?? ""),
+        IDP_FLASH_MSG: escapeHtml(flashMsg),
+    });
+}
 
 export const actions: Actions = {
     default: async (event) => {
@@ -48,25 +68,27 @@ export const actions: Actions = {
         const password = String(formData.get("password") ?? "");
         const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
-        if (!username || !email || !password) return fail(400, { error: "모든 필드를 입력해 주세요." });
-        if (!/^[a-z0-9_]{3,32}$/.test(username)) return fail(400, { error: "아이디는 영문 소문자, 숫자, _만 사용 가능하며 3~32자여야 합니다." });
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(400, { error: "올바른 이메일 주소를 입력해 주세요." });
-        if (password.length < 8) return fail(400, { error: "비밀번호는 8자 이상이어야 합니다." });
-        if (password !== confirmPassword) return fail(400, { error: "비밀번호가 일치하지 않습니다." });
+        const failSkin = async (status: number, msg: string) => fail(status, { error: msg, skinHtml: await resolveSkinForAction(event, msg) });
+
+        if (!username || !email || !password) return failSkin(400, "모든 필드를 입력해 주세요.");
+        if (!/^[a-z0-9_]{3,32}$/.test(username)) return failSkin(400, "아이디는 영문 소문자, 숫자, _만 사용 가능하며 3~32자여야 합니다.");
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return failSkin(400, "올바른 이메일 주소를 입력해 주세요.");
+        if (password.length < 8) return failSkin(400, "비밀번호는 8자 이상이어야 합니다.");
+        if (password !== confirmPassword) return failSkin(400, "비밀번호가 일치하지 않습니다.");
 
         const [existingByUsername] = await db
             .select({ id: users.id })
             .from(users)
             .where(and(eq(users.tenantId, tenant.id), eq(users.username, username)))
             .limit(1);
-        if (existingByUsername) return fail(409, { error: "이미 사용 중인 아이디입니다." });
+        if (existingByUsername) return failSkin(409, "이미 사용 중인 아이디입니다.");
 
         const [existingByEmail] = await db
             .select({ id: users.id })
             .from(users)
             .where(and(eq(users.tenantId, tenant.id), eq(users.email, email)))
             .limit(1);
-        if (existingByEmail) return fail(409, { error: "이미 사용 중인 이메일입니다." });
+        if (existingByEmail) return failSkin(409, "이미 사용 중인 이메일입니다.");
 
         const hashedPw = await hashPassword(password);
         const userId = crypto.randomUUID();

@@ -17,6 +17,26 @@ import { decryptSecret } from "$lib/server/crypto/keys";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 
+async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], flashMsg: string, redirectTo: string | null): Promise<string | null> {
+    const skinHint = event.url.searchParams.get("skinHint");
+    if (!skinHint || !event.locals.db || !event.locals.tenant) return null;
+    const colonIdx = skinHint.indexOf(":");
+    if (colonIdx <= 0) return null;
+    const clientType = skinHint.slice(0, colonIdx) as "oidc" | "saml";
+    const clientRefId = skinHint.slice(colonIdx + 1);
+    if ((clientType !== "oidc" && clientType !== "saml") || !clientRefId) return null;
+    const raw = await resolveSkinHtml(event.locals.db, event.platform, event.locals.tenant.id, clientType, clientRefId, "login");
+    if (!raw) return null;
+    return replacePlaceholders(raw, {
+        IDP_FORM_ACTION: "",
+        IDP_REDIRECT_TO: escapeHtml(redirectTo ?? ""),
+        IDP_SKIN_HINT: escapeHtml(skinHint),
+        IDP_REGISTERED: "",
+        IDP_PASSWORD_RESET: "",
+        IDP_FLASH_MSG: escapeHtml(flashMsg),
+    });
+}
+
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     // forceAuthn=true 이면 이미 로그인된 사용자도 재인증을 진행해야 하므로 자동 리다이렉트 생략
     const forceAuthn = url.searchParams.get("forceAuthn") === "true";
@@ -44,6 +64,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
                         IDP_SKIN_HINT: escapeHtml(skinHint),
                         IDP_REGISTERED: registered ? "1" : "",
                         IDP_PASSWORD_RESET: passwordReset ? "1" : "",
+                        IDP_FLASH_MSG: "",
                     });
                 }
             }
@@ -69,18 +90,22 @@ export const actions: Actions = {
         const redirectTo = sanitizeRedirectTarget(String(formData.get("redirectTo") ?? ""));
 
         if (!username || !password) {
+            const msg = "아이디와 비밀번호를 입력해 주세요.";
             return fail(400, {
                 username,
                 redirectTo,
-                error: "아이디와 비밀번호를 입력해 주세요.",
+                error: msg,
+                skinHtml: await resolveSkinForAction(event, msg, redirectTo),
             });
         }
 
         if (!event.locals.db || !event.locals.tenant) {
+            const msg = event.locals.runtimeError ?? 'D1 binding "DB" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요.';
             return fail(503, {
                 username,
                 redirectTo,
-                error: event.locals.runtimeError ?? 'D1 binding "DB" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요.',
+                error: msg,
+                skinHtml: await resolveSkinForAction(event, msg, redirectTo),
             });
         }
 
@@ -91,10 +116,12 @@ export const actions: Actions = {
         const rlKey = `login:${requestMetadata.ip ?? "unknown"}`;
         const rl = await checkRateLimit(db, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
+            const msg = `로그인 시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
             return fail(429, {
                 username,
                 redirectTo,
-                error: `로그인 시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`,
+                error: msg,
+                skinHtml: await resolveSkinForAction(event, msg, redirectTo),
             });
         }
 
@@ -142,10 +169,12 @@ export const actions: Actions = {
                 detail: { username },
             });
 
+            const msg = "아이디 또는 비밀번호가 올바르지 않습니다.";
             return fail(400, {
                 username,
                 redirectTo,
-                error: "아이디 또는 비밀번호가 올바르지 않습니다.",
+                error: msg,
+                skinHtml: await resolveSkinForAction(event, msg, redirectTo),
             });
         }
 
@@ -153,10 +182,12 @@ export const actions: Actions = {
             // MFA 단계로 진행
             const config = getRuntimeConfig(event.platform);
             if (!config.signingKeySecret) {
+                const msg = "MFA 설정 오류: IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.";
                 return fail(503, {
                     username,
                     redirectTo,
-                    error: "MFA 설정 오류: IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+                    error: msg,
+                    skinHtml: await resolveSkinForAction(event, msg, redirectTo),
                 });
             }
 
