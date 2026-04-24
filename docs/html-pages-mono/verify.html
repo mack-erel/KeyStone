@@ -229,7 +229,6 @@
       err.classList.remove('show');
       if (inp.value && i < 5) inputs[i + 1].focus();
       update();
-      if (code().length === 6) verify();
     });
     inp.addEventListener('keydown', function (e) {
       if (e.key === 'Backspace') {
@@ -248,7 +247,6 @@
       inputs.forEach(function (x, j) { x.value = txt[j] || ''; });
       inputs[Math.min(txt.length, 5)].focus();
       update();
-      if (code().length === 6) verify();
     });
     inp.addEventListener('focus', function () { inp.select(); });
   });
