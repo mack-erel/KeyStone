@@ -4,6 +4,10 @@ on:
     pull_request:
         branches: [main]
 
+concurrency:
+    group: ci-${{ github.head_ref }}
+    cancel-in-progress: true
+
 jobs:
     check-changes:
         name: Check Changed Files
