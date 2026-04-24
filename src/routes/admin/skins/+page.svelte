@@ -181,10 +181,7 @@ function clientLabel(clientType: string, clientRefId: string): string {
                             <td class="px-4 py-3 text-xs text-gray-400">{dateFormatter.format(skin.createdAt)}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        class="text-xs text-indigo-500 hover:text-indigo-700"
-                                        onclick={() => (editingId = editingId === skin.id ? null : skin.id)}>
+                                    <button type="button" class="text-xs text-indigo-500 hover:text-indigo-700" onclick={() => (editingId = editingId === skin.id ? null : skin.id)}>
                                         {editingId === skin.id ? t("common.cancel") : t("common.edit")}
                                     </button>
                                     <form method="POST" action="?/toggleEnabled" use:enhance>

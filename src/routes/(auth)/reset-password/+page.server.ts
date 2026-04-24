@@ -9,13 +9,7 @@ import { resolve } from "$app/paths";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 
-async function resolveSkin(
-    skinHint: string | null,
-    locals: App.Locals,
-    platform: App.Platform | undefined,
-    token: string | null,
-    redirectTo: string | null,
-): Promise<string | null> {
+async function resolveSkin(skinHint: string | null, locals: App.Locals, platform: App.Platform | undefined, token: string | null, redirectTo: string | null): Promise<string | null> {
     if (!skinHint || !locals.db || !locals.tenant) return null;
     const colonIdx = skinHint.indexOf(":");
     if (colonIdx <= 0) return null;
