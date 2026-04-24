@@ -87,4 +87,3 @@ async function verifyPbkdf2(password: string, record: string): Promise<boolean> 
     const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: salt.buffer as ArrayBuffer, iterations: iterations || PBKDF2_ITERATIONS }, keyMaterial, 256);
     return timingSafeEqual(new Uint8Array(bits), storedHash);
 }
-
