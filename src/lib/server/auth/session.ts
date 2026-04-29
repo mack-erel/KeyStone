@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, ne } from "drizzle-orm";
 import type { Cookies } from "@sveltejs/kit";
 import type { DB } from "$lib/server/db";
 import { sessions, users } from "$lib/server/db/schema";
@@ -49,9 +49,10 @@ export async function createSessionRecord(
     const sessionToken = createSessionToken();
 
     const tokenHash = await hashSessionToken(sessionToken);
+    const sessionId = crypto.randomUUID();
 
     await db.insert(sessions).values({
-        id: crypto.randomUUID(),
+        id: sessionId,
         tenantId: params.tenantId,
         userId: params.userId,
         idpSessionId: tokenHash,
@@ -63,7 +64,18 @@ export async function createSessionRecord(
         lastSeenAt: new Date(now),
     });
 
-    return { sessionToken, expiresAt };
+    return { sessionToken, expiresAt, sessionId };
+}
+
+/**
+ * 새로 발급된 세션을 제외한 동일 사용자의 모든 활성 세션을 무효화한다.
+ * 로그인/MFA/패스키 인증 직후 호출하면 기존 세션 탈취 흔적을 제거할 수 있다.
+ */
+export async function revokeOtherSessions(db: DB, userId: string, keepSessionId: string, revokedAt = new Date()) {
+    await db
+        .update(sessions)
+        .set({ revokedAt })
+        .where(and(eq(sessions.userId, userId), ne(sessions.id, keepSessionId), isNull(sessions.revokedAt)));
 }
 
 export async function getSessionContext(db: DB, sessionToken: string) {

@@ -1,10 +1,12 @@
 import { fail } from "@sveltejs/kit";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { users, passwordResetTokens } from "$lib/server/db/schema";
 import { sendPasswordResetEmail, generateToken } from "$lib/server/email";
+import { checkRateLimit } from "$lib/server/ratelimit";
+import { getRequestMetadata } from "$lib/server/audit";
 import { env } from "$env/dynamic/private";
 
 const RESET_EXPIRY_MS = 60 * 60 * 1000;
@@ -75,6 +77,14 @@ export const actions: Actions = {
             return fail(400, { error: msg, skinHtml: await resolveSkinForAction(event, false, undefined, msg) });
         }
 
+        // IP 기반 레이트리밋 — 60분/5회.
+        const meta = getRequestMetadata(event);
+        const rl = await checkRateLimit(db, `find-password:${meta.ip ?? "unknown"}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        if (!rl.allowed) {
+            const msg = `요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
+            return fail(429, { error: msg, skinHtml: await resolveSkinForAction(event, false, undefined, msg) });
+        }
+
         const [user] = await db
             .select({ id: users.id, email: users.email })
             .from(users)
@@ -83,6 +93,12 @@ export const actions: Actions = {
 
         if (user) {
             try {
+                // 같은 user 의 미사용 토큰을 모두 사용 처리하여 새 토큰만 유효하게.
+                await db
+                    .update(passwordResetTokens)
+                    .set({ usedAt: new Date() })
+                    .where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
+
                 const { token, tokenHash } = await generateToken();
                 const expiresAt = new Date(Date.now() + RESET_EXPIRY_MS);
                 await db.insert(passwordResetTokens).values({ userId: user.id, tokenHash, expiresAt });
@@ -98,6 +114,9 @@ export const actions: Actions = {
                 // 조용히 무시
             }
         }
+
+        // 메일 발송 분기와 미발송 분기 모두 timing 균등화 — 200~300ms.
+        await new Promise((r) => setTimeout(r, 200 + Math.random() * 100));
 
         return { sent: true, skinHtml: await resolveSkinForAction(event, true, email) };
     },

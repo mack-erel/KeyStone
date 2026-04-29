@@ -11,7 +11,7 @@ export const GET: RequestHandler = async ({ locals }) => {
         { keys },
         {
             headers: {
-                "Cache-Control": "public, max-age=3600",
+                "Cache-Control": "public, max-age=300",
             },
         },
     );

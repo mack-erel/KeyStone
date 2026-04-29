@@ -4,7 +4,9 @@ import type { Actions, PageServerLoad } from "./$types";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { users } from "$lib/server/db/schema";
-import { sendFindIdEmail, maskUsername } from "$lib/server/email";
+import { sendFindIdEmail } from "$lib/server/email";
+import { checkRateLimit } from "$lib/server/ratelimit";
+import { getRequestMetadata } from "$lib/server/audit";
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     const skinHint = url.searchParams.get("skinHint");
@@ -69,6 +71,14 @@ export const actions: Actions = {
             return fail(400, { error: msg, skinHtml: await resolveSkinForAction(event, false, null, msg) });
         }
 
+        // IP 기반 레이트리밋 — 60분/5회.
+        const meta = getRequestMetadata(event);
+        const rl = await checkRateLimit(db, `find-id:${meta.ip ?? "unknown"}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        if (!rl.allowed) {
+            const msg = `요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
+            return fail(429, { error: msg, skinHtml: await resolveSkinForAction(event, false, null, msg) });
+        }
+
         const [user] = await db
             .select({ username: users.username })
             .from(users)
@@ -81,11 +91,10 @@ export const actions: Actions = {
             } catch {
                 // 메일 발송 실패는 조용히 무시
             }
-            const masked = maskUsername(user.username);
-            return { sent: true, maskedUsername: masked, skinHtml: await resolveSkinForAction(event, true, masked) };
         }
 
-        // 계정 존재 여부 노출 방지
+        // 계정 존재 여부가 응답 페이로드로 새지 않도록 항상 동일 응답을 반환한다.
+        // 사용자에게는 "메일을 보냈으니 확인해 주세요" 메시지만 노출.
         return { sent: true, maskedUsername: null, skinHtml: await resolveSkinForAction(event, true, null) };
     },
 };

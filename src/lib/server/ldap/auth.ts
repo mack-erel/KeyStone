@@ -5,11 +5,28 @@ function escapeLdapChar(ch: string): string {
     return "\\" + ch.charCodeAt(0).toString(16).padStart(2, "0");
 }
 
+/** DN 이 base DN 의 suffix 인지(같은 트리에 속하는지) 검증한다. */
+function dnIsUnderBase(dn: string, baseDN: string): boolean {
+    if (!dn || !baseDN) return false;
+    const d = dn
+        .trim()
+        .toLowerCase()
+        .replace(/\s*,\s*/g, ",");
+    const b = baseDN
+        .trim()
+        .toLowerCase()
+        .replace(/\s*,\s*/g, ",");
+    if (d === b) return true;
+    return d.endsWith("," + b);
+}
+
 function escapeLdapFilter(input: string): string {
     return input
         .split("")
         .map((ch) => {
-            if (ch === "\\" || ch === "*" || ch === "(" || ch === ")" || ch.charCodeAt(0) === 0) {
+            const code = ch.charCodeAt(0);
+            // RFC 4515 특수문자 + 모든 제어문자(0x00-0x1F, 0x7F)
+            if (ch === "\\" || ch === "*" || ch === "(" || ch === ")" || code <= 0x1f || code === 0x7f) {
                 return escapeLdapChar(ch);
             }
             return ch;
@@ -18,15 +35,22 @@ function escapeLdapFilter(input: string): string {
 }
 
 function escapeLdapDn(input: string): string {
-    return input
+    const escaped = input
         .split("")
-        .map((ch) => {
-            if ('\\,+"<>;#='.includes(ch) || ch.charCodeAt(0) === 0) {
+        .map((ch, idx, arr) => {
+            const code = ch.charCodeAt(0);
+            // RFC 4514 특수문자 + 제어문자
+            if ('\\,+"<>;#='.includes(ch) || code <= 0x1f || code === 0x7f) {
+                return escapeLdapChar(ch);
+            }
+            // leading/trailing space 도 escape
+            if (ch === " " && (idx === 0 || idx === arr.length - 1)) {
                 return escapeLdapChar(ch);
             }
             return ch;
         })
         .join("");
+    return escaped;
 }
 
 /**
@@ -38,18 +62,24 @@ function escapeLdapDn(input: string): string {
  * 인증 실패 시 null 반환, 서버 오류는 throw.
  */
 export async function authenticateLdap(config: LdapProviderConfig, username: string, password: string): Promise<LdapUserAttrs | null> {
+    // 빈 패스워드는 anonymous bind 로 성공 처리되므로 즉시 거부
+    if (!password) return null;
+    if (!username) return null;
+
     let userDn: string;
 
     if (config.bindDN && config.bindPassword) {
         // Search 방식: admin bind → uid 검색으로 실제 DN 확정
-        const filter = (config.userSearchFilter ?? "(uid={username})").replace("{username}", escapeLdapFilter(username));
+        const filter = (config.userSearchFilter ?? "(uid={username})").replaceAll("{username}", escapeLdapFilter(username));
         const found = await ldapSearchDn(config, config.bindDN, config.bindPassword, filter);
         if (!found) return null; // 유저 없음
+        // 검색 결과 DN 이 baseDN suffix 인지 검증 (referral/aliasing 우회 방지)
+        if (!dnIsUnderBase(found, config.baseDN)) return null;
         userDn = found;
     } else {
         // Pattern 방식: userDnPattern 으로 DN 직접 조합
         if (!config.userDnPattern) return null;
-        userDn = config.userDnPattern.replace("{username}", escapeLdapDn(username));
+        userDn = config.userDnPattern.replaceAll("{username}", escapeLdapDn(username));
     }
 
     // 유저 bind — 비밀번호 검증

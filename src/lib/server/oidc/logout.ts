@@ -121,7 +121,8 @@ export async function sendOneBackchannelLogout(target: BackchannelTarget, userId
         payload.sid = idpSessionId;
     }
 
-    const jwt = await signJwt(payload, privateKey, kid);
+    // BC logout JWT 는 일반 ID Token 과 구별되어야 하므로 typ=logout+jwt (RFC: OpenID BC logout 1.0)
+    const jwt = await signJwt(payload, privateKey, kid, { typ: "logout+jwt" });
     const body = new URLSearchParams({ logout_token: jwt });
 
     await fetch(target.backchannelLogoutUri, {

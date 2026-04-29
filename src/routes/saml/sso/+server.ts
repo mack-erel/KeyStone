@@ -7,16 +7,20 @@
 
 import { error, redirect } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
+import { and, eq, gt } from "drizzle-orm";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { acrSatisfies } from "$lib/server/auth/constants";
+import { samlAuthnRequestIds } from "$lib/server/db/schema";
 import { parseAuthnRequest, verifySamlRedirectSignature } from "$lib/server/saml/parse-authn-request";
 import { buildSignedSamlErrorResponse, buildSignedSamlResponse } from "$lib/server/saml/response";
 import { findSp, recordSamlSession } from "$lib/server/saml/sp";
 import { getUserMembership } from "$lib/server/org/membership";
+
+const SAML_AUTHN_REQUEST_TTL_MS = 10 * 60 * 1000; // 10분
 
 export const GET: RequestHandler = async (event) => {
     const { locals, url, platform } = event;
@@ -40,7 +44,7 @@ export const GET: RequestHandler = async (event) => {
         throw error(400, "SAMLRequest 파라미터가 없습니다.");
     }
 
-    // AuthnRequest 파싱
+    // AuthnRequest 파싱 (DTD 차단 / IssueInstant skew 검증 포함)
     let authnRequest;
     try {
         authnRequest = await parseAuthnRequest(samlRequestB64, relayState);
@@ -48,9 +52,42 @@ export const GET: RequestHandler = async (event) => {
         throw error(400, "SAMLRequest 파싱 실패");
     }
 
+    // Destination 검증: SP 가 명시했으면 IdP 의 SSO endpoint 와 정확히 일치해야 한다.
+    if (authnRequest.destination) {
+        const expectedDestination = `${config.issuerUrl.replace(/\/+$/, "")}/saml/sso`;
+        if (authnRequest.destination !== expectedDestination) {
+            throw error(400, "AuthnRequest Destination 이 IdP 의 SSO endpoint 와 일치하지 않습니다.");
+        }
+    }
+
     const sp = await findSp(db, tenant.id, authnRequest.issuer);
     if (!sp) {
         throw error(403, `등록되지 않은 SP 입니다: ${authnRequest.issuer}`);
+    }
+
+    // Replay 가드: 동일 AuthnRequest ID 가 이미 사용된 적이 있는지 확인 후 INSERT.
+    // expiresAt 이 지난 행은 무시 (clean-up 은 별도 job).
+    if (authnRequest.id) {
+        const now = new Date();
+        const [seen] = await db
+            .select({ requestId: samlAuthnRequestIds.requestId })
+            .from(samlAuthnRequestIds)
+            .where(and(eq(samlAuthnRequestIds.tenantId, tenant.id), eq(samlAuthnRequestIds.requestId, authnRequest.id), gt(samlAuthnRequestIds.expiresAt, now)))
+            .limit(1);
+        if (seen) {
+            throw error(400, "AuthnRequest ID 가 이미 사용되었습니다 (replay)");
+        }
+        try {
+            await db.insert(samlAuthnRequestIds).values({
+                tenantId: tenant.id,
+                requestId: authnRequest.id,
+                spEntityId: authnRequest.issuer,
+                expiresAt: new Date(Date.now() + SAML_AUTHN_REQUEST_TTL_MS),
+            });
+        } catch {
+            // unique constraint 충돌 → replay 와 동일하게 거부
+            throw error(400, "AuthnRequest ID 가 이미 사용되었습니다 (replay)");
+        }
     }
 
     // AuthnRequest 서명 검증: SP 가 서명을 요구하거나 Signature 파라미터가 있는 경우
@@ -107,14 +144,28 @@ export const GET: RequestHandler = async (event) => {
         throw redirect(302, loginUrl.toString());
     }
 
-    // forceAuthn: 세션이 AuthnRequest 발급 이전에 생성된 경우 재인증을 강제한다.
-    // 로그인 후 새 세션의 createdAt > issueInstant 이므로 자연스럽게 루프가 끊긴다.
-    if (authnRequest.forceAuthn && locals.session.createdAt < authnRequest.issueInstant) {
-        const loginUrl = new URL("/login", url);
-        loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
-        loginUrl.searchParams.set("skinHint", `saml:${sp.id}`);
-        loginUrl.searchParams.set("forceAuthn", "true");
-        throw redirect(302, loginUrl.toString());
+    // forceAuthn: SP 가 강제 재인증을 요구하면, 현재 세션 상태와 무관하게 /login 으로 보낸다.
+    // 무한 루프 방지: AuthnRequest ID 를 쿠키에 기록해 두고, 동일 요청에 대한 재진입이면 통과시킨다.
+    if (authnRequest.forceAuthn) {
+        const reauthCookieName = `saml_reauth_${authnRequest.id}`;
+        const alreadyReauthed = event.cookies.get(reauthCookieName) === "1";
+        if (!alreadyReauthed) {
+            // 다음 요청에서 동일 AuthnRequest 가 들어오면 통과되도록 짧은 TTL 쿠키를 설정.
+            event.cookies.set(reauthCookieName, "1", {
+                path: "/saml/sso",
+                httpOnly: true,
+                sameSite: "lax",
+                secure: url.protocol === "https:",
+                maxAge: 600,
+            });
+            const loginUrl = new URL("/login", url);
+            loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
+            loginUrl.searchParams.set("skinHint", `saml:${sp.id}`);
+            loginUrl.searchParams.set("forceAuthn", "true");
+            throw redirect(302, loginUrl.toString());
+        }
+        // 이미 재인증을 거치고 돌아온 경우 — 쿠키 삭제 후 SSO 응답 진행
+        event.cookies.delete(reauthCookieName, { path: "/saml/sso" });
     }
 
     // RequestedAuthnContext: 세션 ACR 이 SP 요구 수준을 만족하는지 검사한다.

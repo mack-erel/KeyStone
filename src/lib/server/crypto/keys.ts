@@ -114,9 +114,14 @@ export async function generateRsaSigningKey(): Promise<{
 
 // ── JWT signing (RS256) ───────────────────────────────────────────────────────
 
-export async function signJwt(payload: Record<string, unknown>, privateKey: CryptoKey, kid: string): Promise<string> {
+export interface SignJwtOptions {
+    /** JWT 헤더의 typ 값. 기본 "JWT". (BC logout 등은 "logout+jwt" 사용) */
+    typ?: string;
+}
+
+export async function signJwt(payload: Record<string, unknown>, privateKey: CryptoKey, kid: string, options?: SignJwtOptions): Promise<string> {
     const enc = new TextEncoder();
-    const header = { alg: "RS256", typ: "JWT", kid };
+    const header = { alg: "RS256", typ: options?.typ ?? "JWT", kid };
     const headerB64 = b64uEncode(enc.encode(JSON.stringify(header)));
     const payloadB64 = b64uEncode(enc.encode(JSON.stringify(payload)));
     const signingInput = `${headerB64}.${payloadB64}`;
@@ -124,7 +129,14 @@ export async function signJwt(payload: Record<string, unknown>, privateKey: Cryp
     return `${signingInput}.${b64uEncode(sig)}`;
 }
 
-export async function verifyIdToken(db: DB, tenantId: string, token: string): Promise<Record<string, unknown> | null> {
+export interface VerifyIdTokenOptions {
+    /** 검증해야 할 audience (claims.aud 와 정확히 일치해야 함) */
+    expectedAud?: string;
+    /** 검증해야 할 issuer (claims.iss 와 정확히 일치해야 함) */
+    expectedIssuer?: string;
+}
+
+export async function verifyIdToken(db: DB, tenantId: string, token: string, options?: VerifyIdTokenOptions): Promise<Record<string, unknown> | null> {
     try {
         const parts = token.split(".");
         if (parts.length !== 3) return null;
@@ -133,10 +145,11 @@ export async function verifyIdToken(db: DB, tenantId: string, token: string): Pr
         const header = JSON.parse(dec.decode(b64uDecode(headerB64))) as { kid?: string; alg?: string };
         if (header.alg !== "RS256" || !header.kid) return null;
 
+        // 회전된 키(rotatedAt != NULL) 또는 비활성 키는 검증에 사용하지 않는다.
         const [row] = await db
             .select({ publicJwk: signingKeys.publicJwk })
             .from(signingKeys)
-            .where(and(eq(signingKeys.kid, header.kid), eq(signingKeys.tenantId, tenantId)))
+            .where(and(eq(signingKeys.kid, header.kid), eq(signingKeys.tenantId, tenantId), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)))
             .limit(1);
         if (!row?.publicJwk) return null;
 
@@ -147,7 +160,20 @@ export async function verifyIdToken(db: DB, tenantId: string, token: string): Pr
         if (!valid) return null;
 
         const claims = JSON.parse(dec.decode(b64uDecode(payloadB64))) as Record<string, unknown>;
-        if (typeof claims.exp === "number" && claims.exp < Math.floor(Date.now() / 1000)) return null;
+        const nowSec = Math.floor(Date.now() / 1000);
+        if (typeof claims.exp === "number" && claims.exp < nowSec) return null;
+        if (typeof claims.nbf === "number" && claims.nbf > nowSec + 60) return null;
+        if (options?.expectedIssuer && claims.iss !== options.expectedIssuer) return null;
+        if (options?.expectedAud) {
+            const aud = claims.aud;
+            if (typeof aud === "string") {
+                if (aud !== options.expectedAud) return null;
+            } else if (Array.isArray(aud)) {
+                if (!aud.includes(options.expectedAud)) return null;
+            } else {
+                return null;
+            }
+        }
         return claims;
     } catch {
         return null;
@@ -163,6 +189,12 @@ export interface AccessTokenClaims {
     scope: string;
     exp: number;
     iat: number;
+    /** JWT ID — replay/audit 추적용 */
+    jti?: string;
+    /** Audience (보통 clientId 와 동일) */
+    aud?: string;
+    /** Issuer URL */
+    iss?: string;
 }
 
 async function deriveHmacKey(secret: string): Promise<CryptoKey> {
@@ -178,7 +210,12 @@ export async function generateAccessToken(claims: AccessTokenClaims, secret: str
     return `${data}.${b64uEncode(sig)}`;
 }
 
-export async function verifyAccessToken(token: string, secret: string): Promise<AccessTokenClaims | null> {
+/**
+ * Opaque access token 검증.
+ * @param expectedTenant — 토큰의 tenantId 가 정확히 일치해야 함 (필수)
+ * @param expectedAud — 지정 시 claims.aud 와 정확히 일치해야 함 (선택)
+ */
+export async function verifyAccessToken(token: string, secret: string, expectedTenant: string, expectedAud?: string): Promise<AccessTokenClaims | null> {
     try {
         const lastDot = token.lastIndexOf(".");
         if (lastDot === -1) return null;
@@ -191,6 +228,8 @@ export async function verifyAccessToken(token: string, secret: string): Promise<
         const dec = new TextDecoder();
         const claims = JSON.parse(dec.decode(b64uDecode(data))) as AccessTokenClaims;
         if (claims.exp < Math.floor(Date.now() / 1000)) return null;
+        if (claims.tenantId !== expectedTenant) return null;
+        if (expectedAud && claims.aud !== expectedAud) return null;
         return claims;
     } catch {
         return null;
@@ -255,6 +294,7 @@ export async function getActiveSigningKey(
 }
 
 export async function getPublicJwks(db: DB, tenantId: string): Promise<Array<Record<string, unknown>>> {
+    // 회전 또는 비활성 처리된 키는 JWKS 에 노출하지 않는다.
     const rows = await db
         .select({
             kid: signingKeys.kid,
@@ -263,7 +303,7 @@ export async function getPublicJwks(db: DB, tenantId: string): Promise<Array<Rec
             publicJwk: signingKeys.publicJwk,
         })
         .from(signingKeys)
-        .where(eq(signingKeys.tenantId, tenantId));
+        .where(and(eq(signingKeys.tenantId, tenantId), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)));
     return rows.map((r) => ({
         ...(JSON.parse(r.publicJwk) as Record<string, unknown>),
         kid: r.kid,

@@ -82,7 +82,8 @@ export async function hashToken(token: string): Promise<string> {
 }
 
 export function maskUsername(username: string): string {
-    if (username.length <= 2) return username[0] + "*".repeat(username.length - 1);
-    const visible = Math.max(1, Math.ceil(username.length / 3));
-    return username.slice(0, visible) + "*".repeat(username.length - visible);
+    if (!username) return "";
+    if (username.length === 1) return "*";
+    if (username.length === 2) return "**";
+    return username.slice(0, 1) + "*".repeat(username.length - 1);
 }

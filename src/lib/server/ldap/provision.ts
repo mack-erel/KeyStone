@@ -11,8 +11,16 @@ import type { LdapUserAttrs } from "./types";
  * 2. 같은 이메일의 로컬 유저 존재 → identity 연결 후 반환
  * 3. 완전 신규 → users + identities 생성
  */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export async function provisionLdapUser(db: DB, tenantId: string, providerId: string, attrs: LdapUserAttrs): Promise<User> {
     const provider = `ldap:${providerId}`;
+
+    // LDAP 가 신뢰할 수 없는 메일 속성을 반환하면 가입을 거부한다.
+    // (악성 LDAP 속성으로 기존 로컬 계정을 하이재킹하는 것을 한 번 더 막는다.)
+    if (!attrs.email || !EMAIL_REGEX.test(attrs.email)) {
+        throw new Error("LDAP 응답에 유효한 이메일이 없습니다.");
+    }
 
     // 1. 기존 LDAP identity 확인
     const [existingIdentity] = await db

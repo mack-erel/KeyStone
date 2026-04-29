@@ -162,6 +162,15 @@ export interface BuildSloRedirectUrlParams {
  * (URLSearchParams 는 사용하지 않는다 — 대소문자·특수문자 인코딩 차이로 서명 검증에 실패할 수 있음).
  */
 export async function buildSamlSloRedirectUrl(params: BuildSloRedirectUrlParams): Promise<string> {
+    // SLO redirect URL scheme 검증: 외부 SP endpoint 는 반드시 https 여야 한다.
+    // javascript:/data:/file: 등의 위험 scheme 은 명시적으로 차단.
+    const sloLower = params.sloUrl.toLowerCase().trim();
+    if (sloLower.startsWith("javascript:") || sloLower.startsWith("data:") || sloLower.startsWith("file:") || sloLower.startsWith("vbscript:")) {
+        throw new Error(`허용되지 않는 SLO URL scheme: ${params.sloUrl}`);
+    }
+    if (!sloLower.startsWith("https://")) {
+        throw new Error(`SLO URL 은 https:// 로 시작해야 합니다: ${params.sloUrl}`);
+    }
     const deflated = await deflateRaw(params.xml);
     const sigAlg = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 

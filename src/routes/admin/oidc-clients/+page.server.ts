@@ -18,13 +18,95 @@ function generateClientSecret(): string {
         .replace(/=+$/, "");
 }
 
-function parseUris(raw: string): string {
-    return JSON.stringify(
-        raw
-            .split(/[\n,]/)
-            .map((s) => s.trim())
-            .filter(Boolean),
-    );
+const ALLOWED_TOKEN_AUTH_METHODS = ["client_secret_basic", "client_secret_post", "none"] as const;
+type TokenAuthMethod = (typeof ALLOWED_TOKEN_AUTH_METHODS)[number];
+
+const ALLOWED_OIDC_SCOPES = ["openid", "profile", "email", "address", "phone", "offline_access", "groups"] as const;
+
+function isLoopbackHost(hostname: string): boolean {
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+}
+
+/**
+ * 단일 redirect URI / post-logout / channel logout URL 검증.
+ * @param value 검증할 URL 문자열
+ * @param opts.allowCustomScheme 모바일 등 커스텀 scheme 허용 여부 (redirect_uri 한정)
+ */
+function validateClientUri(value: string, opts: { allowCustomScheme?: boolean } = {}): { ok: true } | { ok: false; reason: string } {
+    let parsed: URL;
+    try {
+        parsed = new URL(value);
+    } catch {
+        return { ok: false, reason: `URL 형식이 올바르지 않습니다: ${value}` };
+    }
+
+    // RFC 6749 §3.1.2 — fragment 포함 redirect URI 금지
+    if (parsed.hash && parsed.hash.length > 0) {
+        return { ok: false, reason: `fragment(#) 가 포함된 URI 는 허용되지 않습니다: ${value}` };
+    }
+
+    const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
+    const blocked = ["javascript", "data", "file", "vbscript", "blob"];
+    if (blocked.includes(scheme)) {
+        return { ok: false, reason: `${scheme}: 스킴은 허용되지 않습니다.` };
+    }
+
+    if (scheme === "https") return { ok: true };
+    if (scheme === "http") {
+        if (isLoopbackHost(parsed.hostname)) return { ok: true };
+        return { ok: false, reason: `http URL 은 localhost/127.0.0.1 만 허용됩니다: ${value}` };
+    }
+    if (opts.allowCustomScheme) {
+        // 커스텀 scheme (모바일 redirect 등): RFC 3986 scheme 형식
+        if (/^[a-z][a-z0-9+.-]*$/i.test(scheme)) return { ok: true };
+        return { ok: false, reason: `커스텀 scheme 형식이 올바르지 않습니다: ${value}` };
+    }
+    return { ok: false, reason: `허용되지 않는 scheme 입니다 (${scheme}): ${value}` };
+}
+
+function splitUriList(raw: string): string[] {
+    return raw
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+
+function validateUriList(raw: string, label: string, opts: { allowCustomScheme?: boolean } = {}): { ok: true; json: string } | { ok: false; reason: string } {
+    const list = splitUriList(raw);
+    for (const v of list) {
+        const r = validateClientUri(v, opts);
+        if (!r.ok) return { ok: false, reason: `${label}: ${r.reason}` };
+    }
+    return { ok: true, json: JSON.stringify(list) };
+}
+
+function validateSingleUri(value: string, label: string): { ok: true } | { ok: false; reason: string } {
+    if (!value) return { ok: true };
+    const r = validateClientUri(value);
+    if (!r.ok) return { ok: false, reason: `${label}: ${r.reason}` };
+    return { ok: true };
+}
+
+function normalizeScopes(raw: string): { ok: true; value: string } | { ok: false; reason: string } {
+    const tokens = raw
+        .split(/\s+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const t of tokens) {
+        if (!(ALLOWED_OIDC_SCOPES as readonly string[]).includes(t)) {
+            return { ok: false, reason: `허용되지 않는 scope 입니다: ${t}` };
+        }
+        if (!seen.has(t)) {
+            seen.add(t);
+            out.push(t);
+        }
+    }
+    if (!seen.has("openid")) {
+        return { ok: false, reason: "scope 에는 'openid' 가 포함되어야 합니다." };
+    }
+    return { ok: true, value: out.join(" ") };
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -67,13 +149,30 @@ export const actions: Actions = {
         const backchannelLogoutUri = String(fd.get("backchannelLogoutUri") ?? "").trim();
         const frontchannelLogoutSessionRequired = fd.get("frontchannelLogoutSessionRequired") === "true";
         const backchannelLogoutSessionRequired = fd.get("backchannelLogoutSessionRequired") === "true";
-        const scopes = String(fd.get("scopes") ?? "openid").trim();
-        const tokenMethod = String(fd.get("tokenEndpointAuthMethod") ?? "client_secret_basic") as "client_secret_basic" | "client_secret_post" | "none";
+        const scopesRaw = String(fd.get("scopes") ?? "openid").trim();
+        const tokenMethodRaw = String(fd.get("tokenEndpointAuthMethod") ?? "client_secret_basic");
+        if (!(ALLOWED_TOKEN_AUTH_METHODS as readonly string[]).includes(tokenMethodRaw)) {
+            return fail(400, { create: true, error: "tokenEndpointAuthMethod 값이 올바르지 않습니다." });
+        }
+        const tokenMethod = tokenMethodRaw as TokenAuthMethod;
         // public client(none)는 PKCE 필수
         const requirePkce = tokenMethod === "none" ? true : fd.get("requirePkce") === "true";
 
         if (!name) return fail(400, { create: true, error: "이름은 필수입니다." });
         if (!redirectUrisRaw) return fail(400, { create: true, error: "Redirect URI 는 필수입니다." });
+
+        // URL 검증
+        const redirectV = validateUriList(redirectUrisRaw, "Redirect URI", { allowCustomScheme: true });
+        if (!redirectV.ok) return fail(400, { create: true, error: redirectV.reason });
+        const postLogoutV = postLogoutUrisRaw ? validateUriList(postLogoutUrisRaw, "Post-Logout Redirect URI") : null;
+        if (postLogoutV && !postLogoutV.ok) return fail(400, { create: true, error: postLogoutV.reason });
+        const frontV = validateSingleUri(frontchannelLogoutUri, "Frontchannel Logout URI");
+        if (!frontV.ok) return fail(400, { create: true, error: frontV.reason });
+        const backV = validateSingleUri(backchannelLogoutUri, "Backchannel Logout URI");
+        if (!backV.ok) return fail(400, { create: true, error: backV.reason });
+
+        const scopesV = normalizeScopes(scopesRaw);
+        if (!scopesV.ok) return fail(400, { create: true, error: scopesV.reason });
 
         const clientId = generateClientId();
         const clientSecret = tokenMethod !== "none" ? generateClientSecret() : null;
@@ -85,13 +184,13 @@ export const actions: Actions = {
             clientId,
             clientSecretHash: clientSecretHashed,
             name,
-            redirectUris: parseUris(redirectUrisRaw),
-            postLogoutRedirectUris: postLogoutUrisRaw ? parseUris(postLogoutUrisRaw) : null,
+            redirectUris: redirectV.json,
+            postLogoutRedirectUris: postLogoutV ? postLogoutV.json : null,
             frontchannelLogoutUri: frontchannelLogoutUri || null,
             frontchannelLogoutSessionRequired,
             backchannelLogoutUri: backchannelLogoutUri || null,
             backchannelLogoutSessionRequired,
-            scopes,
+            scopes: scopesV.value,
             tokenEndpointAuthMethod: tokenMethod,
             requirePkce,
             enabled: true,
@@ -126,11 +225,22 @@ export const actions: Actions = {
         const backchannelLogoutUri = String(fd.get("backchannelLogoutUri") ?? "").trim();
         const frontchannelLogoutSessionRequired = fd.get("frontchannelLogoutSessionRequired") === "true";
         const backchannelLogoutSessionRequired = fd.get("backchannelLogoutSessionRequired") === "true";
-        const scopes = String(fd.get("scopes") ?? "openid").trim();
+        const scopesRaw = String(fd.get("scopes") ?? "openid").trim();
         const enabled = fd.get("enabled") === "true";
 
         if (!id || !name) return fail(400, { error: "잘못된 요청입니다." });
         if (!redirectUrisRaw) return fail(400, { error: "Redirect URI 는 필수입니다." });
+
+        const redirectV = validateUriList(redirectUrisRaw, "Redirect URI", { allowCustomScheme: true });
+        if (!redirectV.ok) return fail(400, { error: redirectV.reason });
+        const postLogoutV = postLogoutUrisRaw ? validateUriList(postLogoutUrisRaw, "Post-Logout Redirect URI") : null;
+        if (postLogoutV && !postLogoutV.ok) return fail(400, { error: postLogoutV.reason });
+        const frontV = validateSingleUri(frontchannelLogoutUri, "Frontchannel Logout URI");
+        if (!frontV.ok) return fail(400, { error: frontV.reason });
+        const backV = validateSingleUri(backchannelLogoutUri, "Backchannel Logout URI");
+        if (!backV.ok) return fail(400, { error: backV.reason });
+        const scopesV = normalizeScopes(scopesRaw);
+        if (!scopesV.ok) return fail(400, { error: scopesV.reason });
 
         // public client(none)는 PKCE를 수정 시에도 강제 유지
         const [existingClient] = await db
@@ -144,13 +254,13 @@ export const actions: Actions = {
             .update(oidcClients)
             .set({
                 name,
-                redirectUris: parseUris(redirectUrisRaw),
-                postLogoutRedirectUris: postLogoutUrisRaw ? parseUris(postLogoutUrisRaw) : null,
+                redirectUris: redirectV.json,
+                postLogoutRedirectUris: postLogoutV ? postLogoutV.json : null,
                 frontchannelLogoutUri: frontchannelLogoutUri || null,
                 frontchannelLogoutSessionRequired,
                 backchannelLogoutUri: backchannelLogoutUri || null,
                 backchannelLogoutSessionRequired,
-                scopes,
+                scopes: scopesV.value,
                 requirePkce,
                 enabled,
                 updatedAt: new Date(),

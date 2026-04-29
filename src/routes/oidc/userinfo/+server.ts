@@ -30,9 +30,9 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
     }
 
     const token = authHeader.slice(7);
-    const claims = await verifyAccessToken(token, signingKeySecret);
+    const claims = await verifyAccessToken(token, signingKeySecret, tenant.id);
 
-    if (!claims || claims.tenantId !== tenant.id) {
+    if (!claims) {
         return bearerError("invalid_token", "유효하지 않거나 만료된 액세스 토큰입니다.");
     }
 
@@ -100,7 +100,12 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         response.job_title = membership.primaryJobTitle ?? null;
     }
 
-    return json(response);
+    return json(response, {
+        headers: {
+            "Cache-Control": "no-store, private",
+            Pragma: "no-cache",
+        },
+    });
 }
 
 export const GET: RequestHandler = ({ locals, request }) => handleUserinfo(locals, request);

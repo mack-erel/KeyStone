@@ -56,18 +56,61 @@ export const GET: RequestHandler = async (event) => {
     }
 
     // PKCE 검증
-    if (client.requirePkce) {
-        if (!codeChallenge) {
-            authRedirectError(redirectUri, "invalid_request", "PKCE code_challenge 가 필요합니다.", state);
-        }
-        if (codeChallengeMethod !== "S256") {
-            authRedirectError(redirectUri, "invalid_request", "code_challenge_method=S256 만 지원합니다.", state);
-        }
+    // - 공개 클라이언트(tokenEndpointAuthMethod=none)는 PKCE 필수 (RFC 8252)
+    // - code_challenge 가 빈 문자열이면 거부
+    // - code_challenge 가 어떤 형태로든 제공되면 method 는 반드시 S256 만 허용
+    const pkceRequired = client.requirePkce || client.tokenEndpointAuthMethod === "none";
+    const hasChallenge = codeChallenge !== null && codeChallenge.trim().length > 0;
+
+    if (pkceRequired && !hasChallenge) {
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            spOrClientId: clientId,
+            kind: "oidc_authorize",
+            outcome: "failure",
+            ip,
+            userAgent: getRequestMetadata(event).userAgent,
+            detail: { error: "invalid_request", reason: "pkce_required" },
+        });
+        authRedirectError(redirectUri, "invalid_request", "PKCE code_challenge 가 필요합니다.", state);
+    }
+    if (codeChallenge !== null && !hasChallenge) {
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            spOrClientId: clientId,
+            kind: "oidc_authorize",
+            outcome: "failure",
+            ip,
+            userAgent: getRequestMetadata(event).userAgent,
+            detail: { error: "invalid_request", reason: "empty_code_challenge" },
+        });
+        authRedirectError(redirectUri, "invalid_request", "code_challenge 가 비어 있습니다.", state);
+    }
+    if (hasChallenge && codeChallengeMethod !== "S256") {
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            spOrClientId: clientId,
+            kind: "oidc_authorize",
+            outcome: "failure",
+            ip,
+            userAgent: getRequestMetadata(event).userAgent,
+            detail: { error: "invalid_request", reason: "invalid_code_challenge_method", method: codeChallengeMethod },
+        });
+        authRedirectError(redirectUri, "invalid_request", "code_challenge_method=S256 만 지원합니다.", state);
     }
 
     // scope 검증
     const grantedScopes = parseGrantedScopes(client, scope);
     if (!grantedScopes.includes("openid")) {
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            spOrClientId: clientId,
+            kind: "oidc_authorize",
+            outcome: "failure",
+            ip,
+            userAgent: getRequestMetadata(event).userAgent,
+            detail: { error: "invalid_scope", requestedScope: scope },
+        });
         authRedirectError(redirectUri, "invalid_scope", "openid scope 가 필요합니다.", state);
     }
     const grantedScope = grantedScopes.join(" ");

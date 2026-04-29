@@ -1,7 +1,9 @@
 import { fail, error } from "@sveltejs/kit";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireAdminContext } from "$lib/server/auth/guards";
+import { requireAdminContext, assertNotLastAdmin } from "$lib/server/auth/guards";
+import { revokeAllUserSessions } from "$lib/server/auth/session";
+import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { departments, parts, positions, teams, userDepartments, userParts, userTeams, users } from "$lib/server/db/schema";
 
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -103,7 +105,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
 export const actions: Actions = {
     // 프로필 수정
-    updateProfile: async ({ locals, params, request }) => {
+    updateProfile: async (event) => {
+        const { locals, params, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
@@ -120,6 +123,32 @@ export const actions: Actions = {
 
         const role = rawRole as "admin" | "user";
         const status = rawStatus as "active" | "disabled" | "locked";
+
+        // 자기 자신의 role/status 변경 방지
+        if (userId === locals.user!.id) {
+            // 현재 자신의 값과 다른 변경을 시도하면 차단
+            const [self] = await db
+                .select({ role: users.role, status: users.status })
+                .from(users)
+                .where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)))
+                .limit(1);
+            if (self && (self.role !== role || self.status !== status)) {
+                return fail(400, { error: "자기 자신의 role/status는 변경할 수 없습니다." });
+            }
+        }
+
+        // 마지막 활성 관리자 보호 — admin 강등 또는 active 해제 시 검사
+        if (role === "user" || status !== "active") {
+            const lastAdminFail = await assertNotLastAdmin(db, tenant.id, userId);
+            if (lastAdminFail) return lastAdminFail;
+        }
+
+        // 변경 전 role 을 캡처해 변경 여부 판단
+        const [before] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)))
+            .limit(1);
 
         const displayName = String(fd.get("displayName") ?? "").trim() || null;
         const givenName = String(fd.get("givenName") ?? "").trim() || null;
@@ -147,11 +176,29 @@ export const actions: Actions = {
             })
             .where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)));
 
+        // role 변경 시 기존 세션 전부 파기 — 이전 권한 캐시 차단
+        if (before && before.role !== role) {
+            await revokeAllUserSessions(db, userId);
+        }
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId,
+            actorId: locals.user!.id,
+            kind: "user_profile_updated",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { role, status },
+        });
+
         return { updated: true };
     },
 
     // 부서 소속 추가
-    addDept: async ({ locals, params, request }) => {
+    addDept: async (event) => {
+        const { locals, params, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
@@ -185,26 +232,57 @@ export const actions: Actions = {
             if (!pos) return fail(404, { error: "직책을 찾을 수 없습니다." });
         }
 
-        await db.insert(userDepartments).values({ tenantId: tenant.id, userId, departmentId, positionId, jobTitle, isPrimary });
+        const membershipId = crypto.randomUUID();
+        await db.insert(userDepartments).values({ id: membershipId, tenantId: tenant.id, userId, departmentId, positionId, jobTitle, isPrimary });
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId,
+            actorId: locals.user!.id,
+            kind: "membership_change",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { membershipId, action: "add_dept", departmentId, positionId, isPrimary },
+        });
+
         return { addedDept: true };
     },
 
     // 부서 소속 제거 (endedAt 설정)
-    removeDept: async ({ locals, request }) => {
+    removeDept: async (event) => {
+        const { locals, params, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");
         if (!membershipId) return fail(400, { error: "잘못된 요청입니다." });
 
-        await db
+        // IDOR 방어: membershipId가 본 페이지의 userId 소유인지도 확인
+        const result = await db
             .update(userDepartments)
             .set({ endedAt: new Date() })
-            .where(and(eq(userDepartments.id, membershipId), eq(userDepartments.tenantId, tenant.id)));
+            .where(and(eq(userDepartments.id, membershipId), eq(userDepartments.userId, params.id), eq(userDepartments.tenantId, tenant.id)));
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: params.id,
+            actorId: locals.user!.id,
+            kind: "membership_change",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { membershipId, action: "remove_dept" },
+        });
+
+        void result;
         return { removedDept: true };
     },
 
     // 팀 소속 추가
-    addTeam: async ({ locals, params, request }) => {
+    addTeam: async (event) => {
+        const { locals, params, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
@@ -228,12 +306,27 @@ export const actions: Actions = {
             .limit(1);
         if (!team) return fail(404, { error: "팀을 찾을 수 없습니다." });
 
-        await db.insert(userTeams).values({ tenantId: tenant.id, userId, teamId, jobTitle, isPrimary });
+        const membershipId = crypto.randomUUID();
+        await db.insert(userTeams).values({ id: membershipId, tenantId: tenant.id, userId, teamId, jobTitle, isPrimary });
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId,
+            actorId: locals.user!.id,
+            kind: "membership_change",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { membershipId, action: "add_team", teamId, isPrimary },
+        });
+
         return { addedTeam: true };
     },
 
     // 팀 소속 제거
-    removeTeam: async ({ locals, request }) => {
+    removeTeam: async (event) => {
+        const { locals, params, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");
@@ -242,12 +335,26 @@ export const actions: Actions = {
         await db
             .update(userTeams)
             .set({ endedAt: new Date() })
-            .where(and(eq(userTeams.id, membershipId), eq(userTeams.tenantId, tenant.id)));
+            .where(and(eq(userTeams.id, membershipId), eq(userTeams.userId, params.id), eq(userTeams.tenantId, tenant.id)));
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: params.id,
+            actorId: locals.user!.id,
+            kind: "membership_change",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { membershipId, action: "remove_team" },
+        });
+
         return { removedTeam: true };
     },
 
     // 파트 소속 추가
-    addPart: async ({ locals, params, request }) => {
+    addPart: async (event) => {
+        const { locals, params, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
@@ -271,12 +378,27 @@ export const actions: Actions = {
             .limit(1);
         if (!part) return fail(404, { error: "파트를 찾을 수 없습니다." });
 
-        await db.insert(userParts).values({ tenantId: tenant.id, userId, partId, jobTitle, isPrimary });
+        const membershipId = crypto.randomUUID();
+        await db.insert(userParts).values({ id: membershipId, tenantId: tenant.id, userId, partId, jobTitle, isPrimary });
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId,
+            actorId: locals.user!.id,
+            kind: "membership_change",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { membershipId, action: "add_part", partId, isPrimary },
+        });
+
         return { addedPart: true };
     },
 
     // 파트 소속 제거
-    removePart: async ({ locals, request }) => {
+    removePart: async (event) => {
+        const { locals, params, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const membershipId = String(fd.get("membershipId") ?? "");
@@ -285,7 +407,20 @@ export const actions: Actions = {
         await db
             .update(userParts)
             .set({ endedAt: new Date() })
-            .where(and(eq(userParts.id, membershipId), eq(userParts.tenantId, tenant.id)));
+            .where(and(eq(userParts.id, membershipId), eq(userParts.userId, params.id), eq(userParts.tenantId, tenant.id)));
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: params.id,
+            actorId: locals.user!.id,
+            kind: "membership_change",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { membershipId, action: "remove_part" },
+        });
+
         return { removedPart: true };
     },
 };

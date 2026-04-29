@@ -106,10 +106,12 @@ export interface RequestedAuthnContext {
 export interface ParsedAuthnRequest {
     /** AuthnRequest 의 ID 속성 */
     id: string;
-    /** SP 의 entityId (Issuer 엘리먼트) */
+    /** SP 의 entityId (Issuer 엘리먼트) — 정규화 전 원본 값 */
     issuer: string;
     /** SP 가 요청한 ACS URL (없을 경우 DB 에 등록된 값을 사용) */
     acsUrl: string | null;
+    /** SP 가 명시한 Destination (없으면 null). IdP 는 자기 자신의 endpoint URL 과 일치하는지 검증해야 한다. */
+    destination: string | null;
     /** 원본 RelayState 쿼리 파라미터 */
     relayState: string | null;
     /** true 이면 IdP 는 기존 세션을 무시하고 재인증을 강제해야 한다 */
@@ -122,6 +124,8 @@ export interface ParsedAuthnRequest {
     requestedAuthnContext: RequestedAuthnContext | null;
 }
 
+const ISSUE_INSTANT_SKEW_MS = 5 * 60 * 1000; // ±5분
+
 function parseBoolAttr(val: string | null): boolean {
     return val === "true" || val === "1";
 }
@@ -133,6 +137,13 @@ export async function parseAuthnRequest(samlRequestB64: string, relayState: stri
     for (let i = 0; i < raw.length; i++) binary[i] = raw.charCodeAt(i);
     const xml = await inflateRaw(binary);
 
+    // XXE / DTD 인젝션 방어: SAML 표준상 AuthnRequest 는 DOCTYPE/ENTITY 를 가질 수 없다.
+    // @xmldom/xmldom 은 외부 entity 를 fetch 하지 않지만, 문서적으로 명시 차단해 두면
+    // 추후 라이브러리 교체에도 안전하다.
+    if (/<!DOCTYPE/i.test(xml) || /<!ENTITY/i.test(xml)) {
+        throw new Error("AuthnRequest 에 DOCTYPE/ENTITY 선언이 포함되어 있습니다.");
+    }
+
     const parser = new DOMParser();
     const doc = parser.parseFromString(xml, "text/xml");
     const root = doc.documentElement;
@@ -143,13 +154,23 @@ export async function parseAuthnRequest(samlRequestB64: string, relayState: stri
 
     const id = root.getAttribute("ID") ?? "";
     const acsUrl = root.getAttribute("AssertionConsumerServiceURL") ?? null;
+    const destination = root.getAttribute("Destination") ?? null;
     const forceAuthn = parseBoolAttr(root.getAttribute("ForceAuthn"));
     const isPassive = parseBoolAttr(root.getAttribute("IsPassive"));
     const issueInstantStr = root.getAttribute("IssueInstant") ?? "";
-    const issueInstant = issueInstantStr ? new Date(issueInstantStr) : new Date();
+    const issueInstant = issueInstantStr ? new Date(issueInstantStr) : new Date(NaN);
+
+    // IssueInstant 가 없거나 파싱 불가, 또는 현재 시각 ±5분 범위를 벗어나면 거부 (replay 방지)
+    if (!issueInstantStr || Number.isNaN(issueInstant.getTime())) {
+        throw new Error("AuthnRequest IssueInstant 가 없거나 유효하지 않습니다.");
+    }
+    const skew = Math.abs(Date.now() - issueInstant.getTime());
+    if (skew > ISSUE_INSTANT_SKEW_MS) {
+        throw new Error(`AuthnRequest IssueInstant 가 허용 범위(±5분)를 벗어납니다 (skew=${skew}ms)`);
+    }
 
     const issuerEls = doc.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:assertion", "Issuer");
-    const issuer = issuerEls[0]?.textContent?.trim() ?? "";
+    const issuer = (issuerEls[0]?.textContent?.trim() ?? "").trim();
 
     // RequestedAuthnContext 파싱
     const racEls = doc.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:protocol", "RequestedAuthnContext");
@@ -172,6 +193,7 @@ export async function parseAuthnRequest(samlRequestB64: string, relayState: stri
         id,
         issuer,
         acsUrl,
+        destination,
         relayState,
         forceAuthn,
         isPassive,

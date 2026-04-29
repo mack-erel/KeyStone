@@ -15,7 +15,11 @@ const ID_TOKEN_TTL_S = 600; // 10분
 function tokenError(code: string, description: string, status = 400): Response {
     return new Response(JSON.stringify({ error: code, error_description: description }), {
         status,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, private",
+            Pragma: "no-cache",
+        },
     });
 }
 
@@ -51,7 +55,24 @@ export const POST: RequestHandler = async (event) => {
     const issuer = issuerUrl ?? url.origin;
     const body = await request.formData();
 
+    const recordTokenFailure = async (clientIdForAudit: string | null, errorCode: string, description: string): Promise<void> => {
+        try {
+            await recordAuditEvent(db, {
+                tenantId: tenant.id,
+                spOrClientId: clientIdForAudit,
+                kind: "oidc_token",
+                outcome: "failure",
+                ip,
+                userAgent,
+                detail: { error: errorCode, description },
+            });
+        } catch {
+            /* audit 기록 실패는 무시 */
+        }
+    };
+
     if (body.get("grant_type") !== "authorization_code") {
+        await recordTokenFailure(null, "unsupported_grant_type", "authorization_code 외 grant_type");
         return tokenError("unsupported_grant_type", "authorization_code 만 지원합니다.");
     }
 
@@ -62,7 +83,10 @@ export const POST: RequestHandler = async (event) => {
     const authHeader = request.headers.get("Authorization");
     if (authHeader) {
         const parsed = parseBasicAuth(authHeader);
-        if (!parsed) return tokenError("invalid_client", "잘못된 Authorization 헤더입니다.", 401);
+        if (!parsed) {
+            await recordTokenFailure(null, "invalid_client", "잘못된 Authorization 헤더");
+            return tokenError("invalid_client", "잘못된 Authorization 헤더입니다.", 401);
+        }
         clientId = parsed.clientId;
         clientSecret = parsed.clientSecret;
     } else {
@@ -71,15 +95,18 @@ export const POST: RequestHandler = async (event) => {
     }
 
     if (!clientId) {
+        await recordTokenFailure(null, "invalid_client", "client_id 누락");
         return tokenError("invalid_client", "client_id 가 필요합니다.", 401);
     }
 
     const client = await findOidcClient(db, tenant.id, clientId);
     if (!client) {
+        await recordTokenFailure(clientId, "invalid_client", "등록되지 않은 client_id");
         return tokenError("invalid_client", "등록되지 않은 클라이언트입니다.", 401);
     }
 
     if (!(await isValidClientSecret(client, clientSecret))) {
+        await recordTokenFailure(clientId, "invalid_client", "client_secret 검증 실패");
         return tokenError("invalid_client", "클라이언트 인증에 실패했습니다.", 401);
     }
 
@@ -88,32 +115,38 @@ export const POST: RequestHandler = async (event) => {
     const codeVerifier = String(body.get("code_verifier") ?? "");
 
     if (!code || !redirectUri) {
+        await recordTokenFailure(clientId, "invalid_request", "code 또는 redirect_uri 누락");
         return tokenError("invalid_request", "code 와 redirect_uri 는 필수입니다.");
     }
 
     // 조회와 소진을 원자적으로 처리 (replay 방지)
     const grant = await findAndConsumeGrant(db, tenant.id, clientId, code);
     if (!grant) {
+        await recordTokenFailure(clientId, "invalid_grant", "유효하지 않거나 만료된 code");
         return tokenError("invalid_grant", "유효하지 않거나 만료된 authorization code 입니다.");
     }
 
     if (grant.redirectUri !== redirectUri) {
+        await recordTokenFailure(clientId, "invalid_grant", "redirect_uri mismatch");
         return tokenError("invalid_grant", "redirect_uri 가 일치하지 않습니다.");
     }
 
     // PKCE 검증
     if (grant.codeChallenge) {
         if (!codeVerifier) {
+            await recordTokenFailure(clientId, "invalid_grant", "code_verifier 누락");
             return tokenError("invalid_grant", "code_verifier 가 필요합니다.");
         }
         const valid = await verifyPkce(grant.codeChallenge, grant.codeChallengeMethod ?? "plain", codeVerifier);
         if (!valid) {
+            await recordTokenFailure(clientId, "invalid_grant", "code_verifier 검증 실패");
             return tokenError("invalid_grant", "code_verifier 검증에 실패했습니다.");
         }
     }
 
     const user = await findActiveUserById(db, grant.userId);
     if (!user) {
+        await recordTokenFailure(clientId, "invalid_grant", "사용자 조회 실패");
         return tokenError("invalid_grant", "사용자를 찾을 수 없습니다.");
     }
 
@@ -130,8 +163,11 @@ export const POST: RequestHandler = async (event) => {
         iss: issuer,
         sub: user.id,
         aud: clientId,
+        azp: clientId,
         iat: nowSec,
         exp: nowSec + ID_TOKEN_TTL_S,
+        auth_time: Math.floor(grant.createdAt.getTime() / 1000),
+        jti: crypto.randomUUID(),
     };
 
     // email scope
@@ -173,6 +209,9 @@ export const POST: RequestHandler = async (event) => {
             scope: grant.scope,
             iat: nowSec,
             exp: nowSec + ACCESS_TOKEN_TTL_S,
+            jti: crypto.randomUUID(),
+            aud: clientId,
+            iss: issuer,
         },
         signingKeySecret,
     );
@@ -189,11 +228,19 @@ export const POST: RequestHandler = async (event) => {
         detail: { clientId, scope: grant.scope },
     });
 
-    return json({
-        access_token: accessToken,
-        token_type: "Bearer",
-        expires_in: ACCESS_TOKEN_TTL_S,
-        scope: grant.scope,
-        id_token: idToken,
-    });
+    return json(
+        {
+            access_token: accessToken,
+            token_type: "Bearer",
+            expires_in: ACCESS_TOKEN_TTL_S,
+            scope: grant.scope,
+            id_token: idToken,
+        },
+        {
+            headers: {
+                "Cache-Control": "no-store, private",
+                Pragma: "no-cache",
+            },
+        },
+    );
 };

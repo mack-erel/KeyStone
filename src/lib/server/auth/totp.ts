@@ -96,47 +96,87 @@ export async function verifyTotp(code: string, base32Secret: string, lastUsedSte
 
 // ── TOTP 시크릿 암호화/복호화 ──────────────────────────────────────────────────
 
-async function deriveTotpWrapKey(signingKeySecret: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+async function deriveTotpWrapKey(signingKeySecret: string, salt: Uint8Array<ArrayBuffer>, info: string): Promise<CryptoKey> {
     const enc = new TextEncoder();
     const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(signingKeySecret), "HKDF", false, ["deriveKey"]);
-    return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt, info: enc.encode("idp-totp-secret-wrap-v1") }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    return crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt, info: enc.encode(info) }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
+
+const b64uEnc = (buf: Uint8Array): string =>
+    btoa(String.fromCharCode(...buf))
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+const b64uDec = (s: string): Uint8Array<ArrayBuffer> => {
+    const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length) as Uint8Array<ArrayBuffer>;
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+};
 
 /**
  * TOTP base32 시크릿을 AES-256-GCM 으로 암호화한다.
- * 형식: `<salt_b64u>.<iv_b64u>.<ciphertext_b64u>`
+ *
+ * - userId 가 주어지면 v2 형식으로 저장 (HKDF info / AES-GCM AAD 에 userId 바인딩).
+ *   다른 사용자 레코드로 ciphertext 를 옮겨붙여도 검증 실패.
+ * - userId 미지정 시 v1 형식(레거시) 으로 저장 (호환).
+ *
+ * 형식 v1: `<salt_b64u>.<iv_b64u>.<ciphertext_b64u>`
+ * 형식 v2: `v2.<salt_b64u>.<iv_b64u>.<ciphertext_b64u>` (AAD = "v2:" + userId)
  */
-export async function encryptTotpSecret(base32Secret: string, signingKeySecret: string): Promise<string> {
+export async function encryptTotpSecret(base32Secret: string, signingKeySecret: string, userId?: string): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const wrapKey = await deriveTotpWrapKey(signingKeySecret, salt);
     const enc = new TextEncoder();
+
+    if (userId) {
+        const info = `idp-totp-secret-wrap-v2:${userId}`;
+        const aad = enc.encode(`v2:${userId}`);
+        const wrapKey = await deriveTotpWrapKey(signingKeySecret, salt, info);
+        const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, wrapKey, enc.encode(base32Secret));
+        return `v2.${b64uEnc(salt)}.${b64uEnc(iv)}.${b64uEnc(new Uint8Array(ct))}`;
+    }
+
+    const wrapKey = await deriveTotpWrapKey(signingKeySecret, salt, "idp-totp-secret-wrap-v1");
     const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, wrapKey, enc.encode(base32Secret));
-    const b64u = (buf: Uint8Array) =>
-        btoa(String.fromCharCode(...buf))
-            .replace(/\+/g, "-")
-            .replace(/\//g, "_")
-            .replace(/=+$/, "");
-    return `${b64u(salt)}.${b64u(iv)}.${b64u(new Uint8Array(ct))}`;
+    return `${b64uEnc(salt)}.${b64uEnc(iv)}.${b64uEnc(new Uint8Array(ct))}`;
 }
 
 /**
- * `encryptTotpSecret` 역연산. 복호화된 base32 시크릿 반환.
+ * `encryptTotpSecret` 역연산. v1/v2 모두 자동 감지하여 복호화한다.
+ *
+ * - v2 ciphertext 는 userId 가 반드시 필요. 없으면 throw.
+ * - v1 은 userId 없어도 복호화 가능 (레거시).
+ *
+ * 호출처에서 v1 을 만나면 복호화 후 즉시 v2 로 재암호화하여 lazy migration 을 진행한다.
  */
-export async function decryptTotpSecret(encrypted: string, signingKeySecret: string): Promise<string> {
+export async function decryptTotpSecret(encrypted: string, signingKeySecret: string, userId?: string): Promise<string> {
+    if (encrypted.startsWith("v2.")) {
+        if (!userId) throw new Error("userId required to decrypt v2 TOTP secret");
+        const parts = encrypted.split(".");
+        if (parts.length !== 4) throw new Error("Invalid encrypted TOTP secret format (v2)");
+        const [, saltB64, ivB64, ctB64] = parts;
+        const enc = new TextEncoder();
+        const wrapKey = await deriveTotpWrapKey(signingKeySecret, b64uDec(saltB64), `idp-totp-secret-wrap-v2:${userId}`);
+        const aad = enc.encode(`v2:${userId}`);
+        const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64uDec(ivB64), additionalData: aad }, wrapKey, b64uDec(ctB64));
+        return new TextDecoder().decode(plaintext);
+    }
+
+    // v1 (레거시): 형식 = salt.iv.ct
     const parts = encrypted.split(".");
     if (parts.length !== 3) throw new Error("Invalid encrypted TOTP secret format");
     const [saltB64, ivB64, ctB64] = parts;
-    const b64uDec = (s: string): Uint8Array<ArrayBuffer> => {
-        const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
-        const bin = atob(b64);
-        const arr = new Uint8Array(bin.length) as Uint8Array<ArrayBuffer>;
-        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        return arr;
-    };
-    const wrapKey = await deriveTotpWrapKey(signingKeySecret, b64uDec(saltB64));
+    const wrapKey = await deriveTotpWrapKey(signingKeySecret, b64uDec(saltB64), "idp-totp-secret-wrap-v1");
     const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64uDec(ivB64) }, wrapKey, b64uDec(ctB64));
     return new TextDecoder().decode(plaintext);
+}
+
+/** 저장된 ciphertext 가 v1 (레거시) 인지 확인. v2 로 재암호화가 필요한지 판단할 때 사용한다. */
+export function isLegacyTotpCiphertext(encrypted: string): boolean {
+    return !encrypted.startsWith("v2.");
 }
 
 // ── OTP Auth URI ───────────────────────────────────────────────────────────────

@@ -312,7 +312,7 @@ export const samlSps = sqliteTable(
         cert: text("cert"),
         nameIdFormat: text("name_id_format").notNull().default("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"),
         signAssertion: integer("sign_assertion", { mode: "boolean" }).notNull().default(true),
-        signResponse: integer("sign_response", { mode: "boolean" }).notNull().default(false),
+        signResponse: integer("sign_response", { mode: "boolean" }).notNull().default(true),
         encryptAssertion: integer("encrypt_assertion", { mode: "boolean" }).notNull().default(false),
         wantAuthnRequestsSigned: integer("want_authn_requests_signed", { mode: "boolean" }).notNull().default(false),
         attributeMappingJson: text("attribute_mapping_json"),
@@ -668,6 +668,31 @@ export const userTeams = sqliteTable(
     (t) => [index("user_teams_user_idx").on(t.userId), index("user_teams_team_idx").on(t.teamId), index("user_teams_tenant_idx").on(t.tenantId)],
 );
 
+// ---------- SAML AuthnRequest ID replay cache ----------
+
+/**
+ * SAML AuthnRequest ID 1회용 캐시. parseAuthnRequest 통과 후 INSERT;
+ * 동일 ID 가 이미 존재하면 replay 로 간주하고 거부한다. expiresAt 이 지난 행은
+ * cleanup job 또는 DELETE WHERE expiresAt < now() 로 정리.
+ */
+export const samlAuthnRequestIds = sqliteTable(
+    "saml_authn_request_ids",
+    {
+        tenantId: text("tenant_id")
+            .notNull()
+            .references(() => tenants.id, { onDelete: "cascade" }),
+        // 외부에서 들어온 SAML AuthnRequest ID 값 그대로 저장.
+        requestId: text("request_id").notNull(),
+        // SP entityId (디버깅/감사용)
+        spEntityId: text("sp_entity_id").notNull(),
+        seenAt: integer("seen_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+        expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    },
+    (t) => [uniqueIndex("saml_authn_request_ids_tenant_req_uidx").on(t.tenantId, t.requestId), index("saml_authn_request_ids_expires_idx").on(t.expiresAt)],
+);
+
 // ---------- WebAuthn Challenges ----------
 
 /**
@@ -680,11 +705,16 @@ export const webauthnChallenges = sqliteTable(
         id: text("id")
             .primaryKey()
             .$defaultFn(() => crypto.randomUUID()),
+        // 마이그레이션 호환을 위해 nullable. 신규 row 는 항상 not null 로 INSERT 되며,
+        // 조회/소진 시 tenantId 일치를 강제해 (다른 테넌트 challenge 매칭 차단) NULL 인
+        // 레거시 row 는 어떤 쿼리에도 잡히지 않는다 (5분 TTL 후 purge).
+        tenantId: text("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+        userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
         challenge: text("challenge").notNull(),
         expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
         usedAt: integer("used_at", { mode: "timestamp_ms" }),
     },
-    (t) => [uniqueIndex("webauthn_challenges_challenge_uidx").on(t.challenge), index("webauthn_challenges_expires_idx").on(t.expiresAt)],
+    (t) => [uniqueIndex("webauthn_challenges_tenant_challenge_uidx").on(t.tenantId, t.challenge), index("webauthn_challenges_tenant_expires_idx").on(t.tenantId, t.expiresAt)],
 );
 
 // ---------- Types ----------

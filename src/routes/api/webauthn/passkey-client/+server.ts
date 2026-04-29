@@ -57,7 +57,13 @@ const script = `
       var verRes=await fetch('/api/webauthn/authenticate/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!verRes.ok)throw new Error(await verRes.text());
       var data=await verRes.json();
-      window.location.href=data.redirectTo||'/';
+      var dest=data&&data.redirectTo?data.redirectTo:'/';
+      try{
+        if(typeof dest!=='string'||!dest.length||dest.charAt(0)!=='/'||dest.indexOf('//')===0||dest.indexOf('\\\\')!==-1){
+          dest='/';
+        }
+      }catch(_){dest='/';}
+      window.location.href=dest;
     }catch(e){
       btn.disabled=false;btn.textContent=orig;
       showError(e&&e.message?e.message:'패스키 인증에 실패했습니다.');
@@ -66,13 +72,17 @@ const script = `
   function init(){
     var btn=document.getElementById('idp-passkey-btn');
     if(btn){
-      var redir=(document.querySelector('[name="redirectTo"]')||{}).value||'';
+      var redirInput=document.querySelector('form input[name="redirectTo"]');
+      var redir=redirInput&&typeof redirInput.value==='string'?redirInput.value:'';
+      if(redir&&(redir.charAt(0)!=='/'||redir.indexOf('//')===0))redir='';
       btn.addEventListener('click',function(){passkeyLogin(btn,redir);});
     }
     // 커스텀 스킨(skin-scripts)이 호출할 수 있도록 전역 함수 노출
     window.idpPasskeyLogin=function(){
       var b=document.getElementById('passkey')||document.getElementById('idp-passkey-btn')||document.createElement('button');
-      var r=(document.querySelector('[name="redirectTo"]')||{}).value||'';
+      var rInput=document.querySelector('form input[name="redirectTo"]');
+      var r=rInput&&typeof rInput.value==='string'?rInput.value:'';
+      if(r&&(r.charAt(0)!=='/'||r.indexOf('//')===0))r='';
       passkeyLogin(b,r);
     };
   }

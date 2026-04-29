@@ -1,13 +1,13 @@
 import { desc, eq, and, lt } from "drizzle-orm";
 import type { PageServerLoad } from "./$types";
-import { requireDbContext } from "$lib/server/auth/guards";
+import { requireAdminContext } from "$lib/server/auth/guards";
 import { auditEvents, users } from "$lib/server/db/schema";
 
 const VALID_OUTCOMES = ["success", "failure"] as const;
 const PAGE_SIZE = 50;
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant } = requireAdminContext(locals);
 
     const kindFilter = url.searchParams.get("kind")?.trim() || null;
     const outcomeFilter = url.searchParams.get("outcome")?.trim() || null;
