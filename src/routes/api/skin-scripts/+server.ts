@@ -20,6 +20,12 @@ const JS = `(function(){
   }
 
   // ── Flash (server-filled IDP_FLASH_MSG) ───────────────────────────────
+  // 패스키 에러(passkey-client showError) 와 동일하게 4초 후 자동 숨김.
+  function autoHideFlash(flashEl){
+    if(!flashEl)return;
+    clearTimeout(flashEl._t);
+    flashEl._t=setTimeout(function(){flashEl.classList.remove('show');},4000);
+  }
   function initFlash(){
     var flashMsgEl=document.getElementById('flash-msg');
     var flashEl=document.getElementById('flash');
@@ -27,6 +33,7 @@ const JS = `(function(){
     var txt=(flashMsgEl.textContent||'').trim();
     if(txt){
       flashEl.classList.add('show');
+      autoHideFlash(flashEl);
       return true;
     }
     return false;
@@ -79,10 +86,12 @@ const JS = `(function(){
         flash.classList.add('ok','show');
         var tag=flash.querySelector('.tag');if(tag)tag.textContent='[ok]';
         flashMsg.textContent='회원가입이 완료되었습니다. 로그인해주세요.';
+        autoHideFlash(flash);
       }else if(meta.dataset.pwReset==='1'&&flash&&flashMsg){
         flash.classList.add('ok','show');
         var tag2=flash.querySelector('.tag');if(tag2)tag2.textContent='[ok]';
         flashMsg.textContent='비밀번호가 재설정되었습니다. 새 비밀번호로 로그인해주세요.';
+        autoHideFlash(flash);
       }
     }
     var u=document.querySelector('input[name="username"]');
