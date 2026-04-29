@@ -64,6 +64,7 @@
     },
     "dependencies": {
         "@hicaru/argon2-pure.js": "^0.0.4",
-        "nodemailer": "^8.0.5"
+        "nodemailer": "^8.0.5",
+        "xml-core": "^1.2.5"
     }
 }

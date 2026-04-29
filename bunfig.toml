@@ -1,0 +1,4 @@
+[install]
+# pnpm식 isolated 구조로 글로벌 캐시(~/.bun/install/cache)에서
+# hardlink/CoW로 dedup. 로컬 디스크 중복 패키지 용량 문제 방지.
+linker = "isolated"
