@@ -146,23 +146,15 @@ export const POST: RequestHandler = async (event) => {
         });
     }
 
-    let postLogoutRedirectUri: string | null = null;
-    let clientId: string | null = null;
-    let idTokenHint: string | null = null;
-    let state: string | null = null;
     const ct = request.headers.get("Content-Type") ?? "";
-    if (ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data")) {
-        const form = await request.formData();
-        postLogoutRedirectUri = (form.get("post_logout_redirect_uri") as string | null) ?? null;
-        clientId = (form.get("client_id") as string | null) ?? null;
-        idTokenHint = (form.get("id_token_hint") as string | null) ?? null;
-        state = (form.get("state") as string | null) ?? null;
-    } else {
-        postLogoutRedirectUri = url.searchParams.get("post_logout_redirect_uri");
-        clientId = url.searchParams.get("client_id");
-        idTokenHint = url.searchParams.get("id_token_hint");
-        state = url.searchParams.get("state");
-    }
+    const isForm = ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data");
+    const formData = isForm ? await request.formData() : null;
+    const readField = (key: string): string | null => (formData ? ((formData.get(key) as string | null) ?? null) : url.searchParams.get(key));
+
+    const postLogoutRedirectUri: string | null = readField("post_logout_redirect_uri");
+    const clientId: string | null = readField("client_id");
+    const idTokenHint: string | null = readField("id_token_hint");
+    const state: string | null = readField("state");
 
     if (!idTokenHint || !locals.db || !locals.tenant) {
         return new Response(JSON.stringify({ error: "invalid_request" }), {

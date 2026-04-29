@@ -13,6 +13,7 @@ import { ensureXmlEngine, xmldsigjs } from "./xml-setup";
 function xmlEscape(str: string): string {
     // XML 1.0 에서 허용되지 않는 제어문자(0x00-0x08, 0x0B-0x0C, 0x0E-0x1F) 를 먼저 제거.
     // 이런 문자는 escape 만으로는 valid XML 이 되지 않아 SP 가 파싱 실패하거나 SAML 인젝션 벡터가 된다.
+    // eslint-disable-next-line no-control-regex
     const sanitized = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
     return sanitized.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
