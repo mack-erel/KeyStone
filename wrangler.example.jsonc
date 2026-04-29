@@ -6,8 +6,8 @@
     "main": ".svelte-kit/cloudflare/_worker.js",
     "routes": [
         {
-            // 실제 배포 도메인으로 변경하세요
-            "pattern": "",
+            // 실제 배포 도메인으로 변경하세요 (setup 이 IDP_ISSUER_URL host 로 자동 채움)
+            "pattern": "keystone.example.com",
             "custom_domain": true,
         },
     ],
@@ -41,18 +41,18 @@
             // 커스텀 로그인 스킨 R2 캐시 버킷
             // 생성: wrangler r2 bucket create keystone-skin-cache
             "binding": "SKIN_CACHE",
-            "bucket_name": "",
+            "bucket_name": "keystone-skin-cache",
             "remote": true,
         },
     ],
     "d1_databases": [
         {
             "binding": "DB",
-            "database_name": "",
-            // D1 데이터베이스 ID (CLOUDFLARE_D1_DATABASE_ID와 동일)
-            "database_id": "",
-            // 프리뷰 DB가 따로 있다면 주석 해제
-            // "preview_database_id": "",
+            "database_name": "keystone-db",
+            // D1 데이터베이스 ID (setup 이 자동 채움)
+            "database_id": "YOUR_D1_DATABASE_ID",
+            // 프리뷰 DB가 따로 있다면 주석 해제 (setup 이 자동 활성화)
+            // "preview_database_id": "YOUR_D1_PREVIEW_DATABASE_ID",
             "migrations_dir": "drizzle",
             "remote": true,
         },
