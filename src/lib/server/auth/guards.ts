@@ -37,11 +37,7 @@ export function requireAdminContext(locals: App.Locals) {
  *
  * 반환값: 차단해야 하면 SvelteKit `fail(400, ...)` 형태의 ActionFailure, 통과면 `null`.
  */
-export async function assertNotLastAdmin(
-    db: DB,
-    tenantId: string,
-    userIdToBeChanged: string,
-): Promise<ReturnType<typeof fail> | null> {
+export async function assertNotLastAdmin(db: DB, tenantId: string, userIdToBeChanged: string): Promise<ReturnType<typeof fail> | null> {
     const [target] = await db
         .select({ id: users.id, role: users.role, status: users.status })
         .from(users)

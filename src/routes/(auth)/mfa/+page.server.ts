@@ -184,10 +184,7 @@ export const actions: Actions = {
                             nextSecret = totpCred.secret;
                         }
                     }
-                    await db
-                        .update(credentials)
-                        .set({ lastUsedAt: new Date(), counter: matchedStep, secret: nextSecret })
-                        .where(eq(credentials.id, totpCred.id));
+                    await db.update(credentials).set({ lastUsedAt: new Date(), counter: matchedStep, secret: nextSecret }).where(eq(credentials.id, totpCred.id));
                 }
             }
         }

@@ -547,10 +547,7 @@ async function step1_createWranglerJsonc(args: Args) {
             console.log("  wrangler.jsonc 유지 (--yes)");
             return;
         }
-        const choice = await select("wrangler.jsonc가 이미 존재합니다. 어떻게 처리할까요?", [
-            "유지 (그대로 둠 — step4 에서 누락된 ID 만 채움)",
-            "덮어쓰기 (example 로 초기화)",
-        ]);
+        const choice = await select("wrangler.jsonc가 이미 존재합니다. 어떻게 처리할까요?", ["유지 (그대로 둠 — step4 에서 누락된 ID 만 채움)", "덮어쓰기 (example 로 초기화)"]);
         if (choice === 0) {
             console.log("  wrangler.jsonc 유지");
             normalizeWranglerPlaceholders();
@@ -574,11 +571,7 @@ async function step2_createEnv(args: Args) {
             else console.log("  .env 유지 (누락 키 없음)");
             return;
         }
-        const choice = await select(".env 가 이미 존재합니다. 어떻게 처리할까요?", [
-            "유지 (그대로 둠)",
-            "병합 (.env.example 의 누락된 키만 추가)",
-            "덮어쓰기 (example 로 초기화)",
-        ]);
+        const choice = await select(".env 가 이미 존재합니다. 어떻게 처리할까요?", ["유지 (그대로 둠)", "병합 (.env.example 의 누락된 키만 추가)", "덮어쓰기 (example 로 초기화)"]);
         if (choice === 0) {
             console.log("  .env 유지");
             return;
@@ -791,12 +784,7 @@ async function step4_updateFiles(dbId: string, previewDbId: string | null, accou
  * `.env` 의 비-시크릿 키를 `wrangler.jsonc` 의 vars 블록과 동기화한다.
  * secret/token 류는 제외 — `wrangler secret put` 으로 별도 배포.
  */
-const SECRET_KEYS = new Set([
-    "IDP_SIGNING_KEY_SECRET",
-    "SMTP_PASSWORD",
-    "CLOUDFLARE_API_TOKEN",
-    "CLOUDFLARE_D1_TOKEN",
-]);
+const SECRET_KEYS = new Set(["IDP_SIGNING_KEY_SECRET", "SMTP_PASSWORD", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_D1_TOKEN"]);
 
 function syncWranglerVarsFromEnv() {
     if (!fs.existsSync(WRANGLER_JSONC) || !fs.existsSync(ENV_FILE)) return;

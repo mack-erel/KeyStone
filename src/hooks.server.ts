@@ -6,12 +6,7 @@ import { clearSessionCookie, getSessionContext, touchSession } from "$lib/server
 import { getDb } from "$lib/server/db";
 
 // CSRF: state-changing 요청에 대해 same-origin을 강제할 라우트
-const CSRF_PROTECTED = [
-    /^\/admin(\/|$)/,
-    /^\/account(\/|$)/,
-    /^\/(login|signup|find-id|find-password|reset-password|mfa|logout)(\/|$)/,
-    /^\/api\/webauthn\//,
-];
+const CSRF_PROTECTED = [/^\/admin(\/|$)/, /^\/account(\/|$)/, /^\/(login|signup|find-id|find-password|reset-password|mfa|logout)(\/|$)/, /^\/api\/webauthn\//];
 
 // CSRF: 프로토콜 자체 인증으로 보호되므로 origin 검사를 건너뛸 라우트
 const CSRF_SKIP = [
@@ -21,13 +16,7 @@ const CSRF_SKIP = [
 ];
 
 // 인증/계정/관리자 등 캐시 금지 + COOP/CORP 적용 대상
-const SENSITIVE = [
-    /^\/admin/,
-    /^\/account/,
-    /^\/(login|signup|find-id|find-password|reset-password|mfa|logout)/,
-    /^\/oidc\/(authorize|token|userinfo|end-session)/,
-    /^\/api\/webauthn/,
-];
+const SENSITIVE = [/^\/admin/, /^\/account/, /^\/(login|signup|find-id|find-password|reset-password|mfa|logout)/, /^\/oidc\/(authorize|token|userinfo|end-session)/, /^\/api\/webauthn/];
 
 // cross-origin 으로 노출되어야 하는 공개 메타데이터 (CORP 면제)
 const PUBLIC_META = [/^\/\.well-known\//, /^\/oidc\/jwks/, /^\/saml\/metadata/];
@@ -120,10 +109,7 @@ export const handle: Handle = async ({ event, resolve }) => {
     response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
     // Permissions Policy — 불필요한 브라우저 기능 비활성화 + FLoC/Topics 차단
-    response.headers.set(
-        "Permissions-Policy",
-        "camera=(), microphone=(), geolocation=(), payment=(), interest-cohort=(), browsing-topics=()",
-    );
+    response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), interest-cohort=(), browsing-topics=()");
 
     // 민감 라우트 캐시 금지
     if (SENSITIVE.some((r) => r.test(path))) {

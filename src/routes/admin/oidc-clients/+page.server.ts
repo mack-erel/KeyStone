@@ -88,7 +88,10 @@ function validateSingleUri(value: string, label: string): { ok: true } | { ok: f
 }
 
 function normalizeScopes(raw: string): { ok: true; value: string } | { ok: false; reason: string } {
-    const tokens = raw.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+    const tokens = raw
+        .split(/\s+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
     const seen = new Set<string>();
     const out: string[] = [];
     for (const t of tokens) {

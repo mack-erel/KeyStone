@@ -714,10 +714,7 @@ export const webauthnChallenges = sqliteTable(
         expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
         usedAt: integer("used_at", { mode: "timestamp_ms" }),
     },
-    (t) => [
-        uniqueIndex("webauthn_challenges_tenant_challenge_uidx").on(t.tenantId, t.challenge),
-        index("webauthn_challenges_tenant_expires_idx").on(t.tenantId, t.expiresAt),
-    ],
+    (t) => [uniqueIndex("webauthn_challenges_tenant_challenge_uidx").on(t.tenantId, t.challenge), index("webauthn_challenges_tenant_expires_idx").on(t.tenantId, t.expiresAt)],
 );
 
 // ---------- Types ----------

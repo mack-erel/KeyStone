@@ -8,8 +8,14 @@ function escapeLdapChar(ch: string): string {
 /** DN 이 base DN 의 suffix 인지(같은 트리에 속하는지) 검증한다. */
 function dnIsUnderBase(dn: string, baseDN: string): boolean {
     if (!dn || !baseDN) return false;
-    const d = dn.trim().toLowerCase().replace(/\s*,\s*/g, ",");
-    const b = baseDN.trim().toLowerCase().replace(/\s*,\s*/g, ",");
+    const d = dn
+        .trim()
+        .toLowerCase()
+        .replace(/\s*,\s*/g, ",");
+    const b = baseDN
+        .trim()
+        .toLowerCase()
+        .replace(/\s*,\s*/g, ",");
     if (d === b) return true;
     return d.endsWith("," + b);
 }

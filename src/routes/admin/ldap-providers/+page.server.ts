@@ -51,13 +51,7 @@ function buildConfig(fd: FormData): LdapProviderConfig {
 
 const ALLOWED_LDAP_PORTS = new Set([389, 636, 3268, 3269]);
 
-const BLOCKED_METADATA_HOSTS = new Set([
-    "metadata.google.internal",
-    "metadata.azure.com",
-    "metadata.azure.internal",
-    "instance-data",
-    "metadata",
-]);
+const BLOCKED_METADATA_HOSTS = new Set(["metadata.google.internal", "metadata.azure.com", "metadata.azure.internal", "instance-data", "metadata"]);
 
 /**
  * LDAP 호스트가 메타데이터 / link-local 등 명백한 SSRF 표적인지 검사.
