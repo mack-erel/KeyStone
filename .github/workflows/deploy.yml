@@ -32,8 +32,10 @@ jobs:
                       build-affected:
                         - "src/**"
                         - "static/**"
+                        - "drizzle/**"
                         - "package.json"
                         - "bun.lock"
+                        - "bunfig.toml"
                         - "vite.config.*"
                         - "svelte.config.*"
                         - "tsconfig.json"
