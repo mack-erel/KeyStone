@@ -23,10 +23,11 @@ const config = {
                 "object-src": ["none"],
             },
         },
-        // SvelteKit 자동 origin 검사는 비활성화하고, hooks.server.ts에서
-        // 라우트별로 정밀하게 CSRF 검사를 수행한다.
-        // (SAML/OIDC 프로토콜 엔드포인트는 자체 인증으로 보호됨)
-        csrf: { checkOrigin: false },
+        // SvelteKit 자동 origin 검사는 전역으로 비활성화하고, hooks.server.ts 에서
+        // 라우트별로 정밀하게 CSRF 검사를 수행한다 (SAML/OIDC 프로토콜 엔드포인트는
+        // 자체 인증으로 보호됨). SvelteKit 6+ 에서 `checkOrigin` 이 deprecated 되어
+        // 대신 `trustedOrigins: ['*']` 를 사용한다 — 전역 비활성 의미는 동일.
+        csrf: { trustedOrigins: ["*"] },
         typescript: {
             config: (config) => ({
                 ...config,
