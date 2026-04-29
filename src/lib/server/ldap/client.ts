@@ -15,8 +15,15 @@ function createLdapClient(config: LdapProviderConfig): ldap.Client {
     });
 }
 
-/** DN + 패스워드로 LDAP bind. 실패 시 throw. */
+/** DN + 패스워드로 LDAP bind. 실패 시 throw. 빈 패스워드는 anonymous bind 가 되므로 거부. */
 export async function ldapBind(config: LdapProviderConfig, dn: string, password: string): Promise<void> {
+    if (!password) {
+        // RFC 4513 §5.1.2 — empty password 는 anonymous bind 로 성공 처리되므로 명시적으로 거부.
+        throw new Error("LDAP bind: empty password is not allowed");
+    }
+    if (!dn) {
+        throw new Error("LDAP bind: empty DN is not allowed");
+    }
     return new Promise((resolve, reject) => {
         const client = createLdapClient(config);
 
@@ -51,7 +58,7 @@ export async function ldapSearchDn(config: LdapProviderConfig, bindDn: string, b
                 return;
             }
 
-            client.search(config.baseDN, { scope: "sub", filter, attributes: ["dn"] }, (searchErr: Error | null, res: ldap.SearchCallbackResponse) => {
+            client.search(config.baseDN, { scope: "sub", filter, attributes: ["dn"], derefAliases: 0 }, (searchErr: Error | null, res: ldap.SearchCallbackResponse) => {
                 if (searchErr) {
                     client.unbind();
                     reject(searchErr);
@@ -94,7 +101,7 @@ export async function ldapFetchEntry(config: LdapProviderConfig, bindDn: string,
                 return;
             }
 
-            client.search(entryDn, { scope: "base", filter: "(objectClass=*)", attributes }, (searchErr: Error | null, res: ldap.SearchCallbackResponse) => {
+            client.search(entryDn, { scope: "base", filter: "(objectClass=*)", attributes, derefAliases: 0 }, (searchErr: Error | null, res: ldap.SearchCallbackResponse) => {
                 if (searchErr) {
                     client.unbind();
                     reject(searchErr);

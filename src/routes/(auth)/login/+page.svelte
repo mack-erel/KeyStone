@@ -84,6 +84,11 @@ async function loginWithPasskey() {
             {data.runtimeError}
         </div>
     {/if}
+    <!--
+        스킨 HTML 출처: 관리자(admin)가 등록한 외부 URL을 서버측에서 fetch 하여 주입한다.
+        XSS 가능성은 인지하고 있으며, CSP(script-src 화이트리스트), CSRF 토큰, form-action,
+        그리고 admin-only 등록 권한으로 영향을 제한한다. 사용자 입력은 절대 이 슬롯에 들어오지 않는다.
+    -->
     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
     {@html skinHtmlEffective}
 {:else}

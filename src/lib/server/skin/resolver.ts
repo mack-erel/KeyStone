@@ -4,16 +4,43 @@ import { and, eq } from "drizzle-orm";
 
 const R2_PREFIX = "skins/";
 
+const BLOCKED_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
+
 export function escapeHtml(str: string): string {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 export function replacePlaceholders(html: string, vars: Record<string, string>): string {
-    let result = html;
-    for (const [key, value] of Object.entries(vars)) {
-        result = result.replaceAll(`{{${key}}}`, value);
+    return html.replace(/\{\{([A-Z_][A-Z0-9_]*)\}\}/g, (_, key: string) => {
+        return Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : "";
+    });
+}
+
+async function hashKey(input: string): Promise<string> {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+    return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0"))
+        .join("")
+        .slice(0, 32);
+}
+
+function isFetchUrlAllowed(rawUrl: string): URL | null {
+    let url: URL;
+    try {
+        url = new URL(rawUrl);
+    } catch {
+        return null;
     }
-    return result;
+    if (url.protocol !== "https:") return null;
+    const host = url.hostname.toLowerCase();
+    if (BLOCKED_HOSTNAMES.has(host)) return null;
+    if (host.endsWith(".local")) return null;
+    // IPv4 private/link-local 차단 (defense-in-depth)
+    if (/^10\./.test(host)) return null;
+    if (/^192\.168\./.test(host)) return null;
+    if (/^169\.254\./.test(host)) return null;
+    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return null;
+    if (/^127\./.test(host)) return null;
+    return url;
 }
 
 export async function resolveSkinHtml(
@@ -41,7 +68,7 @@ export async function resolveSkinHtml(
     if (!skin) return null;
 
     const r2 = (platform?.env as Record<string, unknown> | undefined)?.SKIN_CACHE as R2Bucket | undefined;
-    const cacheKey = `${R2_PREFIX}${tenantId}/${clientType}/${clientRefId}/${skinType}`;
+    const cacheKey = `${R2_PREFIX}${tenantId}/${clientType}/${await hashKey(clientRefId)}/${skinType}`;
 
     if (r2) {
         try {
@@ -58,12 +85,17 @@ export async function resolveSkinHtml(
     }
 
     try {
+        const fetchUrl = isFetchUrlAllowed(skin.fetchUrl);
+        if (!fetchUrl) return null;
+
         const headers: Record<string, string> = { Accept: "text/html" };
         if (skin.fetchSecret) {
             headers["X-IDP-Token"] = skin.fetchSecret;
         }
 
-        const res = await fetch(skin.fetchUrl, { headers });
+        // redirect: "manual" — secret leak via 3xx Location 방지
+        const res = await fetch(fetchUrl.toString(), { headers, redirect: "manual" });
+        if (res.status >= 300 && res.status < 400) return null;
         if (!res.ok) return null;
 
         const contentType = res.headers.get("Content-Type") ?? "";
@@ -97,7 +129,7 @@ export async function invalidateSkinCache(
 ): Promise<void> {
     const r2 = (platform?.env as Record<string, unknown> | undefined)?.SKIN_CACHE as R2Bucket | undefined;
     if (!r2) return;
-    const cacheKey = `${R2_PREFIX}${tenantId}/${clientType}/${clientRefId}/${skinType}`;
+    const cacheKey = `${R2_PREFIX}${tenantId}/${clientType}/${await hashKey(clientRefId)}/${skinType}`;
     try {
         await r2.delete(cacheKey);
     } catch {

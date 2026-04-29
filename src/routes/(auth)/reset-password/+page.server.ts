@@ -5,6 +5,7 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { users, passwordResetTokens } from "$lib/server/db/schema";
 import { hashPassword } from "$lib/server/auth/password";
 import { hashToken } from "$lib/server/email";
+import { revokeAllUserSessions } from "$lib/server/auth/session";
 import { resolve } from "$app/paths";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
@@ -106,6 +107,15 @@ export const actions: Actions = {
         }
 
         await db.update(passwordResetTokens).set({ usedAt: now }).where(eq(passwordResetTokens.id, record.id));
+
+        // 같은 사용자의 다른 미사용 reset 토큰들도 모두 소진 처리해 재사용을 차단한다.
+        await db
+            .update(passwordResetTokens)
+            .set({ usedAt: now })
+            .where(and(eq(passwordResetTokens.userId, record.userId), isNull(passwordResetTokens.usedAt)));
+
+        // 비밀번호가 바뀌었으므로 기존 세션을 모두 무효화한다.
+        await revokeAllUserSessions(db, record.userId, now);
 
         const extra = new URLSearchParams();
         if (redirectTo) extra.set("redirectTo", redirectTo);

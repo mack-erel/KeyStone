@@ -34,6 +34,31 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 const ATTRIBUTE_KEYS = ["email", "username", "displayName", "givenName", "familyName", "surName", "phoneNumber", "department", "team", "jobTitle", "position"] as const;
 
+const ALLOWED_NAMEID_FORMATS = [
+    "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+    "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
+    "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
+    "urn:oasis:names:tc:SAML:2.0:nameid-format:transient",
+] as const;
+
+function validateSamlUrl(value: string, label: string): { ok: true } | { ok: false; reason: string } {
+    if (!value) return { ok: true };
+    let parsed: URL;
+    try {
+        parsed = new URL(value);
+    } catch {
+        return { ok: false, reason: `${label}: URL 형식이 올바르지 않습니다.` };
+    }
+    const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
+    if (scheme === "https") return { ok: true };
+    if (scheme === "http") {
+        const host = parsed.hostname;
+        if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1") return { ok: true };
+        return { ok: false, reason: `${label}: http URL 은 localhost/127.0.0.1 만 허용됩니다.` };
+    }
+    return { ok: false, reason: `${label}: https URL 만 허용됩니다.` };
+}
+
 function parseAllowedAttributes(raw: string): string | null {
     const trimmed = raw.trim();
     if (!trimmed) return null;
@@ -67,6 +92,15 @@ export const actions: Actions = {
         if (!name) return fail(400, { create: true, error: "이름은 필수입니다." });
         if (!entityId) return fail(400, { create: true, error: "Entity ID 는 필수입니다." });
         if (!acsUrl) return fail(400, { create: true, error: "ACS URL 은 필수입니다." });
+
+        const acsV = validateSamlUrl(acsUrl, "ACS URL");
+        if (!acsV.ok) return fail(400, { create: true, error: acsV.reason });
+        const sloV = validateSamlUrl(sloUrl, "SLO URL");
+        if (!sloV.ok) return fail(400, { create: true, error: sloV.reason });
+
+        if (!(ALLOWED_NAMEID_FORMATS as readonly string[]).includes(nameIdFormat)) {
+            return fail(400, { create: true, error: "허용되지 않는 NameID Format 입니다." });
+        }
 
         // 중복 Entity ID 확인
         const [existing] = await db
@@ -125,6 +159,15 @@ export const actions: Actions = {
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
 
         if (!id || !name || !acsUrl) return fail(400, { error: "필수 항목이 누락되었습니다." });
+
+        const acsV = validateSamlUrl(acsUrl, "ACS URL");
+        if (!acsV.ok) return fail(400, { error: acsV.reason });
+        const sloV = validateSamlUrl(sloUrl, "SLO URL");
+        if (!sloV.ok) return fail(400, { error: sloV.reason });
+
+        if (nameIdFormat && !(ALLOWED_NAMEID_FORMATS as readonly string[]).includes(nameIdFormat)) {
+            return fail(400, { error: "허용되지 않는 NameID Format 입니다." });
+        }
 
         await db
             .update(samlSps)

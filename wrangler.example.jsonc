@@ -7,7 +7,7 @@
     "routes": [
         {
             // 실제 배포 도메인으로 변경하세요
-            "pattern": "keystone.example.com",
+            "pattern": "",
             "custom_domain": true,
         },
     ],
@@ -19,40 +19,40 @@
     "preview_urls": true,
     "vars": {
         // Cloudflare 계정 ID (대시보드 우측 하단에서 확인)
-        "CLOUDFLARE_ACCOUNT_ID": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+        "CLOUDFLARE_ACCOUNT_ID": "",
 
         // D1 데이터베이스 ID
-        "CLOUDFLARE_D1_DATABASE_ID": "YOUR_D1_DATABASE_ID",
+        "CLOUDFLARE_D1_DATABASE_ID": "",
 
         // 프리뷰용 D1 데이터베이스 ID (선택)
-        "CLOUDFLARE_D1_PREVIEW_DATABASE_ID": "YOUR_D1_PREVIEW_DATABASE_ID",
+        "CLOUDFLARE_D1_PREVIEW_DATABASE_ID": "",
 
         // 기본 테넌트 이름
-        "IDP_DEFAULT_TENANT_NAME": "My Organization",
+        "IDP_DEFAULT_TENANT_NAME": "",
 
         // ⚠️ 아래 값은 반드시 wrangler secret put 으로 설정하세요 (vars에 평문 입력 금지)
         // wrangler secret put IDP_SIGNING_KEY_SECRET  (openssl rand -base64 32 으로 생성)
 
         // OIDC/SAML 토큰 발급 issuer URL (배포 도메인과 일치시킬 것)
-        "IDP_ISSUER_URL": "https://keystone.example.com",
+        "IDP_ISSUER_URL": "",
     },
     "r2_buckets": [
         {
             // 커스텀 로그인 스킨 R2 캐시 버킷
             // 생성: wrangler r2 bucket create keystone-skin-cache
             "binding": "SKIN_CACHE",
-            "bucket_name": "keystone-skin-cache",
+            "bucket_name": "",
             "remote": true,
         },
     ],
     "d1_databases": [
         {
             "binding": "DB",
-            "database_name": "keystone-db",
+            "database_name": "",
             // D1 데이터베이스 ID (CLOUDFLARE_D1_DATABASE_ID와 동일)
-            "database_id": "YOUR_D1_DATABASE_ID",
+            "database_id": "",
             // 프리뷰 DB가 따로 있다면 주석 해제
-            // "preview_database_id": "YOUR_D1_PREVIEW_DATABASE_ID",
+            // "preview_database_id": "",
             "migrations_dir": "drizzle",
             "remote": true,
         },

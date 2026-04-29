@@ -51,6 +51,12 @@ function formatDetail(detailJson: string | null): string {
         return detailJson;
     }
 }
+
+const TITLE_MAX = 1000;
+function truncateForTitle(s: string | null): string {
+    if (!s) return "";
+    return s.length > TITLE_MAX ? s.slice(0, TITLE_MAX) + "..." : s;
+}
 </script>
 
 <div class="space-y-6">
@@ -114,7 +120,7 @@ function formatDetail(detailJson: string | null): string {
                                 </span>
                             </td>
                             <td class="px-4 py-3 font-mono text-xs text-gray-400">{ev.ip ?? "—"}</td>
-                            <td class="max-w-70 truncate px-4 py-3 font-mono text-xs text-gray-500" title={ev.detailJson ?? ""}>
+                            <td class="max-w-70 truncate px-4 py-3 font-mono text-xs text-gray-500" title={truncateForTitle(ev.detailJson)}>
                                 {formatDetail(ev.detailJson)}
                             </td>
                         </tr>

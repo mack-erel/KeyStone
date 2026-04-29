@@ -411,6 +411,50 @@ function loadEnvFile(envPath: string): Record<string, string> {
     return env;
 }
 
+/**
+ * .env.example 의 KEY 중 현재 .env 에 없는 항목만 append.
+ * 주석 블록(연속된 # 라인 + 다음 KEY=) 단위로 묶어서 통째로 추가하므로 가독성 유지.
+ */
+function mergeEnvFromExample(envPath: string, examplePath: string): { added: string[] } {
+    if (!fs.existsSync(examplePath)) return { added: [] };
+    const current = loadEnvFile(envPath);
+    const exampleLines = readFile(examplePath).split("\n");
+
+    // 예시 파일을 "주석 블록 + KEY= 라인" 단위로 묶는다.
+    const blocks: { keys: string[]; lines: string[] }[] = [];
+    let buffer: string[] = [];
+    for (const line of exampleLines) {
+        buffer.push(line);
+        const trimmed = line.trim();
+        const eq = trimmed.indexOf("=");
+        const isAssign = !trimmed.startsWith("#") && eq > 0;
+        if (isAssign) {
+            const key = trimmed.slice(0, eq).trim();
+            blocks.push({ keys: [key], lines: buffer });
+            buffer = [];
+        }
+    }
+    if (buffer.length > 0) blocks.push({ keys: [], lines: buffer });
+
+    const added: string[] = [];
+    const appendChunks: string[] = [];
+    for (const blk of blocks) {
+        const missing = blk.keys.filter((k) => !(k in current));
+        if (blk.keys.length > 0 && missing.length > 0) {
+            appendChunks.push(blk.lines.join("\n"));
+            added.push(...missing);
+        }
+    }
+
+    if (appendChunks.length === 0) return { added: [] };
+
+    let body = readFile(envPath);
+    if (!body.endsWith("\n")) body += "\n";
+    body += "\n" + appendChunks.join("\n") + "\n";
+    writeFile(envPath, body);
+    return { added };
+}
+
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
 async function step0_wranglerLogin(args: Args): Promise<string | null> {
@@ -453,21 +497,69 @@ async function step0_wranglerLogin(args: Args): Promise<string | null> {
     return accountId;
 }
 
+/**
+ * wrangler 가 빈 문자열 바인딩(`bucket_name: ""`, `database_name: ""` 등) 을 거부하므로
+ * step3/4 의 wrangler 호출 전에 합리적 default 로 채워둔다. 사용자가 step3/4b 에서
+ * 결정한 실제 값으로 덮어써진다.
+ */
+function normalizeWranglerPlaceholders() {
+    if (!fs.existsSync(WRANGLER_JSONC)) return;
+    let content = readFile(WRANGLER_JSONC);
+    let changed = false;
+
+    // r2_buckets bucket_name 빈값 → default
+    const r2Re = /(\{[^{}]*"binding"\s*:\s*"SKIN_CACHE"[^{}]*\})/g;
+    content = content.replace(r2Re, (block) => {
+        if (/"bucket_name"\s*:\s*""/.test(block)) {
+            changed = true;
+            return block.replace(/"bucket_name"\s*:\s*""/, `"bucket_name": "keystone-skin-cache"`);
+        }
+        return block;
+    });
+
+    // d1_databases database_name 빈값 → default (실제 DB 가 있을 때만 의미 있으므로 placeholder 사용)
+    const dbRe = /(\{[^{}]*"binding"\s*:\s*"DB"[^{}]*\})/g;
+    content = content.replace(dbRe, (block) => {
+        if (/"database_name"\s*:\s*""/.test(block)) {
+            changed = true;
+            return block.replace(/"database_name"\s*:\s*""/, `"database_name": "keystone-db"`);
+        }
+        return block;
+    });
+
+    // routes[0].pattern 빈값 → 임시 dev 도메인 (배포 도메인은 IDP_ISSUER_URL 결정 후 갱신)
+    if (/"pattern"\s*:\s*""/.test(content)) {
+        content = content.replace(/"pattern"\s*:\s*""/, `"pattern": "keystone.example.com"`);
+        changed = true;
+    }
+
+    if (changed) {
+        writeFile(WRANGLER_JSONC, content);
+    }
+}
+
 async function step1_createWranglerJsonc(args: Args) {
     console.log(`\n${cyan("─── 1. wrangler.jsonc 생성 ────────────────────────────────")}`);
 
     if (fs.existsSync(WRANGLER_JSONC)) {
-        let overwrite = args.yes;
-        if (!args.yes) {
-            overwrite = await confirm("wrangler.jsonc가 이미 존재합니다. 덮어쓰시겠습니까?", false);
+        if (args.yes) {
+            // 비대화 모드: 안전하게 유지
+            console.log("  wrangler.jsonc 유지 (--yes)");
+            return;
         }
-        if (!overwrite) {
+        const choice = await select("wrangler.jsonc가 이미 존재합니다. 어떻게 처리할까요?", [
+            "유지 (그대로 둠 — step4 에서 누락된 ID 만 채움)",
+            "덮어쓰기 (example 로 초기화)",
+        ]);
+        if (choice === 0) {
             console.log("  wrangler.jsonc 유지");
+            normalizeWranglerPlaceholders();
             return;
         }
     }
 
     copyFile(WRANGLER_EXAMPLE, WRANGLER_JSONC);
+    normalizeWranglerPlaceholders();
     console.log(green("  ✓ wrangler.jsonc 생성 완료"));
 }
 
@@ -475,12 +567,26 @@ async function step2_createEnv(args: Args) {
     console.log(`\n${cyan("─── 2. .env 생성 ──────────────────────────────────────────")}`);
 
     if (fs.existsSync(ENV_FILE)) {
-        let overwrite = args.yes;
-        if (!args.yes) {
-            overwrite = await confirm(".env가 이미 존재합니다. 덮어쓰시겠습니까?", false);
+        if (args.yes) {
+            // 비대화 모드: 누락된 키만 자동 병합
+            const { added } = mergeEnvFromExample(ENV_FILE, ENV_EXAMPLE);
+            if (added.length > 0) console.log(green(`  ✓ .env 병합: ${added.length} 개 누락 키 추가 (${added.join(", ")})`));
+            else console.log("  .env 유지 (누락 키 없음)");
+            return;
         }
-        if (!overwrite) {
+        const choice = await select(".env 가 이미 존재합니다. 어떻게 처리할까요?", [
+            "유지 (그대로 둠)",
+            "병합 (.env.example 의 누락된 키만 추가)",
+            "덮어쓰기 (example 로 초기화)",
+        ]);
+        if (choice === 0) {
             console.log("  .env 유지");
+            return;
+        }
+        if (choice === 1) {
+            const { added } = mergeEnvFromExample(ENV_FILE, ENV_EXAMPLE);
+            if (added.length > 0) console.log(green(`  ✓ .env 병합: ${added.length} 개 누락 키 추가 (${added.join(", ")})`));
+            else console.log("  .env 유지 (누락 키 없음)");
             return;
         }
     }
@@ -536,6 +642,40 @@ async function setupDb(label: string, nameArg: string | undefined, idArg: string
     return { id: selected.uuid, name: selected.name };
 }
 
+/**
+ * 기존 .env / wrangler.jsonc 에서 이미 설정된 D1 ID 를 탐지한다.
+ * UUID 형식의 값만 유효 — placeholder("YOUR_D1_*") 는 무시.
+ */
+function detectExistingD1(): { dbId: string | null; previewDbId: string | null; dbName: string | null; previewDbName: string | null } {
+    const env = loadEnvFile(ENV_FILE);
+    const isUuid = (s?: string): s is string => !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+    let dbId: string | null = isUuid(env.CLOUDFLARE_D1_DATABASE_ID) ? env.CLOUDFLARE_D1_DATABASE_ID : null;
+    let previewDbId: string | null = isUuid(env.CLOUDFLARE_D1_PREVIEW_DATABASE_ID) ? env.CLOUDFLARE_D1_PREVIEW_DATABASE_ID : null;
+    let dbName: string | null = null;
+    let previewDbName: string | null = null;
+
+    // wrangler.jsonc 에서 database_name + database_id 매칭
+    if (fs.existsSync(WRANGLER_JSONC)) {
+        const wc = readFile(WRANGLER_JSONC);
+        // strip line comments
+        const stripped = wc.replace(/\/\/[^\n]*/g, "");
+        const blocks = [...stripped.matchAll(/\{[^{}]*"binding"\s*:\s*"DB"[^{}]*\}/g)].map((m) => m[0]);
+        for (const blk of blocks) {
+            const idMatch = blk.match(/"database_id"\s*:\s*"([0-9a-f-]{36})"/i);
+            const nameMatch = blk.match(/"database_name"\s*:\s*"([^"]+)"/);
+            const previewMatch = blk.match(/"preview_database_id"\s*:\s*"([0-9a-f-]{36})"/i);
+            if (idMatch && isUuid(idMatch[1])) dbId = dbId ?? idMatch[1];
+            if (nameMatch) dbName = dbName ?? nameMatch[1];
+            if (previewMatch && isUuid(previewMatch[1])) previewDbId = previewDbId ?? previewMatch[1];
+        }
+    }
+    if (dbId && !dbName) dbName = "keystone-db";
+    if (previewDbId && !previewDbName && dbName) previewDbName = `${dbName}-preview`;
+
+    return { dbId, previewDbId, dbName, previewDbName };
+}
+
 async function step3_dbSetup(args: Args): Promise<{
     dbId: string;
     dbName: string;
@@ -543,6 +683,26 @@ async function step3_dbSetup(args: Args): Promise<{
     previewDbName: string | null;
 }> {
     console.log(`\n${cyan("─── 3. D1 데이터베이스 설정 ────────────────────────────────")}`);
+
+    // CLI 로 명시 지정한 경우는 그대로 사용
+    if (!args.dbId && !args.dbName) {
+        const existing = detectExistingD1();
+        if (existing.dbId) {
+            console.log(green(`  기존 D1 설정 발견:`));
+            console.log(`    DB:         ${existing.dbName ?? "?"}  (id: ${existing.dbId})`);
+            if (existing.previewDbId) console.log(`    Preview DB: ${existing.previewDbName ?? "?"}  (id: ${existing.previewDbId})`);
+
+            const keep = args.yes || (await confirm("기존 D1 설정을 유지하시겠습니까?", true));
+            if (keep) {
+                return {
+                    dbId: existing.dbId,
+                    dbName: existing.dbName ?? "keystone-db",
+                    previewDbId: args.noPreview ? null : existing.previewDbId,
+                    previewDbName: args.noPreview ? null : existing.previewDbName,
+                };
+            }
+        }
+    }
 
     const db = await setupDb("D1 데이터베이스", args.dbName, args.dbId, "keystone-db");
     if (!db) {
@@ -568,35 +728,128 @@ async function step3_dbSetup(args: Args): Promise<{
     return { dbId: db.id, dbName: db.name, previewDbId, previewDbName };
 }
 
-async function step4_updateFiles(dbId: string, previewDbId: string | null, accountId: string | null) {
+async function step4_updateFiles(dbId: string, previewDbId: string | null, accountId: string | null, dbName: string) {
     console.log(`\n${cyan("─── 4. 파일 업데이트 ──────────────────────────────────────")}`);
 
-    // Update wrangler.jsonc
+    // Update wrangler.jsonc — placeholder 치환 + 기존 UUID 도 새 값으로 교체.
     let wranglerContent = readFile(WRANGLER_JSONC);
-    wranglerContent = replaceAll(wranglerContent, "YOUR_D1_DATABASE_ID", dbId);
 
+    // 1) example placeholder 치환
+    wranglerContent = replaceAll(wranglerContent, "YOUR_D1_DATABASE_ID", dbId);
     if (previewDbId) {
         wranglerContent = replaceAll(wranglerContent, "YOUR_D1_PREVIEW_DATABASE_ID", previewDbId);
-        // Uncomment the preview_database_id line if it's commented out
-        wranglerContent = wranglerContent.replace(/\/\/\s*"preview_database_id":\s*"([^"]+)"/g, `"preview_database_id": "$1"`);
+        // 주석 처리된 preview_database_id 라인을 활성화 (값 유무 무관)
+        wranglerContent = wranglerContent.replace(/\/\/\s*"preview_database_id":\s*"([^"]*)"/g, `"preview_database_id": "$1"`);
     }
+
+    // 2) "binding": "DB" 블록 안의 database_name / database_id / preview_database_id 갱신.
+    //    빈 값("") 도 채울 수 있도록 [^"]* 사용.
+    wranglerContent = wranglerContent.replace(/(\{[^{}]*"binding"\s*:\s*"DB"[^{}]*\})/g, (block) => {
+        let updated = block;
+
+        const nameRe = /"database_name"\s*:\s*"[^"]*"/;
+        if (nameRe.test(updated)) updated = updated.replace(nameRe, `"database_name": "${dbName}"`);
+
+        const idRe = /"database_id"\s*:\s*"[^"]*"/;
+        if (idRe.test(updated)) updated = updated.replace(idRe, `"database_id": "${dbId}"`);
+        else updated = updated.replace(/("database_name"\s*:\s*"[^"]*",?)/, `$1\n\t\t\t"database_id": "${dbId}",`);
+
+        if (previewDbId) {
+            const previewRe = /"preview_database_id"\s*:\s*"[^"]*"/;
+            if (previewRe.test(updated)) updated = updated.replace(previewRe, `"preview_database_id": "${previewDbId}"`);
+            else updated = updated.replace(/("database_id"\s*:\s*"[^"]*",?)/, `$1\n\t\t\t"preview_database_id": "${previewDbId}",`);
+        }
+        return updated;
+    });
 
     writeFile(WRANGLER_JSONC, wranglerContent);
     console.log(green("  ✓ wrangler.jsonc 업데이트 완료"));
 
-    // Update .env
+    // Update .env — 누락된 키는 그대로 추가, 기존 빈 값/플레이스홀더만 갱신.
     let envContent = readFile(ENV_FILE);
-    if (accountId) {
-        envContent = envContent.replace(/^CLOUDFLARE_ACCOUNT_ID=".*"$/m, `CLOUDFLARE_ACCOUNT_ID="${accountId}"`);
-    }
-    envContent = envContent.replace(/^CLOUDFLARE_D1_DATABASE_ID=".*"$/m, `CLOUDFLARE_D1_DATABASE_ID="${dbId}"`);
-
-    if (previewDbId) {
-        envContent = envContent.replace(/^CLOUDFLARE_D1_PREVIEW_DATABASE_ID=".*"$/m, `CLOUDFLARE_D1_PREVIEW_DATABASE_ID="${previewDbId}"`);
-    }
+    const setOrAppend = (key: string, value: string) => {
+        const re = new RegExp(`^${key}=.*$`, "m");
+        if (re.test(envContent)) {
+            envContent = envContent.replace(re, `${key}="${value}"`);
+        } else {
+            if (!envContent.endsWith("\n")) envContent += "\n";
+            envContent += `${key}="${value}"\n`;
+        }
+    };
+    if (accountId) setOrAppend("CLOUDFLARE_ACCOUNT_ID", accountId);
+    setOrAppend("CLOUDFLARE_D1_DATABASE_ID", dbId);
+    if (previewDbId) setOrAppend("CLOUDFLARE_D1_PREVIEW_DATABASE_ID", previewDbId);
 
     writeFile(ENV_FILE, envContent);
     console.log(green("  ✓ .env 업데이트 완료"));
+
+    // wrangler.jsonc 의 vars 블록을 .env 와 동기화 (secret/token 제외).
+    syncWranglerVarsFromEnv();
+}
+
+/**
+ * `.env` 의 비-시크릿 키를 `wrangler.jsonc` 의 vars 블록과 동기화한다.
+ * secret/token 류는 제외 — `wrangler secret put` 으로 별도 배포.
+ */
+const SECRET_KEYS = new Set([
+    "IDP_SIGNING_KEY_SECRET",
+    "SMTP_PASSWORD",
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_D1_TOKEN",
+]);
+
+function syncWranglerVarsFromEnv() {
+    if (!fs.existsSync(WRANGLER_JSONC) || !fs.existsSync(ENV_FILE)) return;
+    const env = loadEnvFile(ENV_FILE);
+    let envContent = readFile(ENV_FILE);
+    let wranglerContent = readFile(WRANGLER_JSONC);
+
+    const synced: string[] = [];
+    for (const [key, value] of Object.entries(env)) {
+        if (SECRET_KEYS.has(key)) continue;
+        if (value === "") continue;
+        const r = applyVar(envContent, wranglerContent, key, value);
+        envContent = r.env;
+        wranglerContent = r.wrangler;
+        synced.push(key);
+    }
+
+    // routes[0].pattern 자동 채움 — IDP_ISSUER_URL 의 host 사용 (localhost 제외).
+    const issuer = env.IDP_ISSUER_URL ?? "";
+    if (issuer) {
+        try {
+            const host = new URL(issuer).host;
+            const isLocal = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/.test(host);
+            if (!isLocal) {
+                const before = wranglerContent;
+                wranglerContent = wranglerContent.replace(/("pattern"\s*:\s*)"[^"]*"/, `$1"${host.split(":")[0]}"`);
+                if (wranglerContent !== before) synced.push("routes.pattern");
+            }
+        } catch {
+            /* invalid URL — skip */
+        }
+    }
+
+    writeFile(ENV_FILE, envContent);
+    writeFile(WRANGLER_JSONC, wranglerContent);
+    if (synced.length > 0) console.log(green(`  ✓ wrangler.jsonc vars 동기화 (${synced.length}개): ${synced.join(", ")}`));
+}
+
+/** wrangler.jsonc 의 SKIN_CACHE 바인딩에서 bucket_name 추출. */
+function detectExistingR2BucketName(): string | null {
+    if (!fs.existsSync(WRANGLER_JSONC)) return null;
+    const wc = readFile(WRANGLER_JSONC).replace(/\/\/[^\n]*/g, "");
+    const block = wc.match(/\{[^{}]*"binding"\s*:\s*"SKIN_CACHE"[^{}]*\}/);
+    if (!block) return null;
+    const m = block[0].match(/"bucket_name"\s*:\s*"([^"]+)"/);
+    return m?.[1] ?? null;
+}
+
+/** Cloudflare 에 해당 R2 버킷이 실제로 존재하는지 확인. */
+async function r2BucketExists(name: string): Promise<boolean> {
+    const result = runCommand("wrangler", ["r2", "bucket", "list"], { inherit: false });
+    if (!result.success) return false;
+    return result.stdout.includes(name);
 }
 
 async function step4b_r2Setup(args: Args) {
@@ -605,6 +858,24 @@ async function step4b_r2Setup(args: Args) {
     if (args.noR2) {
         console.log("  R2 버킷 생성 건너뜀");
         return;
+    }
+
+    // 기존 설정 감지: wrangler.jsonc 에 bucket_name 이 있고 실제 Cloudflare 에 존재하면 유지 옵션 제공.
+    if (!args.r2BucketName) {
+        const existingName = detectExistingR2BucketName();
+        if (existingName) {
+            const exists = await r2BucketExists(existingName);
+            if (exists) {
+                console.log(green(`  기존 R2 버킷 발견: ${existingName}`));
+                const keep = args.yes || (await confirm("기존 R2 버킷을 그대로 사용하시겠습니까?", true));
+                if (keep) {
+                    console.log("  R2 버킷 유지");
+                    return;
+                }
+            } else {
+                console.log(yellow(`  wrangler.jsonc 에 '${existingName}' 으로 설정돼 있으나 Cloudflare 에 존재하지 않습니다.`));
+            }
+        }
     }
 
     const doCreate = args.yes || (await confirm("커스텀 스킨 캐시용 R2 버킷을 생성하시겠습니까?", true));
@@ -712,9 +983,34 @@ function buildDrizzleTrackingSQL(): string {
 
 async function handleMigrationConflicts(dbName: string, env: Record<string, string>, args: Args): Promise<"proceed" | "done"> {
     const existing = await getExistingTables(dbName, env);
-    if (!existing || existing.length === 0) return "proceed";
+    if (!existing) return "proceed";
 
     const migrationTables = extractTablesFromMigrations();
+
+    // Stale `__drizzle_migrations` 감지: 추적 테이블에 레코드는 있는데 실제 사용자 테이블은 없으면
+    // drizzle 이 "이미 적용됨"으로 오판해 silent-skip 한다. 이런 상태를 정리한 뒤 재적용.
+    const hasTracking = existing.includes("__drizzle_migrations");
+    const userTablesPresent = migrationTables.some((t) => existing.includes(t));
+    if (hasTracking && !userTablesPresent) {
+        console.log(yellow(`  ⚠  __drizzle_migrations 추적은 있으나 사용자 테이블이 없어 stale 상태입니다 (${dbName}).`));
+        const cleanupSql = [`DROP TABLE IF EXISTS "__drizzle_migrations";`, `DROP TABLE IF EXISTS "_seed_migrations";`].join("\n");
+        const { filePath: tmp, cleanup } = createTempFile("idp-stale-", cleanupSql);
+        try {
+            const r = await runWithSpinner(`stale 추적 테이블 삭제 중 (${dbName})...`, "wrangler", ["d1", "execute", dbName, "--remote", "--file", tmp], { env });
+            if (!r.success) {
+                console.error(red(`  추적 테이블 삭제 실패:\n${r.stderr}`));
+                closeRL();
+                process.exit(1);
+            }
+        } finally {
+            cleanup();
+        }
+        console.log(green(`  ✓ stale 추적 테이블 정리 완료 → 전체 마이그레이션 재적용`));
+        return "proceed";
+    }
+
+    if (existing.length === 0) return "proceed";
+
     const conflicts = migrationTables.filter((t) => existing.includes(t));
     if (conflicts.length === 0) return "proceed";
 
@@ -730,7 +1026,15 @@ async function handleMigrationConflicts(dbName: string, env: Record<string, stri
     }
 
     if (choice === 1) {
-        const dropSQL = ["PRAGMA foreign_keys = OFF;", ...conflicts.map((t) => `DROP TABLE IF EXISTS \`${t}\`;`), "PRAGMA foreign_keys = ON;"].join("\n");
+        // 핵심: 사용자 테이블과 함께 `__drizzle_migrations` 도 삭제해야 한다.
+        // 안 그러면 drizzle 이 "이미 적용됨" 으로 오판하고 마이그레이션을 silent-skip 한다.
+        const dropSQL = [
+            "PRAGMA foreign_keys = OFF;",
+            ...conflicts.map((t) => `DROP TABLE IF EXISTS \`${t}\`;`),
+            `DROP TABLE IF EXISTS "__drizzle_migrations";`,
+            `DROP TABLE IF EXISTS "_seed_migrations";`,
+            "PRAGMA foreign_keys = ON;",
+        ].join("\n");
 
         const { filePath: dropTmpFile, cleanup: dropCleanup } = createTempFile("idp-drop-", dropSQL);
         try {
@@ -810,7 +1114,7 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, 
     2. 권한 추가: [계정] > [D1] > [편집]
     3. 토큰 생성 후 아래에 붙여넣기
 `);
-        const token = await ask("CLOUDFLARE_API_TOKEN 입력", "");
+        const token = await ask("CLOUDFLARE_D1_TOKEN 입력", "");
         if (!token) {
             console.error(red("  토큰이 없으면 마이그레이션을 실행할 수 없습니다."));
             closeRL();
@@ -820,7 +1124,8 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, 
         if (/^CLOUDFLARE_D1_TOKEN=/m.test(envContent)) {
             envContent = envContent.replace(/^CLOUDFLARE_D1_TOKEN=".*"$/m, `CLOUDFLARE_D1_TOKEN="${token}"`);
         } else {
-            envContent += `\nCLOUDFLARE_API_TOKEN="${token}"\n`;
+            if (!envContent.endsWith("\n")) envContent += "\n";
+            envContent += `CLOUDFLARE_D1_TOKEN="${token}"\n`;
         }
         writeFile(ENV_FILE, envContent);
     }
@@ -901,7 +1206,8 @@ async function hashPasswordForSetup(password: string): Promise<string> {
     const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 }, keyMaterial, 256);
     const saltB64 = btoa(String.fromCharCode(...salt));
     const hashB64 = btoa(String.fromCharCode(...new Uint8Array(derived)));
-    return `pbkdf2:sha256:100000:${saltB64}:${hashB64}`;
+    // password.ts verifyPbkdf2 가 인식하는 형식: `pbkdf2$<digest>:<iter>$<saltB64>$<hashB64>`
+    return `pbkdf2$sha256:100000$${saltB64}$${hashB64}`;
 }
 
 function generateRandomPassword(length = 20): string {
@@ -1006,11 +1312,124 @@ async function step5b_bootstrapConfig(args: Args, dbName: string, previewDbName:
     if (previewDbName) {
         const doPreview = args.yes || (await confirm("프리뷰 DB에도 관리자 계정을 생성하시겠습니까?", true));
         if (doPreview) {
-            await seedAdminToDb(previewDbName, data, wranglerEnv, true);
+            // 프리뷰 DB 에 스키마가 없으면 admin 시드가 'no such table' 로 실패한다.
+            // 방어적으로 마이그레이션을 먼저 실행한다. drizzle.config.ts 가 D1 ID 를
+            // 환경변수로 읽으므로 .env 의 ID 들을 모두 함께 전달해야 한다.
+            const previewMigrateEnv = {
+                ...wranglerEnv,
+                CLOUDFLARE_D1_DATABASE_ID: envVars.CLOUDFLARE_D1_DATABASE_ID ?? "",
+                CLOUDFLARE_D1_PREVIEW_DATABASE_ID: envVars.CLOUDFLARE_D1_PREVIEW_DATABASE_ID ?? "",
+                CLOUDFLARE_IS_PREVIEW: "true",
+            };
+            console.log("  프리뷰 DB 스키마 확인 중 (db:migrate:preview)...");
+            const previewMigrate = runCommand("bun", ["run", "db:migrate:preview"], {
+                inherit: true,
+                env: previewMigrateEnv,
+            });
+            if (!previewMigrate.success) {
+                console.error(red("  db:migrate:preview 실패 — 프리뷰 admin 시드 건너뜀"));
+            } else {
+                await seedAdminToDb(previewDbName, data, wranglerEnv, true);
+            }
         }
     }
 
     return { email, password, generated };
+}
+
+/**
+ * .env 의 일반 KEY 와 wrangler.jsonc `vars` 블록을 동시에 갱신.
+ * vars 키가 없으면 마지막 } 직전에 추가.
+ */
+function applyVar(envContent: string, wranglerContent: string, key: string, value: string): { env: string; wrangler: string } {
+    // .env
+    const envRe = new RegExp(`^${key}=.*$`, "m");
+    if (envRe.test(envContent)) {
+        envContent = envContent.replace(envRe, `${key}="${value}"`);
+    } else {
+        if (!envContent.endsWith("\n")) envContent += "\n";
+        envContent += `${key}="${value}"\n`;
+    }
+
+    // wrangler.jsonc vars 블록
+    const safeValue = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const escKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const inVarsRe = new RegExp(`("${escKey}"\\s*:\\s*)"[^"]*"`);
+    if (inVarsRe.test(wranglerContent)) {
+        wranglerContent = wranglerContent.replace(inVarsRe, `$1"${safeValue}"`);
+    } else {
+        // vars 블록 안에 추가 — `"vars": {` 다음 줄에 삽입
+        const insertRe = /("vars"\s*:\s*\{\s*)/;
+        if (insertRe.test(wranglerContent)) {
+            wranglerContent = wranglerContent.replace(insertRe, `$1\n        "${key}": "${safeValue}",`);
+        }
+    }
+
+    return { env: envContent, wrangler: wranglerContent };
+}
+
+async function step5c_smtpConfig(args: Args) {
+    console.log(`\n${cyan("─── 5c. SMTP 설정 ────────────────────────────────────────")}`);
+
+    if (args.yes) {
+        console.log("  (--yes 모드) SMTP 설정 건너뜀");
+        return;
+    }
+
+    const doConfig = await confirm("SMTP 메일 발송을 설정하시겠습니까? (비밀번호 재설정 등에 사용)", false);
+    if (!doConfig) {
+        console.log("  SMTP 설정 건너뜀");
+        return;
+    }
+
+    const current = loadEnvFile(ENV_FILE);
+    const hostname = await ask("SMTP_HOSTNAME (예: smtp.gmail.com)", current.SMTP_HOSTNAME ?? "");
+    if (!hostname) {
+        console.log(yellow("  hostname 미입력 — SMTP 설정 취소"));
+        return;
+    }
+    const portStr = await ask("SMTP_PORTNUMB (587/465/25)", current.SMTP_PORTNUMB ?? "587");
+    const port = parseInt(portStr, 10);
+    if (!Number.isFinite(port) || port <= 0) {
+        console.log(yellow("  포트가 유효하지 않음 — SMTP 설정 취소"));
+        return;
+    }
+    const username = await ask("SMTP_USERNAME", current.SMTP_USERNAME ?? "");
+    const sendmail = await ask("SMTP_SENDMAIL (발신자 이메일)", current.SMTP_SENDMAIL ?? username);
+    const encType = await ask("SMTP_ENC_TYPE (starttls / tls / none)", current.SMTP_ENC_TYPE ?? "starttls");
+    const password = await ask("SMTP_PASSWORD (입력값은 wrangler secret 으로 배포되며 .env/wrangler.jsonc 에 저장되지 않습니다)", "");
+
+    // .env + wrangler.jsonc 업데이트
+    let envContent = readFile(ENV_FILE);
+    let wranglerContent = readFile(WRANGLER_JSONC);
+    const apply = (k: string, v: string) => {
+        const r = applyVar(envContent, wranglerContent, k, v);
+        envContent = r.env;
+        wranglerContent = r.wrangler;
+    };
+    apply("SMTP_HOSTNAME", hostname);
+    apply("SMTP_PORTNUMB", String(port));
+    apply("SMTP_USERNAME", username);
+    apply("SMTP_SENDMAIL", sendmail);
+    apply("SMTP_ENC_TYPE", encType);
+    writeFile(ENV_FILE, envContent);
+    writeFile(WRANGLER_JSONC, wranglerContent);
+    console.log(green("  ✓ .env / wrangler.jsonc 업데이트 완료"));
+
+    // .env 에 SMTP_PASSWORD 저장 (로컬 개발용). 운영 secret 은 사용자가 수동 배포.
+    let envAfter = readFile(ENV_FILE);
+    if (/^SMTP_PASSWORD=.*$/m.test(envAfter)) {
+        envAfter = envAfter.replace(/^SMTP_PASSWORD=.*$/m, `SMTP_PASSWORD="${password}"`);
+    } else {
+        if (!envAfter.endsWith("\n")) envAfter += "\n";
+        envAfter += `SMTP_PASSWORD="${password}"\n`;
+    }
+    writeFile(ENV_FILE, envAfter);
+
+    if (password) {
+        console.log(green("  ✓ SMTP_PASSWORD .env 저장 (로컬 개발용)"));
+    }
+    console.log(yellow(`  ⚠ 운영 배포 전 ${cyan("wrangler secret put SMTP_PASSWORD")} 명령으로 직접 등록하세요.`));
 }
 
 async function step6_signingKey(args: Args) {
@@ -1067,7 +1486,9 @@ ${cyan("━━━━━━━━━━━━━━━━━━━━━━━━
 
 프로덕션 배포:
   ${cyan("bun run deploy")}
-  (배포 전 ${yellow("wrangler secret put IDP_SIGNING_KEY_SECRET")} 으로 시크릿을 설정하세요)
+  (배포 전 시크릿을 직접 설정하세요:
+    ${yellow("wrangler secret put IDP_SIGNING_KEY_SECRET")}
+    ${yellow("wrangler secret put SMTP_PASSWORD")}  (SMTP 사용 시))
 `);
 }
 
@@ -1096,7 +1517,7 @@ async function main() {
     const { dbId, dbName, previewDbId, previewDbName } = await step3_dbSetup(args);
 
     // Step 4: Update files
-    await step4_updateFiles(dbId, previewDbId, accountId);
+    await step4_updateFiles(dbId, previewDbId, accountId, dbName);
 
     // Step 4b: R2 bucket
     await step4b_r2Setup(args);
@@ -1106,6 +1527,11 @@ async function main() {
 
     // Step 5b: Bootstrap admin directly in D1
     const adminResult = await step5b_bootstrapConfig(args, dbName, previewDbName);
+
+    await step5c_smtpConfig(args);
+
+    // step5b/5c 가 .env 에 추가한 값들 (테넌트 이름, Issuer URL, SMTP_*) 을 wrangler.jsonc 와 다시 동기화.
+    syncWranglerVarsFromEnv();
 
     // Step 6: Signing key
     await step6_signingKey(args);

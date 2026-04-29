@@ -1,7 +1,7 @@
 import { fail } from "@sveltejs/kit";
 import { desc, eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireAdminContext } from "$lib/server/auth/guards";
+import { requireAdminContext, assertNotLastAdmin } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { users, credentials } from "$lib/server/db/schema";
 import { hashPassword } from "$lib/server/auth/password";
@@ -123,6 +123,12 @@ export const actions: Actions = {
             return fail(400, { error: "자기 자신의 상태를 변경할 수 없습니다." });
         }
 
+        // 마지막 활성 관리자 보호 — disable/locked 로 전환 시 검사
+        if (status !== "active") {
+            const lastAdminFail = await assertNotLastAdmin(db, tenant.id, id);
+            if (lastAdminFail) return lastAdminFail;
+        }
+
         await db
             .update(users)
             .set({ status, updatedAt: new Date() })
@@ -164,6 +170,12 @@ export const actions: Actions = {
         // 자기 자신 역할 변경 방지
         if (id === locals.user!.id) {
             return fail(400, { error: "자기 자신의 역할을 변경할 수 없습니다." });
+        }
+
+        // admin → user 강등 시에만 last-admin 검사 (승격은 항상 허용)
+        if (role === "user") {
+            const lastAdminFail = await assertNotLastAdmin(db, tenant.id, id);
+            if (lastAdminFail) return lastAdminFail;
         }
 
         await db
@@ -262,6 +274,10 @@ export const actions: Actions = {
         if (id === locals.user!.id) {
             return fail(400, { error: "자기 자신을 삭제할 수 없습니다." });
         }
+
+        // 마지막 활성 관리자 보호 — 삭제도 동일하게 검사
+        const lastAdminFail = await assertNotLastAdmin(db, tenant.id, id);
+        if (lastAdminFail) return lastAdminFail;
 
         await db.delete(users).where(and(eq(users.id, id), eq(users.tenantId, tenant.id)));
 

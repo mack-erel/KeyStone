@@ -5,6 +5,28 @@ import { requireAdminContext } from "$lib/server/auth/guards";
 import { clientSkins, oidcClients, samlSps } from "$lib/server/db/schema";
 import { invalidateSkinCache } from "$lib/server/skin/resolver";
 
+const MAX_SKIN_CACHE_TTL_SECONDS = 86400; // 1일
+
+function validateSkinFetchUrl(raw: string): { ok: true; url: URL } | { ok: false; reason: string } {
+    let url: URL;
+    try {
+        url = new URL(raw);
+    } catch {
+        return { ok: false, reason: "유효한 URL을 입력해 주세요." };
+    }
+    if (url.protocol !== "https:") {
+        return { ok: false, reason: "https URL만 허용됩니다." };
+    }
+    const host = url.hostname.toLowerCase();
+    if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1") {
+        return { ok: false, reason: "loopback 주소는 사용할 수 없습니다." };
+    }
+    if (/^127\./.test(host) || /^169\.254\./.test(host)) {
+        return { ok: false, reason: "내부망/메타데이터 주소는 사용할 수 없습니다." };
+    }
+    return { ok: true, url };
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
     const { db, tenant } = requireAdminContext(locals);
 
@@ -36,14 +58,13 @@ export const actions: Actions = {
             return fail(400, { create: true, error: "clientType이 올바르지 않습니다." });
         }
 
-        let url: URL;
-        try {
-            url = new URL(fetchUrl);
-        } catch {
-            return fail(400, { create: true, error: "유효한 URL을 입력해 주세요." });
-        }
-        if (url.protocol !== "https:" && url.protocol !== "http:") {
-            return fail(400, { create: true, error: "http 또는 https URL만 허용됩니다." });
+        const v = validateSkinFetchUrl(fetchUrl);
+        if (!v.ok) return fail(400, { create: true, error: v.reason });
+
+        const ttl = isNaN(cacheTtlSeconds) ? 3600 : cacheTtlSeconds;
+        if (ttl < 0) return fail(400, { create: true, error: "cacheTtlSeconds 는 0 이상이어야 합니다." });
+        if (ttl > MAX_SKIN_CACHE_TTL_SECONDS) {
+            return fail(400, { create: true, error: `cacheTtlSeconds 는 ${MAX_SKIN_CACHE_TTL_SECONDS} 초(1일) 를 초과할 수 없습니다.` });
         }
 
         try {
@@ -53,8 +74,8 @@ export const actions: Actions = {
                 clientRefId,
                 skinType,
                 fetchUrl,
-                fetchSecret,
-                cacheTtlSeconds: isNaN(cacheTtlSeconds) ? 3600 : cacheTtlSeconds,
+                fetchSecret: fetchSecret && fetchSecret.length > 0 ? fetchSecret : null,
+                cacheTtlSeconds: ttl,
                 enabled: true,
             });
         } catch {
@@ -129,14 +150,13 @@ export const actions: Actions = {
 
         if (!fetchUrl) return fail(400, { update: true, updateId: id, error: "URL을 입력해 주세요." });
 
-        let url: URL;
-        try {
-            url = new URL(fetchUrl);
-        } catch {
-            return fail(400, { update: true, updateId: id, error: "유효한 URL을 입력해 주세요." });
-        }
-        if (url.protocol !== "https:" && url.protocol !== "http:") {
-            return fail(400, { update: true, updateId: id, error: "http 또는 https URL만 허용됩니다." });
+        const v = validateSkinFetchUrl(fetchUrl);
+        if (!v.ok) return fail(400, { update: true, updateId: id, error: v.reason });
+
+        const ttl = isNaN(cacheTtlSeconds) ? 3600 : cacheTtlSeconds;
+        if (ttl < 0) return fail(400, { update: true, updateId: id, error: "cacheTtlSeconds 는 0 이상이어야 합니다." });
+        if (ttl > MAX_SKIN_CACHE_TTL_SECONDS) {
+            return fail(400, { update: true, updateId: id, error: `cacheTtlSeconds 는 ${MAX_SKIN_CACHE_TTL_SECONDS} 초(1일) 를 초과할 수 없습니다.` });
         }
 
         const [skin] = await db
@@ -149,7 +169,7 @@ export const actions: Actions = {
 
         await db
             .update(clientSkins)
-            .set({ fetchUrl, fetchSecret, cacheTtlSeconds: isNaN(cacheTtlSeconds) ? 3600 : cacheTtlSeconds })
+            .set({ fetchUrl, fetchSecret: fetchSecret && fetchSecret.length > 0 ? fetchSecret : null, cacheTtlSeconds: ttl })
             .where(eq(clientSkins.id, id));
 
         await invalidateSkinCache(platform, tenant.id, skin.clientType, skin.clientRefId, skin.skinType);

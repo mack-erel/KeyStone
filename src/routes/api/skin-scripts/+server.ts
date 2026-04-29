@@ -299,6 +299,14 @@ const JS = `(function(){
     if(tokenPreview&&token){
       tokenPreview.textContent=token.length>16?token.slice(0,6)+'\\u2026'+token.slice(-4):token;
     }
+    if(token){
+      try{
+        params.delete('token');
+        var qs=params.toString();
+        var newUrl=location.pathname+(qs?('?'+qs):'')+location.hash;
+        history.replaceState(null,'',newUrl);
+      }catch(_){}
+    }
     document.querySelectorAll('.toggle-visibility').forEach(function(tvBtn){
       tvBtn.addEventListener('click',function(){
         var inp=document.getElementById(tvBtn.dataset.for);

@@ -167,6 +167,23 @@ export const GET: RequestHandler = async (event) => {
             throw error(400, "Invalid or expired SLO state");
         }
 
+        // 서명 검증: SP-initiated 흐름이었다면 initiatingSpEntityId 의 cert 로 검증.
+        // (IdP-initiated 라면 initiatingSpEntityId 가 NULL → 검증 스킵)
+        if (state.initiatingSpEntityId) {
+            const [initiatingSp] = await db
+                .select({ cert: samlSps.cert })
+                .from(samlSps)
+                .where(and(eq(samlSps.tenantId, tenant.id), eq(samlSps.entityId, state.initiatingSpEntityId)))
+                .limit(1);
+            if (initiatingSp?.cert) {
+                const rawQuery = url.search.replace(/^\?/, "");
+                const valid = await verifySamlRedirectSignature(rawQuery, initiatingSp.cert);
+                if (!valid) {
+                    throw error(400, "LogoutResponse 서명 검증 실패");
+                }
+            }
+        }
+
         // pendingSpDataJson 에 남아 있는 SP 목록 (현재 응답을 보낸 SP 는 이미 제거된 상태)
         const remaining = parsePendingSpData(state.pendingSpDataJson);
 

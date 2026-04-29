@@ -3,9 +3,9 @@ import { eq, and, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
-import { createSessionRecord, setSessionCookie } from "$lib/server/auth/session";
+import { createSessionRecord, revokeOtherSessions, setSessionCookie } from "$lib/server/auth/session";
 import { verifyMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
-import { verifyTotp, decryptTotpSecret, verifyBackupCode } from "$lib/server/auth/totp";
+import { verifyTotp, decryptTotpSecret, encryptTotpSecret, isLegacyTotpCiphertext, verifyBackupCode } from "$lib/server/auth/totp";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { AMR_PASSWORD, AMR_TOTP, AMR_BACKUP_CODE, amrToAcr, TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
@@ -169,13 +169,25 @@ export const actions: Actions = {
                 .limit(1);
 
             if (totpCred?.secret) {
-                const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret);
+                const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret, user.id);
                 // counter 컬럼을 마지막으로 사용된 TOTP 스텝으로 활용 (재사용 방지)
                 const lastUsedStep = totpCred.counter ?? undefined;
                 const matchedStep = await verifyTotp(code, plainSecret, lastUsedStep);
                 if (matchedStep !== null) {
                     verified = true;
-                    await db.update(credentials).set({ lastUsedAt: new Date(), counter: matchedStep }).where(eq(credentials.id, totpCred.id));
+                    // v1 형식이면 v2 로 lazy migration.
+                    let nextSecret = totpCred.secret;
+                    if (isLegacyTotpCiphertext(totpCred.secret)) {
+                        try {
+                            nextSecret = await encryptTotpSecret(plainSecret, config.signingKeySecret, user.id);
+                        } catch {
+                            nextSecret = totpCred.secret;
+                        }
+                    }
+                    await db
+                        .update(credentials)
+                        .set({ lastUsedAt: new Date(), counter: matchedStep, secret: nextSecret })
+                        .where(eq(credentials.id, totpCred.id));
                 }
             }
         }
@@ -199,7 +211,7 @@ export const actions: Actions = {
         // MFA 통과 — 세션 생성
         event.cookies.delete(MFA_PENDING_COOKIE, { path: "/" });
 
-        const { sessionToken, expiresAt } = await createSessionRecord(db, {
+        const { sessionToken, expiresAt, sessionId } = await createSessionRecord(db, {
             tenantId: claims.tenantId,
             userId: user.id,
             ip: requestMetadata.ip,
@@ -207,6 +219,9 @@ export const actions: Actions = {
             amr: [AMR_PASSWORD, amrMethod],
             acr: amrToAcr([AMR_PASSWORD, amrMethod]),
         });
+
+        // 기존 세션 회수 — 새 세션만 살아남도록.
+        await revokeOtherSessions(db, user.id, sessionId);
 
         setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);
         await recordAuditEvent(db, {

@@ -188,8 +188,8 @@ export const actions: Actions = {
             return fail(409, { confirm: true, error: "이미 인증기가 등록되어 있습니다." });
         }
 
-        // TOTP 시크릿 암호화 저장
-        const encryptedSecret = await encryptTotpSecret(plainSecret, config.signingKeySecret);
+        // TOTP 시크릿 암호화 저장 — v2 (userId 바인딩)
+        const encryptedSecret = await encryptTotpSecret(plainSecret, config.signingKeySecret, locals.user.id);
         await db.insert(credentials).values({
             id: crypto.randomUUID(),
             userId: locals.user.id,
@@ -258,7 +258,7 @@ export const actions: Actions = {
             return fail(400, { delete: true, error: "TOTP 인증기가 등록되어 있지 않습니다." });
         }
 
-        const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret);
+        const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret, locals.user.id);
         const matchedStep = await verifyTotp(code, plainSecret);
         if (matchedStep === null) {
             return fail(400, { delete: true, error: "인증 코드가 올바르지 않습니다." });
@@ -314,7 +314,7 @@ export const actions: Actions = {
             return fail(400, { regenerate: true, error: "TOTP 인증기가 등록되어 있지 않습니다." });
         }
 
-        const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret);
+        const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret, locals.user.id);
         const matchedStep = await verifyTotp(code, plainSecret);
         if (matchedStep === null) {
             return fail(400, { regenerate: true, error: "인증 코드가 올바르지 않습니다." });

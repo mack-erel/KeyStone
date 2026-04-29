@@ -9,7 +9,8 @@ export function normalizeEmail(email: string): string {
 }
 
 export function normalizeUsername(username: string): string {
-    return username.trim().toLowerCase();
+    // Unicode confusable / homoglyph 공격 방지를 위해 NFKC 로 정규화한 뒤 소문자화.
+    return username.trim().normalize("NFKC").toLowerCase();
 }
 
 export async function findUserByEmail(db: DB, tenantId: string, email: string): Promise<User | null> {

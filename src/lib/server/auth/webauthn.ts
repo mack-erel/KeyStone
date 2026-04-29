@@ -122,9 +122,11 @@ export async function buildAuthenticationOptions(rpID: string) {
 // ── 1회용 Challenge (DB 저장) ──────────────────────────────────────────────────
 
 /** options 생성 시 challenge 를 DB 에 저장. */
-export async function saveChallenge(db: DB, challenge: string): Promise<void> {
+export async function saveChallenge(db: DB, tenantId: string, challenge: string, userId?: string | null): Promise<void> {
     await db.insert(webauthnChallenges).values({
         id: crypto.randomUUID(),
+        tenantId,
+        userId: userId ?? null,
         challenge,
         expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS),
     });
@@ -133,13 +135,14 @@ export async function saveChallenge(db: DB, challenge: string): Promise<void> {
 /**
  * verify 시 challenge 소진. atomic UPDATE … WHERE used_at IS NULL RETURNING 으로
  * 동시 요청에서도 정확히 한 번만 성공한다.
+ * tenantId 격리: 다른 테넌트의 challenge 는 매칭되지 않는다.
  */
-export async function consumeChallenge(db: DB, challenge: string): Promise<boolean> {
+export async function consumeChallenge(db: DB, tenantId: string, challenge: string): Promise<boolean> {
     const now = new Date();
     const rows = await db
         .update(webauthnChallenges)
         .set({ usedAt: now })
-        .where(and(eq(webauthnChallenges.challenge, challenge), isNull(webauthnChallenges.usedAt), gt(webauthnChallenges.expiresAt, now)))
+        .where(and(eq(webauthnChallenges.tenantId, tenantId), eq(webauthnChallenges.challenge, challenge), isNull(webauthnChallenges.usedAt), gt(webauthnChallenges.expiresAt, now)))
         .returning({ id: webauthnChallenges.id });
     return rows.length > 0;
 }

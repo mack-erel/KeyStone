@@ -7,6 +7,8 @@ import { hashPassword } from "$lib/server/auth/password";
 import { users, credentials, identities } from "$lib/server/db/schema";
 import { resolve } from "$app/paths";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
+import { checkRateLimit } from "$lib/server/ratelimit";
+import { getRequestMetadata } from "$lib/server/audit";
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     const skinHint = url.searchParams.get("skinHint");
@@ -69,6 +71,13 @@ export const actions: Actions = {
         const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
         const failSkin = async (status: number, msg: string) => fail(status, { error: msg, skinHtml: await resolveSkinForAction(event, msg) });
+
+        // IP 기반 레이트리밋 — 60분/5회.
+        const meta = getRequestMetadata(event);
+        const rl = await checkRateLimit(db, `signup:${meta.ip ?? "unknown"}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        if (!rl.allowed) {
+            return failSkin(429, `가입 시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`);
+        }
 
         if (!username || !email || !password) return failSkin(400, "모든 필드를 입력해 주세요.");
         if (!/^[a-z0-9_]{3,32}$/.test(username)) return failSkin(400, "아이디는 영문 소문자, 숫자, _만 사용 가능하며 3~32자여야 합니다.");

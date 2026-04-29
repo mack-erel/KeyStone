@@ -48,9 +48,13 @@ export function isAllowedRedirectUri(client: OidcClientRecord, redirectUri: stri
 }
 
 export function parseGrantedScopes(client: OidcClientRecord, requestedScope: string): string[] {
+    // RFC 6749: scope 토큰은 SP(공백) 으로만 구분된다. 콤마 등은 허용하지 않는다.
     const allowedScopes = client.scopes
-        .split(/[\s,]+/)
+        .split(/\s+/)
         .map((s) => s.trim())
         .filter(Boolean);
-    return requestedScope.split(/[\s,]+/).filter((s) => allowedScopes.includes(s));
+    return requestedScope
+        .split(/\s+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && allowedScopes.includes(s));
 }
