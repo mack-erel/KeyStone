@@ -43,8 +43,68 @@ export function parseRedirectUris(client: OidcClientRecord): string[] {
     }
 }
 
+/**
+ * redirect_uri 매칭. 정확 일치 + 제한된 와일드카드 패턴 지원.
+ *
+ * 와일드카드 규칙 (보안 우선):
+ * - `*` 는 host 의 **가장 좌측(leftmost) 라벨 안에서만** 허용
+ * - `*` 한 개만 허용
+ * - `*` 는 점(.) 을 포함하지 않는 한 라벨에 매칭 (subdomain hijack 방지)
+ * - scheme / port / path / query / fragment / 그 외 라벨은 정확히 일치해야 함
+ *
+ * 예시:
+ *   pattern  https://pr*.ctrls.kr/auth/callback
+ *   ✓       https://pr1.ctrls.kr/auth/callback
+ *   ✓       https://pr42.ctrls.kr/auth/callback
+ *   ✗       https://evil.pr1.ctrls.kr/auth/callback   (라벨 수 다름)
+ *   ✗       https://pr1.evil.kr/auth/callback         (오른쪽 라벨 다름)
+ *   ✗       https://pr1.ctrls.kr/auth/x               (path 다름)
+ *   ✗       http://pr1.ctrls.kr/auth/callback         (scheme 다름)
+ */
+export function matchesRedirectUri(pattern: string, candidate: string): boolean {
+    if (pattern === candidate) return true;
+    if (!pattern.includes("*")) return false;
+
+    const split = (uri: string) => {
+        const m = uri.match(/^([^:]+:\/\/)([^/]+)(.*)$/);
+        if (!m) return null;
+        return { protocol: m[1], host: m[2], rest: m[3] };
+    };
+    const p = split(pattern);
+    const c = split(candidate);
+    if (!p || !c) return false;
+
+    // scheme + port + path + query + fragment 정확 일치
+    if (p.protocol !== c.protocol) return false;
+    if (p.rest !== c.rest) return false;
+
+    // host 라벨 단위 비교
+    const pLabels = p.host.split(".");
+    const cLabels = c.host.split(".");
+    if (pLabels.length !== cLabels.length) return false;
+
+    // 와일드카드는 정확히 한 개, leftmost 라벨에만
+    const stars = (p.host.match(/\*/g) ?? []).length;
+    if (stars !== 1) return false;
+    if (!pLabels[0].includes("*")) return false;
+    for (let i = 1; i < pLabels.length; i++) {
+        if (pLabels[i].includes("*")) return false;
+    }
+
+    // leftmost 라벨: 정규식으로 매칭, * → [^.]+
+    const escaped = pLabels[0].replace(/[-/\\^$+?.()|[\]{}]/g, "\\$&");
+    const regex = new RegExp("^" + escaped.replace(/\*/g, "[^.]+") + "$");
+    if (!regex.test(cLabels[0])) return false;
+
+    // 그 외 라벨은 정확 일치
+    for (let i = 1; i < pLabels.length; i++) {
+        if (pLabels[i] !== cLabels[i]) return false;
+    }
+    return true;
+}
+
 export function isAllowedRedirectUri(client: OidcClientRecord, redirectUri: string): boolean {
-    return parseRedirectUris(client).includes(redirectUri);
+    return parseRedirectUris(client).some((pattern) => matchesRedirectUri(pattern, redirectUri));
 }
 
 export function parseGrantedScopes(client: OidcClientRecord, requestedScope: string): string[] {
