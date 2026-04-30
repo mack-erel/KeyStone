@@ -5,6 +5,7 @@ import { oidcClients } from "$lib/server/db/schema";
 import { clearSessionCookie, revokeSession } from "$lib/server/auth/session";
 import { getActiveSigningKey, verifyIdToken } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, getOidcFrontchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
+import { matchesRedirectUri } from "$lib/server/oidc/client";
 
 function htmlEscape(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -54,7 +55,8 @@ async function resolvePostLogoutRedirect(locals: App.Locals, postLogoutRedirectU
     } catch {
         allowed = [];
     }
-    if (Array.isArray(allowed) && allowed.includes(postLogoutRedirectUri)) {
+    const isAllowed = Array.isArray(allowed) && allowed.some((p) => matchesRedirectUri(p, postLogoutRedirectUri));
+    if (isAllowed) {
         if (state) {
             const u = new URL(postLogoutRedirectUri);
             u.searchParams.set("state", state);
