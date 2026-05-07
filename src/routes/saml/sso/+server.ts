@@ -19,6 +19,7 @@ import { parseAuthnRequest, verifySamlRedirectSignature } from "$lib/server/saml
 import { buildSignedSamlErrorResponse, buildSignedSamlResponse } from "$lib/server/saml/response";
 import { findSp, recordSamlSession } from "$lib/server/saml/sp";
 import { getUserMembership } from "$lib/server/org/membership";
+import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
 
 const SAML_AUTHN_REQUEST_TTL_MS = 10 * 60 * 1000; // 10분
 
@@ -200,6 +201,29 @@ export const GET: RequestHandler = async (event) => {
         throw redirect(302, loginUrl.toString());
     }
 
+    // 서비스 권한 게이트 (기본 deny). 매핑 없으면 SSO 거부.
+    const spAssignment = await getActiveAssignment(db, {
+        tenantId: tenant.id,
+        userId: locals.user.id,
+        serviceType: "saml",
+        serviceRefId: sp.id,
+    });
+    if (!spAssignment) {
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: locals.user.id,
+            actorId: locals.user.id,
+            spOrClientId: sp.entityId,
+            kind: "saml_sso",
+            outcome: "failure",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { error: "access_denied", reason: "no_service_assignment" },
+        });
+        throw error(403, "이 SP에 대한 권한이 없습니다.");
+    }
+
     // Attribute 매핑 (attributeMappingJson 또는 기본값)
     type AttributeMap = Record<string, string>;
     let attrMapping: AttributeMap = {};
@@ -240,6 +264,20 @@ export const GET: RequestHandler = async (event) => {
     setAttr("familyName", user.familyName);
     setAttr("surName", user.familyName);
     setAttr("phoneNumber", user.phoneNumber);
+
+    // 서비스 role / 추가 attributes — allowedSet 검사를 동일하게 적용.
+    if (spAssignment.role) {
+        setAttr("Role", spAssignment.role.key);
+        setAttr("RoleLabel", spAssignment.role.label);
+    }
+    const extraAttrs = parseAssignmentAttributes(spAssignment.attributesJson);
+    for (const [k, v] of Object.entries(extraAttrs)) {
+        if (typeof v === "string") {
+            setAttr(k, v);
+        } else if (v != null) {
+            setAttr(k, String(v));
+        }
+    }
 
     // 조직 정보는 SP 가 명시적으로 허용한 경우에만 포함한다.
     const wantsOrg = allowedSet.has("department") || allowedSet.has("team") || allowedSet.has("jobTitle") || allowedSet.has("position");
