@@ -12,10 +12,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     const { db } = requireDbContext(locals);
     const userId = locals.user.id;
 
-    const userCredentials = await db
-        .select({ id: credentials.id, type: credentials.type, usedAt: credentials.usedAt })
-        .from(credentials)
-        .where(eq(credentials.userId, userId));
+    const userCredentials = await db.select({ id: credentials.id, type: credentials.type, usedAt: credentials.usedAt }).from(credentials).where(eq(credentials.userId, userId));
 
     const totpCount = userCredentials.filter((c) => c.type === TOTP_CREDENTIAL_TYPE).length;
     const webauthnCount = userCredentials.filter((c) => c.type === WEBAUTHN_CREDENTIAL_TYPE).length;
