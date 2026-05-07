@@ -521,14 +521,7 @@ export const actions: Actions = {
             const [r] = await db
                 .select({ id: serviceRoles.id })
                 .from(serviceRoles)
-                .where(
-                    and(
-                        eq(serviceRoles.id, serviceRoleId),
-                        eq(serviceRoles.tenantId, tenant.id),
-                        eq(serviceRoles.serviceType, serviceType),
-                        eq(serviceRoles.serviceRefId, serviceRefId),
-                    ),
-                )
+                .where(and(eq(serviceRoles.id, serviceRoleId), eq(serviceRoles.tenantId, tenant.id), eq(serviceRoles.serviceType, serviceType), eq(serviceRoles.serviceRefId, serviceRefId)))
                 .limit(1);
             if (!r) return fail(400, { error: "선택한 role 이 해당 서비스에 속하지 않습니다." });
         }
@@ -594,9 +587,7 @@ export const actions: Actions = {
         if (!assignmentId) return fail(400, { error: "잘못된 요청." });
 
         // IDOR 가드: 본 페이지 user 의 assignment 만 영향
-        await db
-            .delete(userServiceAssignments)
-            .where(and(eq(userServiceAssignments.id, assignmentId), eq(userServiceAssignments.userId, params.id), eq(userServiceAssignments.tenantId, tenant.id)));
+        await db.delete(userServiceAssignments).where(and(eq(userServiceAssignments.id, assignmentId), eq(userServiceAssignments.userId, params.id), eq(userServiceAssignments.tenantId, tenant.id)));
 
         const meta = getRequestMetadata(event);
         await recordAuditEvent(db, {

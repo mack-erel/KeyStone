@@ -113,9 +113,7 @@ export const actions: Actions = {
         const id = String(fd.get("roleId") ?? "");
         if (!id) return fail(400, { error: "잘못된 요청." });
 
-        await db
-            .delete(serviceRoles)
-            .where(and(eq(serviceRoles.id, id), eq(serviceRoles.tenantId, tenant.id), eq(serviceRoles.serviceType, "saml"), eq(serviceRoles.serviceRefId, params.id)));
+        await db.delete(serviceRoles).where(and(eq(serviceRoles.id, id), eq(serviceRoles.tenantId, tenant.id), eq(serviceRoles.serviceType, "saml"), eq(serviceRoles.serviceRefId, params.id)));
 
         const meta = getRequestMetadata(event);
         await recordAuditEvent(db, {

@@ -20,11 +20,7 @@ function partLabel(p: { name: string; teamName: string | null }) {
 }
 
 let selectedService = $state("");
-const filteredRoles = $derived(
-    selectedService
-        ? data.allServiceRoles.filter((r: { serviceType: string; serviceRefId: string }) => `${r.serviceType}:${r.serviceRefId}` === selectedService)
-        : [],
-);
+const filteredRoles = $derived(selectedService ? data.allServiceRoles.filter((r: { serviceType: string; serviceRefId: string }) => `${r.serviceType}:${r.serviceRefId}` === selectedService) : []);
 
 function assignmentStatus(a: { revokedAt: Date | null; expiresAt: Date | null }): { label: string; className: string } {
     if (a.revokedAt) return { label: "취소됨", className: "bg-gray-100 text-gray-500" };
@@ -331,7 +327,12 @@ const TIMEZONE_OPTIONS = [
                             </div>
                             <form method="POST" action="?/revokeAssignment" use:enhance>
                                 <input type="hidden" name="assignmentId" value={a.id} />
-                                <button type="submit" class="text-xs text-red-400 hover:text-red-600" onclick={(e) => { if (!confirm("이 매핑을 삭제하시겠습니까?")) e.preventDefault(); }}>삭제</button>
+                                <button
+                                    type="submit"
+                                    class="text-xs text-red-400 hover:text-red-600"
+                                    onclick={(e) => {
+                                        if (!confirm("이 매핑을 삭제하시겠습니까?")) e.preventDefault();
+                                    }}>삭제</button>
                             </form>
                         </div>
                         <form method="POST" action="?/updateAssignmentExpiry" use:enhance class="mt-2 flex items-center gap-2">

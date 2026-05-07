@@ -246,10 +246,7 @@ async function seedServicePermissions(tenantId: string, adminUserId: string, now
 
     for (const svc of services) {
         for (const r of standardRoles) {
-            const existing = await qRows<{ id: string }>(
-                `SELECT id FROM service_roles WHERE service_type = ? AND service_ref_id = ? AND key = ? LIMIT 1`,
-                [svc.type, svc.id, r.key],
-            );
+            const existing = await qRows<{ id: string }>(`SELECT id FROM service_roles WHERE service_type = ? AND service_ref_id = ? AND key = ? LIMIT 1`, [svc.type, svc.id, r.key]);
             if (existing.length > 0) continue;
             await q(
                 `INSERT INTO service_roles (id, tenant_id, service_type, service_ref_id, key, label, description, is_default, display_order, created_at, updated_at)
@@ -260,10 +257,7 @@ async function seedServicePermissions(tenantId: string, adminUserId: string, now
         }
 
         // admin 유저에게 admin role 매핑 — 이미 매핑이 있으면 skip
-        const adminRole = await qRows<{ id: string }>(
-            `SELECT id FROM service_roles WHERE service_type = ? AND service_ref_id = ? AND key = 'admin' LIMIT 1`,
-            [svc.type, svc.id],
-        );
+        const adminRole = await qRows<{ id: string }>(`SELECT id FROM service_roles WHERE service_type = ? AND service_ref_id = ? AND key = 'admin' LIMIT 1`, [svc.type, svc.id]);
         if (adminRole.length === 0) continue;
 
         const existingAssignment = await qRows<{ id: string }>(

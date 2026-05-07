@@ -32,7 +32,15 @@ let editingId = $state<string | null>(null);
                 {#each data.roles as r (r.id)}
                     <div class="px-4 py-3 text-sm">
                         {#if editingId === r.id}
-                            <form method="POST" action="?/updateRole" use:enhance={() => ({ result, update }) => { update(); if (result.type === "success") editingId = null; }} class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                            <form
+                                method="POST"
+                                action="?/updateRole"
+                                use:enhance={() =>
+                                    ({ result, update }) => {
+                                        update();
+                                        if (result.type === "success") editingId = null;
+                                    }}
+                                class="grid grid-cols-2 gap-2 sm:grid-cols-5">
                                 <input type="hidden" name="roleId" value={r.id} />
                                 <label class="block text-xs text-gray-500 sm:col-span-1">
                                     key
@@ -73,7 +81,12 @@ let editingId = $state<string | null>(null);
                                     <button type="button" onclick={() => (editingId = r.id)} class="text-xs text-blue-500">편집</button>
                                     <form method="POST" action="?/deleteRole" use:enhance>
                                         <input type="hidden" name="roleId" value={r.id} />
-                                        <button type="submit" class="text-xs text-red-400" onclick={(e) => { if (!confirm(`role '${r.key}' 을 삭제하시겠습니까? 이 role 이 부여된 사용자 매핑은 role 이 null 로 설정됩니다.`)) e.preventDefault(); }}>삭제</button>
+                                        <button
+                                            type="submit"
+                                            class="text-xs text-red-400"
+                                            onclick={(e) => {
+                                                if (!confirm(`role '${r.key}' 을 삭제하시겠습니까? 이 role 이 부여된 사용자 매핑은 role 이 null 로 설정됩니다.`)) e.preventDefault();
+                                            }}>삭제</button>
                                     </form>
                                 </div>
                             </div>
@@ -86,7 +99,7 @@ let editingId = $state<string | null>(null);
         {/if}
 
         <form method="POST" action="?/addRole" use:enhance class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-4 sm:grid-cols-5">
-            <input type="text" name="key" placeholder="key (예: admin)" required class="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-mono" />
+            <input type="text" name="key" placeholder="key (예: admin)" required class="rounded-md border border-gray-300 px-2 py-1.5 font-mono text-sm" />
             <input type="text" name="label" placeholder="label" required class="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <input type="text" name="description" placeholder="description (optional)" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
             <input type="number" name="displayOrder" value="0" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
