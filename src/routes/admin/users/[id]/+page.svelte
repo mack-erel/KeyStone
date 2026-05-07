@@ -19,6 +19,22 @@ function partLabel(p: { name: string; teamName: string | null }) {
     return p.teamName ? `${p.teamName} / ${p.name}` : p.name;
 }
 
+let selectedService = $state("");
+const filteredRoles = $derived(selectedService ? data.allServiceRoles.filter((r: { serviceType: string; serviceRefId: string }) => `${r.serviceType}:${r.serviceRefId}` === selectedService) : []);
+
+function assignmentStatus(a: { revokedAt: Date | null; expiresAt: Date | null }): { label: string; className: string } {
+    if (a.revokedAt) return { label: "취소됨", className: "bg-gray-100 text-gray-500" };
+    if (a.expiresAt && a.expiresAt.getTime() <= Date.now()) return { label: "만료됨", className: "bg-amber-100 text-amber-700" };
+    return { label: "활성", className: "bg-green-100 text-green-700" };
+}
+
+function toLocalDateTimeInputValue(d: Date | null): string {
+    if (!d) return "";
+    // input[type=datetime-local] 형식 (YYYY-MM-DDTHH:mm)
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 const LOCALE_OPTIONS = [
     { value: "ko-KR", label: "한국어" },
     { value: "en-US", label: "English (US)" },
@@ -284,6 +300,99 @@ const TIMEZONE_OPTIONS = [
                     {t("user_detail.primary")}
                 </label>
                 <button type="submit" class="ml-auto rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700">{t("common.add")}</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h2 class="mb-4 text-sm font-semibold text-gray-700">서비스 권한</h2>
+        <p class="mb-3 text-xs text-gray-500">기본 deny — 매핑이 없으면 SSO 가 거부됩니다. 서비스 별로 1 매핑만 허용.</p>
+
+        {#if data.assignments.length > 0}
+            <div class="mb-4 divide-y divide-gray-100 rounded-lg border border-gray-200">
+                {#each data.assignments as a (a.id)}
+                    {@const status = assignmentStatus(a)}
+                    <div class="px-4 py-3 text-sm">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-medium text-gray-900">{data.serviceLabelMap[`${a.serviceType}:${a.serviceRefId}`] ?? `${a.serviceType}:${a.serviceRefId}`}</span>
+                                {#if a.roleKey}
+                                    <code class="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs">{a.roleKey}</code>
+                                    <span class="text-xs text-gray-500">{a.roleLabel}</span>
+                                {:else}
+                                    <span class="text-xs text-gray-400">(role 없음)</span>
+                                {/if}
+                                <span class="rounded-full px-1.5 py-0.5 text-xs {status.className}">{status.label}</span>
+                                {#if a.expiresAt}<span class="text-xs text-gray-400">~{dateFormatter.format(a.expiresAt)}</span>{/if}
+                            </div>
+                            <form method="POST" action="?/revokeAssignment" use:enhance>
+                                <input type="hidden" name="assignmentId" value={a.id} />
+                                <button
+                                    type="submit"
+                                    class="text-xs text-red-400 hover:text-red-600"
+                                    onclick={(e) => {
+                                        if (!confirm("이 매핑을 삭제하시겠습니까?")) e.preventDefault();
+                                    }}>삭제</button>
+                            </form>
+                        </div>
+                        <form method="POST" action="?/updateAssignmentExpiry" use:enhance class="mt-2 flex items-center gap-2">
+                            <input type="hidden" name="assignmentId" value={a.id} />
+                            <label class="text-xs text-gray-500">
+                                만료일
+                                <input type="datetime-local" name="expiresAt" value={toLocalDateTimeInputValue(a.expiresAt)} class="rounded-md border border-gray-300 px-2 py-1 text-xs" />
+                            </label>
+                            <button type="submit" class="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600">갱신</button>
+                            {#if a.attributesJson}
+                                <span class="ml-auto truncate font-mono text-xs text-gray-400" title={a.attributesJson}>{a.attributesJson}</span>
+                            {/if}
+                        </form>
+                    </div>
+                {/each}
+            </div>
+        {:else}
+            <p class="mb-4 text-sm text-gray-400">매핑된 서비스가 없습니다.</p>
+        {/if}
+
+        <form method="POST" action="?/addAssignment" use:enhance class="grid grid-cols-1 gap-2 border-t border-gray-100 pt-4 sm:grid-cols-2">
+            <div>
+                <label for="svc" class="block text-xs font-medium text-gray-700">서비스</label>
+                <select id="svc" name="service" required bind:value={selectedService} class="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+                    <option value="">선택...</option>
+                    {#if data.allOidcClients.length > 0}
+                        <optgroup label="OIDC">
+                            {#each data.allOidcClients as c (c.id)}
+                                <option value="oidc:{c.id}">{c.name} ({c.clientId})</option>
+                            {/each}
+                        </optgroup>
+                    {/if}
+                    {#if data.allSamlSps.length > 0}
+                        <optgroup label="SAML">
+                            {#each data.allSamlSps as s (s.id)}
+                                <option value="saml:{s.id}">{s.name}</option>
+                            {/each}
+                        </optgroup>
+                    {/if}
+                </select>
+            </div>
+            <div>
+                <label for="svc-role" class="block text-xs font-medium text-gray-700">Role</label>
+                <select id="svc-role" name="serviceRoleId" class="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" disabled={!selectedService}>
+                    <option value="">(role 없음)</option>
+                    {#each filteredRoles as r (r.id)}
+                        <option value={r.id}>{r.label} [{r.key}]{r.isDefault ? " · default" : ""}</option>
+                    {/each}
+                </select>
+            </div>
+            <div>
+                <label for="svc-expires" class="block text-xs font-medium text-gray-700">만료일 (optional)</label>
+                <input id="svc-expires" type="datetime-local" name="expiresAt" class="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+                <label for="svc-attrs" class="block text-xs font-medium text-gray-700">attributesJson (optional)</label>
+                <textarea id="svc-attrs" name="attributesJson" rows="2" placeholder={'{"region":"kr"}'} class="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 font-mono text-xs"></textarea>
+            </div>
+            <div class="flex justify-end sm:col-span-2">
+                <button type="submit" class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">매핑 추가</button>
             </div>
         </form>
     </section>

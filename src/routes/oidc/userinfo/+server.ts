@@ -2,9 +2,12 @@ import { json } from "@sveltejs/kit";
 import type { RequestHandler } from "./$types";
 import { and, eq } from "drizzle-orm";
 import { requireDbContext } from "$lib/server/auth/guards";
-import { users } from "$lib/server/db/schema";
+import { oidcClients, users } from "$lib/server/db/schema";
 import { verifyAccessToken } from "$lib/server/crypto/keys";
 import { getUserMembership } from "$lib/server/org/membership";
+import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
+
+const RESERVED_USERINFO_CLAIMS = new Set(["sub", "iss", "aud", "iat", "exp", "auth_time"]);
 
 function bearerError(code: string, description: string): Response {
     return new Response(JSON.stringify({ error: code, error_description: description }), {
@@ -69,6 +72,32 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
     if (scopes.has("phone")) {
         response.phone_number = user.phoneNumber;
         response.phone_number_verified = Boolean(user.phoneVerifiedAt);
+    }
+
+    // 서비스 권한 매핑 — role / 추가 attributes 머지
+    const [client] = await db
+        .select({ id: oidcClients.id })
+        .from(oidcClients)
+        .where(and(eq(oidcClients.tenantId, tenant.id), eq(oidcClients.clientId, claims.clientId)))
+        .limit(1);
+    if (client) {
+        const assignment = await getActiveAssignment(db, {
+            tenantId: tenant.id,
+            userId: user.id,
+            serviceType: "oidc",
+            serviceRefId: client.id,
+        });
+        if (assignment?.role) {
+            response.roles = [assignment.role.key];
+            response.roles_label = assignment.role.label;
+        }
+        if (assignment) {
+            const extra = parseAssignmentAttributes(assignment.attributesJson);
+            for (const [k, v] of Object.entries(extra)) {
+                if (RESERVED_USERINFO_CLAIMS.has(k)) continue;
+                response[k] = v;
+            }
+        }
     }
 
     if (scopes.has("organization")) {
