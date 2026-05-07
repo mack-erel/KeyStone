@@ -4,7 +4,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext, assertNotLastAdmin } from "$lib/server/auth/guards";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
-import { departments, parts, positions, teams, userDepartments, userParts, userTeams, users } from "$lib/server/db/schema";
+import { departments, oidcClients, parts, positions, samlSps, serviceRoles, teams, userDepartments, userParts, userServiceAssignments, userTeams, users } from "$lib/server/db/schema";
 
 export const load: PageServerLoad = async ({ locals, params }) => {
     const { db, tenant } = requireAdminContext(locals);
@@ -91,6 +91,55 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
     const allPositions = await db.select({ id: positions.id, name: positions.name, level: positions.level }).from(positions).where(eq(positions.tenantId, tenant.id)).orderBy(asc(positions.level));
 
+    // 서비스 권한 — 활성/만료/취소 모두 함께 보여 줌. 필터링은 UI 에서.
+    const assignments = await db
+        .select({
+            id: userServiceAssignments.id,
+            serviceType: userServiceAssignments.serviceType,
+            serviceRefId: userServiceAssignments.serviceRefId,
+            serviceRoleId: userServiceAssignments.serviceRoleId,
+            roleKey: serviceRoles.key,
+            roleLabel: serviceRoles.label,
+            attributesJson: userServiceAssignments.attributesJson,
+            grantedAt: userServiceAssignments.grantedAt,
+            expiresAt: userServiceAssignments.expiresAt,
+            revokedAt: userServiceAssignments.revokedAt,
+        })
+        .from(userServiceAssignments)
+        .leftJoin(serviceRoles, eq(userServiceAssignments.serviceRoleId, serviceRoles.id))
+        .where(and(eq(userServiceAssignments.tenantId, tenant.id), eq(userServiceAssignments.userId, userId)));
+
+    const allOidcClients = await db
+        .select({ id: oidcClients.id, name: oidcClients.name, clientId: oidcClients.clientId })
+        .from(oidcClients)
+        .where(and(eq(oidcClients.tenantId, tenant.id), eq(oidcClients.enabled, true)))
+        .orderBy(asc(oidcClients.name));
+
+    const allSamlSps = await db
+        .select({ id: samlSps.id, name: samlSps.name, entityId: samlSps.entityId })
+        .from(samlSps)
+        .where(and(eq(samlSps.tenantId, tenant.id), eq(samlSps.enabled, true)))
+        .orderBy(asc(samlSps.name));
+
+    const allServiceRoles = await db
+        .select({
+            id: serviceRoles.id,
+            serviceType: serviceRoles.serviceType,
+            serviceRefId: serviceRoles.serviceRefId,
+            key: serviceRoles.key,
+            label: serviceRoles.label,
+            isDefault: serviceRoles.isDefault,
+            displayOrder: serviceRoles.displayOrder,
+        })
+        .from(serviceRoles)
+        .where(eq(serviceRoles.tenantId, tenant.id))
+        .orderBy(asc(serviceRoles.displayOrder), asc(serviceRoles.key));
+
+    // 표시용 — service ref 별 이름 매핑
+    const serviceLabelMap: Record<string, string> = {};
+    for (const c of allOidcClients) serviceLabelMap[`oidc:${c.id}`] = `OIDC · ${c.name}`;
+    for (const s of allSamlSps) serviceLabelMap[`saml:${s.id}`] = `SAML · ${s.name}`;
+
     return {
         user,
         deptMemberships,
@@ -100,6 +149,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         allTeams,
         allParts,
         allPositions,
+        assignments,
+        allOidcClients,
+        allSamlSps,
+        allServiceRoles,
+        serviceLabelMap,
     };
 };
 
@@ -422,5 +476,154 @@ export const actions: Actions = {
         });
 
         return { removedPart: true };
+    },
+
+    // ── 서비스 권한 부여 ──────────────────────────────────────────────────────
+    addAssignment: async (event) => {
+        const { locals, params, request } = event;
+        const { db, tenant } = requireAdminContext(locals);
+        const fd = await request.formData();
+        const userId = params.id;
+
+        // form 의 service 필드는 "oidc:<id>" 또는 "saml:<id>" 형태.
+        const serviceRaw = String(fd.get("service") ?? "");
+        const colonIdx = serviceRaw.indexOf(":");
+        if (colonIdx <= 0) return fail(400, { error: "서비스를 선택해 주세요." });
+        const serviceType = serviceRaw.slice(0, colonIdx);
+        const serviceRefId = serviceRaw.slice(colonIdx + 1);
+        if (serviceType !== "oidc" && serviceType !== "saml") return fail(400, { error: "잘못된 서비스 종류입니다." });
+        if (!serviceRefId) return fail(400, { error: "잘못된 서비스 ID 입니다." });
+
+        const serviceRoleIdRaw = String(fd.get("serviceRoleId") ?? "").trim();
+        const serviceRoleId = serviceRoleIdRaw || null;
+        const expiresAtRaw = String(fd.get("expiresAt") ?? "").trim();
+        const attributesJsonRaw = String(fd.get("attributesJson") ?? "").trim();
+
+        // service ref 가 우리 테넌트의 활성 서비스인지 검증
+        if (serviceType === "oidc") {
+            const [c] = await db
+                .select({ id: oidcClients.id })
+                .from(oidcClients)
+                .where(and(eq(oidcClients.id, serviceRefId), eq(oidcClients.tenantId, tenant.id)))
+                .limit(1);
+            if (!c) return fail(404, { error: "OIDC 클라이언트를 찾을 수 없습니다." });
+        } else {
+            const [s] = await db
+                .select({ id: samlSps.id })
+                .from(samlSps)
+                .where(and(eq(samlSps.id, serviceRefId), eq(samlSps.tenantId, tenant.id)))
+                .limit(1);
+            if (!s) return fail(404, { error: "SAML SP 를 찾을 수 없습니다." });
+        }
+
+        // role 이 지정됐다면, 같은 service 의 role 인지 검증
+        if (serviceRoleId) {
+            const [r] = await db
+                .select({ id: serviceRoles.id })
+                .from(serviceRoles)
+                .where(and(eq(serviceRoles.id, serviceRoleId), eq(serviceRoles.tenantId, tenant.id), eq(serviceRoles.serviceType, serviceType), eq(serviceRoles.serviceRefId, serviceRefId)))
+                .limit(1);
+            if (!r) return fail(400, { error: "선택한 role 이 해당 서비스에 속하지 않습니다." });
+        }
+
+        let expiresAt: Date | null = null;
+        if (expiresAtRaw) {
+            const d = new Date(expiresAtRaw);
+            if (Number.isNaN(d.getTime())) return fail(400, { error: "만료일 형식이 올바르지 않습니다." });
+            expiresAt = d;
+        }
+
+        let attributesJson: string | null = null;
+        if (attributesJsonRaw) {
+            try {
+                const parsed = JSON.parse(attributesJsonRaw) as unknown;
+                if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                    return fail(400, { error: "attributesJson 은 JSON object 여야 합니다." });
+                }
+                attributesJson = JSON.stringify(parsed);
+            } catch {
+                return fail(400, { error: "attributesJson 파싱 실패." });
+            }
+        }
+
+        try {
+            await db.insert(userServiceAssignments).values({
+                id: crypto.randomUUID(),
+                tenantId: tenant.id,
+                userId,
+                serviceType,
+                serviceRefId,
+                serviceRoleId,
+                attributesJson,
+                grantedBy: locals.user!.id,
+                expiresAt,
+            });
+        } catch {
+            // unique (tenantId, userId, serviceType, serviceRefId)
+            return fail(409, { error: "이미 해당 서비스에 매핑이 존재합니다. 먼저 삭제해 주세요." });
+        }
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId,
+            actorId: locals.user!.id,
+            spOrClientId: serviceRefId,
+            kind: "service_assignment_granted",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { serviceType, serviceRefId, serviceRoleId, expiresAt },
+        });
+
+        return { addedAssignment: true };
+    },
+
+    revokeAssignment: async (event) => {
+        const { locals, params, request } = event;
+        const { db, tenant } = requireAdminContext(locals);
+        const fd = await request.formData();
+        const assignmentId = String(fd.get("assignmentId") ?? "");
+        if (!assignmentId) return fail(400, { error: "잘못된 요청." });
+
+        // IDOR 가드: 본 페이지 user 의 assignment 만 영향
+        await db.delete(userServiceAssignments).where(and(eq(userServiceAssignments.id, assignmentId), eq(userServiceAssignments.userId, params.id), eq(userServiceAssignments.tenantId, tenant.id)));
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: params.id,
+            actorId: locals.user!.id,
+            kind: "service_assignment_revoked",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { assignmentId },
+        });
+
+        return { revokedAssignment: true };
+    },
+
+    updateAssignmentExpiry: async (event) => {
+        const { locals, params, request } = event;
+        const { db, tenant } = requireAdminContext(locals);
+        const fd = await request.formData();
+        const assignmentId = String(fd.get("assignmentId") ?? "");
+        if (!assignmentId) return fail(400, { error: "잘못된 요청." });
+
+        const expiresAtRaw = String(fd.get("expiresAt") ?? "").trim();
+        let expiresAt: Date | null = null;
+        if (expiresAtRaw) {
+            const d = new Date(expiresAtRaw);
+            if (Number.isNaN(d.getTime())) return fail(400, { error: "만료일 형식이 올바르지 않습니다." });
+            expiresAt = d;
+        }
+
+        await db
+            .update(userServiceAssignments)
+            .set({ expiresAt })
+            .where(and(eq(userServiceAssignments.id, assignmentId), eq(userServiceAssignments.userId, params.id), eq(userServiceAssignments.tenantId, tenant.id)));
+
+        return { updatedExpiry: true };
     },
 };

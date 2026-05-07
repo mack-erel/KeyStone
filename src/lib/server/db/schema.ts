@@ -389,6 +389,77 @@ export const samlSloStates = sqliteTable("saml_slo_states", {
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });
 
+// ---------- Service Permissions ----------
+
+/**
+ * 서비스(OIDC client / SAML SP) 별 role 정의.
+ * serviceRefId 는 oidcClients.id 또는 samlSps.id 를 가리키지만 두 테이블 중 하나라
+ * FK 는 걸지 않는다. 삭제 시 별도 application-level cleanup 필요.
+ */
+export const serviceRoles = sqliteTable(
+    "service_roles",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        tenantId: text("tenant_id")
+            .notNull()
+            .references(() => tenants.id, { onDelete: "cascade" }),
+        serviceType: text("service_type", { enum: ["oidc", "saml"] }).notNull(),
+        serviceRefId: text("service_ref_id").notNull(),
+        key: text("key").notNull(),
+        label: text("label").notNull(),
+        description: text("description"),
+        isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+        displayOrder: integer("display_order").notNull().default(0),
+        createdAt: integer("created_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+        updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+    },
+    (t) => [uniqueIndex("service_roles_service_key_uidx").on(t.serviceType, t.serviceRefId, t.key), index("service_roles_tenant_service_idx").on(t.tenantId, t.serviceType, t.serviceRefId)],
+);
+
+/**
+ * 사용자에게 부여된 서비스 접근 권한.
+ * 기본 deny. 매핑이 없으면 SSO 거부. role 은 nullable — 단순 access 만 부여하는 경우 허용.
+ * attributesJson 은 SSO 시 추가로 머지될 클레임/속성을 표현한다.
+ */
+export const userServiceAssignments = sqliteTable(
+    "user_service_assignments",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        tenantId: text("tenant_id")
+            .notNull()
+            .references(() => tenants.id, { onDelete: "cascade" }),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        serviceType: text("service_type", { enum: ["oidc", "saml"] }).notNull(),
+        serviceRefId: text("service_ref_id").notNull(),
+        serviceRoleId: text("service_role_id").references(() => serviceRoles.id, { onDelete: "set null" }),
+        attributesJson: text("attributes_json"),
+        grantedBy: text("granted_by"),
+        grantedAt: integer("granted_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+        expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+        revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+        createdAt: integer("created_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+    },
+    (t) => [
+        uniqueIndex("user_service_assignments_user_service_uidx").on(t.tenantId, t.userId, t.serviceType, t.serviceRefId),
+        index("user_service_assignments_tenant_user_idx").on(t.tenantId, t.userId),
+        index("user_service_assignments_tenant_service_idx").on(t.tenantId, t.serviceType, t.serviceRefId),
+    ],
+);
+
 // ---------- Keys & Audit ----------
 
 /**
@@ -798,3 +869,5 @@ export type Part = typeof parts.$inferSelect;
 export type UserPart = typeof userParts.$inferSelect;
 export type WebauthnChallenge = typeof webauthnChallenges.$inferSelect;
 export type ClientSkin = typeof clientSkins.$inferSelect;
+export type ServiceRole = typeof serviceRoles.$inferSelect;
+export type UserServiceAssignment = typeof userServiceAssignments.$inferSelect;
