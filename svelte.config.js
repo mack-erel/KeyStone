@@ -18,7 +18,13 @@ const config = {
                 "font-src": ["self", "data:"],
                 "connect-src": ["self"],
                 "frame-ancestors": ["none"],
-                "form-action": ["self"], // first-party form만 허용. SAML/OIDC는 redirect_uri를 form action으로 받지 않음
+                // Chrome 은 form-action 을 redirect chain 전체에 적용한다. 'self' 만으로는
+                // (1) POST /login → 303 /mfa 같은 동일 origin redirect 가 일부 Chrome 에서 실패하고
+                // (2) SAML ACS auto-submit / OIDC RP redirect 처럼 본질적으로 cross-origin 으로 가는
+                // 프로토콜 흐름이 차단된다. 'https:' 를 추가해 redirect chain 통과를 보장한다.
+                // form-action 의 cross-origin 차단 효과는 약화되지만 origin check / CSRF token /
+                // SameSite 쿠키 등 다른 CSRF 보호는 그대로 동작한다. localhost 는 dev 전용.
+                "form-action": ["self", "https:", "http://localhost:*"],
                 "base-uri": ["self"],
                 "object-src": ["none"],
             },
