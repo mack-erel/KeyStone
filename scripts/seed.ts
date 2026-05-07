@@ -213,6 +213,76 @@ async function seedDefaults(mode: "replace" | "ignore"): Promise<void> {
         );
         console.log(`  + created local identity`);
     }
+
+    // 5. 등록된 모든 서비스에 표준 role(admin/editor/member) 시드 + admin 유저에게 admin role 매핑
+    await seedServicePermissions(tenantId, userId, now);
+}
+
+type ServiceRow = {
+    id: string;
+    name: string;
+} & Record<string, unknown>;
+
+async function seedServicePermissions(tenantId: string, adminUserId: string, now: number): Promise<void> {
+    const oidcClients = await qRows<ServiceRow>(`SELECT id, name FROM oidc_clients WHERE tenant_id = ?`, [tenantId]);
+    const samlSps = await qRows<ServiceRow>(`SELECT id, name FROM saml_sps WHERE tenant_id = ?`, [tenantId]);
+
+    const services: { type: "oidc" | "saml"; id: string; name: string }[] = [
+        ...oidcClients.map((c) => ({ type: "oidc" as const, id: c.id, name: c.name })),
+        ...samlSps.map((s) => ({ type: "saml" as const, id: s.id, name: s.name })),
+    ];
+
+    if (services.length === 0) {
+        console.log("  · 등록된 서비스가 없어 service_roles 시드 생략");
+        return;
+    }
+
+    // 표준 role 정의 — member 가 default
+    const standardRoles = [
+        { key: "admin", label: "관리자", description: "서비스 관리 권한", isDefault: false, displayOrder: 0 },
+        { key: "editor", label: "편집자", description: "쓰기/수정 권한", isDefault: false, displayOrder: 10 },
+        { key: "member", label: "멤버", description: "기본 사용자", isDefault: true, displayOrder: 20 },
+    ];
+
+    for (const svc of services) {
+        for (const r of standardRoles) {
+            const existing = await qRows<{ id: string }>(
+                `SELECT id FROM service_roles WHERE service_type = ? AND service_ref_id = ? AND key = ? LIMIT 1`,
+                [svc.type, svc.id, r.key],
+            );
+            if (existing.length > 0) continue;
+            await q(
+                `INSERT INTO service_roles (id, tenant_id, service_type, service_ref_id, key, label, description, is_default, display_order, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [uuid(), tenantId, svc.type, svc.id, r.key, r.label, r.description, r.isDefault ? 1 : 0, r.displayOrder, now, now],
+            );
+            console.log(`  + service_roles: ${svc.type}:${svc.name} key=${r.key}`);
+        }
+
+        // admin 유저에게 admin role 매핑 — 이미 매핑이 있으면 skip
+        const adminRole = await qRows<{ id: string }>(
+            `SELECT id FROM service_roles WHERE service_type = ? AND service_ref_id = ? AND key = 'admin' LIMIT 1`,
+            [svc.type, svc.id],
+        );
+        if (adminRole.length === 0) continue;
+
+        const existingAssignment = await qRows<{ id: string }>(
+            `SELECT id FROM user_service_assignments
+             WHERE tenant_id = ? AND user_id = ? AND service_type = ? AND service_ref_id = ? LIMIT 1`,
+            [tenantId, adminUserId, svc.type, svc.id],
+        );
+        if (existingAssignment.length > 0) {
+            console.log(`  ✓ assignment exists: ${svc.type}:${svc.name}`);
+            continue;
+        }
+
+        await q(
+            `INSERT INTO user_service_assignments (id, tenant_id, user_id, service_type, service_ref_id, service_role_id, granted_by, granted_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [uuid(), tenantId, adminUserId, svc.type, svc.id, adminRole[0].id, adminUserId, now, now],
+        );
+        console.log(`  + assignment: admin -> ${svc.type}:${svc.name} role=admin`);
+    }
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────

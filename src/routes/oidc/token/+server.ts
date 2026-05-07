@@ -8,6 +8,10 @@ import { findOidcClient, isValidClientSecret, parseBasicAuth } from "$lib/server
 import { findAndConsumeGrant } from "$lib/server/oidc/grant";
 import { verifyPkce } from "$lib/server/oidc/pkce";
 import { generateAccessToken, getActiveSigningKey, signJwt } from "$lib/server/crypto/keys";
+import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
+
+// ID Token 표준 클레임 — assignment.attributesJson 의 키와 충돌 시 표준 클레임이 우선한다.
+const RESERVED_ID_TOKEN_CLAIMS = new Set(["iss", "sub", "aud", "azp", "iat", "exp", "auth_time", "jti", "nonce", "sid", "acr", "amr", "at_hash", "c_hash"]);
 
 const ACCESS_TOKEN_TTL_S = 300; // 5분
 const ID_TOKEN_TTL_S = 600; // 10분
@@ -197,6 +201,27 @@ export const POST: RequestHandler = async (event) => {
     if (grant.nonce) idTokenPayload.nonce = grant.nonce;
     if (grant.sessionId) idTokenPayload.sid = grant.sessionId;
     if (grant.acr) idTokenPayload.acr = grant.acr;
+
+    // 서비스 권한 매핑 — role / 추가 attributes 를 ID Token 에 머지한다.
+    // grant 발급 후 매핑이 revoke 됐을 수 있으므로 token 시점에서 다시 조회한다.
+    const assignment = await getActiveAssignment(db, {
+        tenantId: tenant.id,
+        userId: user.id,
+        serviceType: "oidc",
+        serviceRefId: client.id,
+    });
+    if (assignment?.role) {
+        idTokenPayload.roles = [assignment.role.key];
+        idTokenPayload.roles_label = assignment.role.label;
+    }
+    if (assignment) {
+        const extra = parseAssignmentAttributes(assignment.attributesJson);
+        for (const [k, v] of Object.entries(extra)) {
+            // 표준 클레임 우선 — 충돌 키는 무시
+            if (RESERVED_ID_TOKEN_CLAIMS.has(k)) continue;
+            idTokenPayload[k] = v;
+        }
+    }
 
     const idToken = await signJwt(idTokenPayload, signingKey.privateKey, signingKey.kid);
 

@@ -1,5 +1,6 @@
 <script lang="ts">
 import { enhance } from "$app/forms";
+import { resolve } from "$app/paths";
 import type { ActionData, PageData } from "./$types";
 import { t } from "$lib/i18n.svelte";
 
@@ -300,6 +301,7 @@ const NAME_ID_OPTIONS = [
                             <td class="px-4 py-3 text-xs text-gray-400">{dateFormatter.format(sp.createdAt)}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
+                                    <a href={resolve(`/admin/saml-sps/${sp.id}`)} class="text-xs text-indigo-500 hover:text-indigo-700">role</a>
                                     <button type="button" onclick={() => (editingId = editingId === sp.id ? null : sp.id)} class="text-xs text-blue-500 hover:text-blue-700">
                                         {editingId === sp.id ? t("common.collapse") : t("common.expand")}
                                     </button>

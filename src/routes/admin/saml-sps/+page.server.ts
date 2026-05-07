@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     return { sps: rows };
 };
 
-const ATTRIBUTE_KEYS = ["email", "username", "displayName", "givenName", "familyName", "surName", "phoneNumber", "department", "team", "jobTitle", "position"] as const;
+const ATTRIBUTE_KEYS = ["email", "username", "displayName", "givenName", "familyName", "surName", "phoneNumber", "department", "team", "jobTitle", "position", "Role", "RoleLabel"] as const;
 
 const ALLOWED_NAMEID_FORMATS = [
     "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",

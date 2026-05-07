@@ -5,6 +5,7 @@ import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
 import { findOidcClient, isAllowedRedirectUri, parseGrantedScopes } from "$lib/server/oidc/client";
 import { createGrant } from "$lib/server/oidc/grant";
 import { checkRateLimit } from "$lib/server/ratelimit";
+import { hasServiceAccess } from "$lib/server/access/service-permissions";
 
 /** redirect_uri 가 확정된 이후에만 사용. 그 전 오류는 throw error() 로 직접 응답. */
 function authRedirectError(redirectUri: string, errorCode: string, description: string, state?: string | null): never {
@@ -121,6 +122,28 @@ export const GET: RequestHandler = async (event) => {
         loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
         loginUrl.searchParams.set("skinHint", `oidc:${client.id}`);
         throw redirect(302, loginUrl.toString());
+    }
+
+    // 서비스 권한 게이트 (기본 deny). 매핑 없으면 SSO 거부.
+    const allowed = await hasServiceAccess(db, {
+        tenantId: tenant.id,
+        userId: locals.user.id,
+        serviceType: "oidc",
+        serviceRefId: client.id,
+    });
+    if (!allowed) {
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: locals.user.id,
+            actorId: locals.user.id,
+            spOrClientId: clientId,
+            kind: "oidc_authorize",
+            outcome: "failure",
+            ip,
+            userAgent: getRequestMetadata(event).userAgent,
+            detail: { error: "access_denied", reason: "no_service_assignment" },
+        });
+        authRedirectError(redirectUri, "access_denied", "이 서비스에 대한 권한이 없습니다.", state);
     }
 
     // authorization code 발급
