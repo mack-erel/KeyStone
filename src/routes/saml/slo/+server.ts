@@ -24,6 +24,7 @@ import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
 import { buildSamlLogoutRequest, buildSamlLogoutResponse, buildSamlSloRedirectUrl, collectPendingSpData, parseSamlLogoutRequest, type PendingSpData } from "$lib/server/saml/slo";
 import { verifySamlRedirectSignature } from "$lib/server/saml/parse-authn-request";
+import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 
 const SLO_STATE_TTL_MS = 10 * 60 * 1000; // 10 분
 
@@ -49,7 +50,7 @@ async function fireOidcBackchannelLogout(event: RequestEvent, idpSession: typeof
     const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
     if (!signingKey) return;
 
-    const issuerUrl = locals.runtimeConfig.issuerUrl ?? url.origin;
+    const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
     const bcPromises = bcTargets.map((t) => sendOneBackchannelLogout(t, idpSession.userId, idpSession.idpSessionId, issuerUrl, signingKey.privateKey, signingKey.kid).catch(() => undefined));
     const wait = platform?.ctx?.waitUntil?.bind(platform.ctx);
     if (wait) {
@@ -90,7 +91,7 @@ async function redirectToNextSp(event: RequestEvent, stateId: string, remaining:
         throw error(500, "활성 서명 키가 없습니다");
     }
 
-    const issuerUrl = locals.runtimeConfig.issuerUrl ?? url.origin;
+    const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
     const lrXml = buildSamlLogoutRequest({
         id: `_l${crypto.randomUUID().replace(/-/g, "")}`,
         issuerUrl,
@@ -208,7 +209,7 @@ export const GET: RequestHandler = async (event) => {
             if (signingKeySecret) {
                 const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
                 if (signingKey) {
-                    const issuerUrl = locals.runtimeConfig.issuerUrl ?? url.origin;
+                    const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
                     const responseXml = buildSamlLogoutResponse({
                         id: `_lr${crypto.randomUUID().replace(/-/g, "")}`,
                         inResponseTo: state.inResponseTo,
@@ -358,7 +359,7 @@ export const GET: RequestHandler = async (event) => {
             if (!signingKey) {
                 throw redirect(302, "/");
             }
-            const issuerUrl = locals.runtimeConfig.issuerUrl ?? url.origin;
+            const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
             const responseXml = buildSamlLogoutResponse({
                 id: `_lr${crypto.randomUUID().replace(/-/g, "")}`,
                 inResponseTo: parsed.id,

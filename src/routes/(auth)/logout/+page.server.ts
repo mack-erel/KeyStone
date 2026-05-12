@@ -9,6 +9,7 @@ import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
 import { samlSloStates } from "$lib/server/db/schema";
 import { collectPendingSpData } from "$lib/server/saml/slo";
+import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 
 const SLO_STATE_TTL_MS = 10 * 60 * 1000; // 10 분
 
@@ -40,7 +41,7 @@ async function performLogout(event: RequestEvent): Promise<string | null> {
     const userId = event.locals.user.id;
 
     // OIDC back-channel 로그아웃 발송 (waitUntil)
-    const issuerUrl = event.locals.runtimeConfig.issuerUrl ?? event.url.origin;
+    const issuerUrl = resolveIssuerUrl(event.locals.runtimeConfig, event.url.origin);
     const signingKeySecret = event.locals.runtimeConfig.signingKeySecret;
     if (signingKeySecret) {
         const bcTargets = await getOidcBackchannelTargets(db, tenant.id, sessionId);

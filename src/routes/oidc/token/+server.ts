@@ -9,6 +9,7 @@ import { findAndConsumeGrant } from "$lib/server/oidc/grant";
 import { verifyPkce } from "$lib/server/oidc/pkce";
 import { generateAccessToken, getActiveSigningKey, signJwt } from "$lib/server/crypto/keys";
 import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
+import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 
 // ID Token 표준 클레임 — assignment.attributesJson 의 키와 충돌 시 표준 클레임이 우선한다.
 const RESERVED_ID_TOKEN_CLAIMS = new Set(["iss", "sub", "aud", "azp", "iat", "exp", "auth_time", "jti", "nonce", "sid", "acr", "amr", "at_hash", "c_hash"]);
@@ -30,7 +31,7 @@ function tokenError(code: string, description: string, status = 400): Response {
 export const POST: RequestHandler = async (event) => {
     const { locals, request, url } = event;
     const { db, tenant } = requireDbContext(locals);
-    const { signingKeySecret, issuerUrl } = locals.runtimeConfig;
+    const { signingKeySecret } = locals.runtimeConfig;
 
     // 레이트 리밋: IP당 30회/분
     const { ip, userAgent } = getRequestMetadata(event);
@@ -56,7 +57,7 @@ export const POST: RequestHandler = async (event) => {
         return tokenError("server_error", "IDP_SIGNING_KEY_SECRET 가 설정되지 않았습니다.", 503);
     }
 
-    const issuer = issuerUrl ?? url.origin;
+    const issuer = resolveIssuerUrl(locals.runtimeConfig, url.origin);
     const body = await request.formData();
 
     const recordTokenFailure = async (clientIdForAudit: string | null, errorCode: string, description: string): Promise<void> => {

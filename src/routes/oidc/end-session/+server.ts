@@ -6,6 +6,7 @@ import { clearSessionCookie, revokeSession } from "$lib/server/auth/session";
 import { getActiveSigningKey, verifyIdToken } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, getOidcFrontchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
 import { matchesRedirectUri } from "$lib/server/oidc/client";
+import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 
 function htmlEscape(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -96,7 +97,7 @@ export const GET: RequestHandler = async (event) => {
         return new Response(null, { status: 204 });
     }
 
-    const issuer = locals.runtimeConfig.issuerUrl ?? url.origin;
+    const issuer = resolveIssuerUrl(locals.runtimeConfig, url.origin);
     const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint, { expectedIssuer: issuer });
     if (!claims) {
         return new Response(JSON.stringify({ error: "invalid_id_token_hint" }), {
@@ -182,7 +183,7 @@ export const POST: RequestHandler = async (event) => {
         });
     }
 
-    const issuer = locals.runtimeConfig.issuerUrl ?? url.origin;
+    const issuer = resolveIssuerUrl(locals.runtimeConfig, url.origin);
     const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint, { expectedIssuer: issuer });
     if (!claims) {
         return new Response(JSON.stringify({ error: "invalid_id_token_hint" }), {
@@ -215,7 +216,7 @@ export const POST: RequestHandler = async (event) => {
         const idpSessionId = locals.session.idpSessionId;
         const userId = locals.user.id;
 
-        const issuerUrl = locals.runtimeConfig.issuerUrl ?? url.origin;
+        const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
         const signingKeySecret = locals.runtimeConfig.signingKeySecret;
 
         const bcTargets = await getOidcBackchannelTargets(db, tenantId, sessionId);
