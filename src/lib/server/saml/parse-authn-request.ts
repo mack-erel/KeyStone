@@ -58,6 +58,16 @@ async function inflateRaw(compressed: Uint8Array<ArrayBuffer>): Promise<string> 
 export async function verifySamlRedirectSignature(rawQueryString: string, certPem: string): Promise<boolean> {
     try {
         const params = rawQueryString.split("&");
+        // ctrls H-SAML-2: parameter pollution 가드. 동일 키가 2개 이상 등장하면
+        // 서명 검증 대상과 실제 파싱 결과가 분기되어 위조 페이로드를 허용할
+        // 수 있다 (SAMLRequest=A&SAMLRequest=B). 각 보호 파라미터는 최대 1회.
+        const countOf = (name: string): number => params.filter((p) => p.startsWith(name + "=")).length;
+        if (countOf("SAMLRequest") > 1) return false;
+        if (countOf("SAMLResponse") > 1) return false;
+        if (countOf("RelayState") > 1) return false;
+        if (countOf("SigAlg") > 1) return false;
+        if (countOf("Signature") > 1) return false;
+
         const samlRequestPart = params.find((p) => p.startsWith("SAMLRequest="));
         const relayStatePart = params.find((p) => p.startsWith("RelayState="));
         const sigAlgPart = params.find((p) => p.startsWith("SigAlg="));
