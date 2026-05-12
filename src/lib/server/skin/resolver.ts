@@ -21,9 +21,21 @@ export function escapeHtml(str: string): string {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
+// ctrls H-FRONT-3: placeholder 값에 위험한 URL scheme 토큰이 포함되면 빈 문자열로
+// 치환한다. skin 작성자가 placeholder 를 href/src/action 같은 URL 컨텍스트에 넣었을
+// 때 escapeHtml 만으로는 javascript: / vbscript: / data:text/html 등 scheme 기반
+// XSS 를 막을 수 없다 (HTML escape 는 < > " ' & 만 변환).
+// 본 함수는 보수적으로 위험 패턴이 들어간 값을 통째 비워 skin 컨텍스트와 무관하게
+// 안전하게 만든다. 정상 텍스트/이메일/짧은 식별자에는 영향 없음.
+const DANGEROUS_URI_SCHEME_RE = /(?:^|\s)(?:javascript|vbscript|data\s*:\s*text\/html|data\s*:\s*application)\s*:/i;
+function stripDangerousScheme(value: string): string {
+    return DANGEROUS_URI_SCHEME_RE.test(value) ? "" : value;
+}
+
 export function replacePlaceholders(html: string, vars: Record<string, string>): string {
     return html.replace(/\{\{([A-Z_][A-Z0-9_]*)\}\}/g, (_, key: string) => {
-        return Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : "";
+        if (!Object.prototype.hasOwnProperty.call(vars, key)) return "";
+        return stripDangerousScheme(vars[key]);
     });
 }
 
