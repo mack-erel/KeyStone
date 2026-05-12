@@ -145,6 +145,10 @@ export const actions: Actions = {
                 } catch {
                     // 복호화 실패 시 인증 진행 불가 — bindPassword 없이 진행하면 null 반환됨
                 }
+            } else if (ldapConfig.bindPassword && !ldapConfig.bindPasswordEnc) {
+                // ctrls H-ADMIN-4: 레거시 평문 bindPassword 가 DB 에 남아 있으면 운영 가시화.
+                // admin UI 에서 한 번 저장하면 자동으로 bindPasswordEnc 로 마이그레이션됨.
+                console.warn(`[ldap] provider ${ldapProvider.id} 에 평문 bindPassword 가 남아 있음 — admin 페이지에서 재저장하여 암호화 권장`);
             }
 
             const ldapAttrs = await authenticateLdap(ldapConfig, username, password);

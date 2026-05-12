@@ -79,8 +79,18 @@ function validateLdapPort(port: number): { ok: true } | { ok: false; reason: str
     return { ok: true };
 }
 
+// ctrls H-ADMIN-4: signingKeySecret 가 미설정인 상태에서 bindPassword 가 입력되면
+// 평문 그대로 저장하던 silent fallback 을 제거. 운영 환경 (signingKeySecret 항상
+// 존재) 에서 정상 동작, dev 환경에서 secret 미설정 시 admin 에게 명시적 에러로
+// 알려 평문 LDAP 자격증명이 DB 에 박히는 사고 차단.
 async function encryptBindPassword(config: LdapProviderConfig, signingKeySecret: string | undefined): Promise<LdapProviderConfig> {
-    if (!config.bindPassword || !signingKeySecret) return config;
+    if (!config.bindPassword) {
+        // 새 bindPassword 입력이 없으면 그대로 통과 (기존 enc 만 보존됨)
+        return config;
+    }
+    if (!signingKeySecret) {
+        throw new Error("IDP_SIGNING_KEY_SECRET 이 설정되어야 LDAP bindPassword 를 저장할 수 있습니다.");
+    }
     const enc = await encryptSecret(config.bindPassword, signingKeySecret, "idp-ldap-bind-password-v1");
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { bindPassword: _, ...rest } = config;
@@ -125,7 +135,12 @@ export const actions: Actions = {
         if (!portV.ok) return fail(400, { create: true, error: portV.reason });
 
         const { signingKeySecret } = getRuntimeConfig(event.platform);
-        const config = await encryptBindPassword(buildConfig(fd), signingKeySecret);
+        let config: LdapProviderConfig;
+        try {
+            config = await encryptBindPassword(buildConfig(fd), signingKeySecret);
+        } catch (e) {
+            return fail(503, { create: true, error: (e as Error).message });
+        }
 
         await db.insert(identityProviders).values({
             tenantId: tenant.id,
@@ -169,7 +184,12 @@ export const actions: Actions = {
         if (!portV.ok) return fail(400, { error: portV.reason });
 
         const { signingKeySecret } = getRuntimeConfig(event.platform);
-        const config = await encryptBindPassword(buildConfig(fd), signingKeySecret);
+        let config: LdapProviderConfig;
+        try {
+            config = await encryptBindPassword(buildConfig(fd), signingKeySecret);
+        } catch (e) {
+            return fail(503, { error: (e as Error).message });
+        }
 
         await db
             .update(identityProviders)
