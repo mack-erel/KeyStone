@@ -61,7 +61,9 @@ jobs:
               run: bun install
 
             - name: Setup Wrangler config
-              run: echo '${{ secrets.WRANGLER_JSONC }}' > wrangler.jsonc
+              env:
+                  WRANGLER_JSONC: ${{ secrets.WRANGLER_JSONC }}
+              run: printf '%s' "$WRANGLER_JSONC" > wrangler.jsonc
 
             - name: Generate Wrangler types
               run: bunx wrangler types
