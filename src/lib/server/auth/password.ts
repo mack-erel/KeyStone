@@ -4,21 +4,24 @@
  * 신규 해시: argon2id (@hicaru/argon2-pure.js — 순수 JS, Workers 호환)
  * 레거시 해시: PBKDF2-SHA256 (검증 후 argon2id로 자동 업그레이드)
  *
- * Cloudflare Workers 제약상 memCost를 보수적으로 설정함.
- * OWASP 최소 권고(owasp5: m=7168, t=5)보다 낮으나 Workers CPU 한도 내 동작을 우선.
- * 추후 WASM 기반 구현(@rabbit-company/argon2id)으로 전환 시 파라미터 상향 권장.
+ * ctrls H-AUTH-4: OWASP profile 5 (m=7168 / t=5 / p=1) 로 상향.
+ * 기존 m=4096 / t=3 는 OWASP 최소 권고치 미달이라 DB 덤프 시 크래킹 비용이
+ * 부족했다. 순수 JS 구현 + Workers CPU 한도(paid 30s) 안에서 동작.
+ * 추후 WASM 기반 구현(@rabbit-company/argon2id) 또는 native binding 도입
+ * 시 더 높은 프로파일(owasp4: m=9216 / t=4, owasp3: m=12288 / t=3)로 상향
+ * 권장.
  */
 
 import { hashEncoded, verifyEncoded, Config, Variant, Version } from "@hicaru/argon2-pure.js";
 
-// Workers CPU 한도(~50ms) 내에서 동작 가능한 보수적 파라미터
+// OWASP profile 5 — 순수 JS 구현으로 Workers 런타임 안에서 안정 동작 가능한 상한.
 const ARGON2_CONFIG = new Config(
     new Uint8Array(), // ad
     32, // hashLength
     1, // lanes (parallelism)
-    4096, // memCost (4 MB)
+    7168, // memCost (7 MB) — OWASP minimum
     new Uint8Array(), // secret
-    3, // timeCost
+    5, // timeCost — OWASP minimum
     Variant.Argon2id,
     Version.Version13,
 );
@@ -79,7 +82,9 @@ async function verifyPbkdf2(password: string, record: string): Promise<boolean> 
     const [, params, saltB64, hashB64] = parts;
     const [digest, iterationsStr] = params?.split(":") ?? [];
     const iterations = Number(iterationsStr);
-    if (digest !== "sha256:100000" && !Number.isFinite(iterations)) return false;
+    // ctrls L-3 (H-AUTH-4 묶음): 기존 조건은 && 라서 사실상 모든 입력이 통과됐다.
+    // digest 알고리즘 명시 일치 + iterations 최소값 강제로 정정.
+    if (digest !== "sha256" || !Number.isFinite(iterations) || iterations < PBKDF2_ITERATIONS) return false;
 
     const salt = base64ToBytes(saltB64);
     const storedHash = base64ToBytes(hashB64);
