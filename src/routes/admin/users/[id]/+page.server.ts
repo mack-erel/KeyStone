@@ -178,31 +178,33 @@ export const actions: Actions = {
         const role = rawRole as "admin" | "user";
         const status = rawStatus as "active" | "disabled" | "locked";
 
-        // 자기 자신의 role/status 변경 방지
-        if (userId === locals.user!.id) {
-            // 현재 자신의 값과 다른 변경을 시도하면 차단
-            const [self] = await db
-                .select({ role: users.role, status: users.status })
-                .from(users)
-                .where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)))
-                .limit(1);
-            if (self && (self.role !== role || self.status !== status)) {
-                return fail(400, { error: "자기 자신의 role/status는 변경할 수 없습니다." });
-            }
-        }
-
-        // 마지막 활성 관리자 보호 — admin 강등 또는 active 해제 시 검사
-        if (role === "user" || status !== "active") {
-            const lastAdminFail = await assertNotLastAdmin(db, tenant.id, userId);
-            if (lastAdminFail) return lastAdminFail;
-        }
-
-        // 변경 전 role 을 캡처해 변경 여부 판단
+        // 변경 전 role/status 캡처 — 자기-자신 가드, race 가드, role 변경 감지 모두에 사용
         const [before] = await db
-            .select({ role: users.role })
+            .select({ role: users.role, status: users.status })
             .from(users)
             .where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)))
             .limit(1);
+
+        // ctrls C-12: 자기 자신의 role/status 변경은 무조건 차단.
+        // 값이 현재와 같더라도 폼 안에서 admin 이 자기 권한을 손대는 흐름 자체를
+        // 차단해야 race 우회 가능성을 없앤다 (다른 admin 에게 요청해야 함).
+        // 또한 폼이 전송한 role/status 를 무시하고 DB 현재 값을 그대로 유지한다.
+        let effectiveRole = role;
+        let effectiveStatus = status;
+        if (userId === locals.user!.id) {
+            if (before && (before.role !== role || before.status !== status)) {
+                return fail(400, { error: "자기 자신의 role/status 는 변경할 수 없습니다. 다른 관리자에게 요청해 주세요." });
+            }
+            effectiveRole = before?.role ?? role;
+            effectiveStatus = before?.status ?? status;
+        }
+
+        // 마지막 활성 관리자 보호 — admin 강등 또는 active 해제 시 사전 검사
+        const isAdminRemoval = effectiveRole === "user" || effectiveStatus !== "active";
+        if (isAdminRemoval) {
+            const lastAdminFail = await assertNotLastAdmin(db, tenant.id, userId);
+            if (lastAdminFail) return lastAdminFail;
+        }
 
         const displayName = String(fd.get("displayName") ?? "").trim() || null;
         const givenName = String(fd.get("givenName") ?? "").trim() || null;
@@ -224,14 +226,33 @@ export const actions: Actions = {
                 birthdate,
                 locale,
                 zoneinfo,
-                role,
-                status,
+                role: effectiveRole,
+                status: effectiveStatus,
                 updatedAt: new Date(),
             })
             .where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)));
 
+        // ctrls C-12: race 가드 — UPDATE 직후 invariant 재확인.
+        // 두 admin 이 동시에 서로 강등하면 사전 assertNotLastAdmin 가 둘 다
+        // 통과해 0 admin 상태가 될 수 있다. UPDATE 직후 활성 admin 카운트를
+        // 다시 세고 0 이면 본 UPDATE 의 role/status 만 즉시 되돌린다.
+        if (isAdminRemoval) {
+            const remaining = await db
+                .select({ id: users.id })
+                .from(users)
+                .where(and(eq(users.tenantId, tenant.id), eq(users.role, "admin"), eq(users.status, "active")))
+                .limit(1);
+            if (remaining.length === 0 && before) {
+                await db
+                    .update(users)
+                    .set({ role: before.role, status: before.status, updatedAt: new Date() })
+                    .where(and(eq(users.id, userId), eq(users.tenantId, tenant.id)));
+                return fail(409, { error: "동시에 다른 관리자도 강등된 것으로 보입니다. 변경을 취소했습니다. 다시 시도해 주세요." });
+            }
+        }
+
         // role 변경 시 기존 세션 전부 파기 — 이전 권한 캐시 차단
-        if (before && before.role !== role) {
+        if (before && before.role !== effectiveRole) {
             await revokeAllUserSessions(db, userId);
         }
 
@@ -244,7 +265,7 @@ export const actions: Actions = {
             outcome: "success",
             ip: meta.ip,
             userAgent: meta.userAgent,
-            detail: { role, status },
+            detail: { role: effectiveRole, status: effectiveStatus },
         });
 
         return { updated: true };
