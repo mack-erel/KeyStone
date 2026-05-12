@@ -85,7 +85,9 @@ export const actions: Actions = {
         const nameIdFormat = String(fd.get("nameIdFormat") ?? "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress").trim();
         const cert = String(fd.get("cert") ?? "").trim();
         const signAssertion = fd.get("signAssertion") === "true";
-        const signResponse = fd.get("signResponse") === "true";
+        // ctrls H-SAML-1: signResponse 는 항상 true 강제. SP 가 XSW 류 공격에 노출되지
+        // 않도록 IDP 가 항상 Response 자체를 서명한다. admin UI 가 false 를 보내도 무시.
+        const signResponse = true;
         const wantAuthnRequestsSigned = fd.get("wantAuthnRequestsSigned") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
 
@@ -153,7 +155,9 @@ export const actions: Actions = {
         const nameIdFormat = String(fd.get("nameIdFormat") ?? "").trim();
         const cert = String(fd.get("cert") ?? "").trim();
         const signAssertion = fd.get("signAssertion") === "true";
-        const signResponse = fd.get("signResponse") === "true";
+        // ctrls H-SAML-1: signResponse 는 항상 true 강제. SP 가 XSW 류 공격에 노출되지
+        // 않도록 IDP 가 항상 Response 자체를 서명한다. admin UI 가 false 를 보내도 무시.
+        const signResponse = true;
         const wantAuthnRequestsSigned = fd.get("wantAuthnRequestsSigned") === "true";
         const enabled = fd.get("enabled") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
