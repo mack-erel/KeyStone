@@ -167,20 +167,26 @@ export const GET: RequestHandler = async (event) => {
             throw error(400, "Invalid or expired SLO state");
         }
 
-        // 서명 검증: SP-initiated 흐름이었다면 initiatingSpEntityId 의 cert 로 검증.
-        // (IdP-initiated 라면 initiatingSpEntityId 가 NULL → 검증 스킵)
+        // ctrls C-9: SP-initiated 흐름의 LogoutResponse 는 반드시 initiatingSp 의 cert
+        // 로 서명 검증되어야 한다. cert 미등록이거나 Signature 파라미터 누락이면 응답을
+        // 신뢰할 수 없으므로 거부. (IdP-initiated 체인 — initiatingSpEntityId NULL —
+        // 은 stateId UUIDv4 122-bit 엔트로피 + TTL 로 보호된다.)
         if (state.initiatingSpEntityId) {
             const [initiatingSp] = await db
                 .select({ cert: samlSps.cert })
                 .from(samlSps)
                 .where(and(eq(samlSps.tenantId, tenant.id), eq(samlSps.entityId, state.initiatingSpEntityId)))
                 .limit(1);
-            if (initiatingSp?.cert) {
-                const rawQuery = url.search.replace(/^\?/, "");
-                const valid = await verifySamlRedirectSignature(rawQuery, initiatingSp.cert);
-                if (!valid) {
-                    throw error(400, "LogoutResponse 서명 검증 실패");
-                }
+            if (!initiatingSp?.cert) {
+                throw error(400, "initiating SP 인증서가 등록되지 않아 LogoutResponse 를 검증할 수 없습니다.");
+            }
+            if (!url.searchParams.has("Signature")) {
+                throw error(400, "LogoutResponse 는 반드시 서명되어야 합니다.");
+            }
+            const rawQuery = url.search.replace(/^\?/, "");
+            const valid = await verifySamlRedirectSignature(rawQuery, initiatingSp.cert);
+            if (!valid) {
+                throw error(400, "LogoutResponse 서명 검증 실패");
             }
         }
 
@@ -267,13 +273,20 @@ export const GET: RequestHandler = async (event) => {
             throw error(400, "Unknown SAML SP");
         }
 
-        // 서명 검증 (SP cert 가 있으면 필수)
-        if (sp.cert) {
-            const rawQuery = url.search.replace(/^\?/, "");
-            const valid = await verifySamlRedirectSignature(rawQuery, sp.cert);
-            if (!valid) {
-                throw error(400, "Invalid SAMLRequest signature");
-            }
+        // ctrls C-8: 모든 SP-initiated LogoutRequest 는 SP cert 로 서명 검증되어야
+        // 한다. cert 미등록 SP 의 LogoutRequest 를 신뢰하면 공격자가 임의 entityId 로
+        // 위조한 LogoutRequest 로 임의 사용자 강제 로그아웃 + SLO 체인을 트리거할 수
+        // 있다. Signature 파라미터 누락도 동일하게 거부.
+        if (!sp.cert) {
+            throw error(400, "SP 인증서가 등록되지 않아 SLO 요청을 검증할 수 없습니다.");
+        }
+        if (!url.searchParams.has("Signature")) {
+            throw error(400, "LogoutRequest 는 반드시 서명되어야 합니다.");
+        }
+        const rawQuery = url.search.replace(/^\?/, "");
+        const valid = await verifySamlRedirectSignature(rawQuery, sp.cert);
+        if (!valid) {
+            throw error(400, "Invalid SAMLRequest signature");
         }
 
         // SessionIndex → SAML 세션 및 IdP 세션 식별
