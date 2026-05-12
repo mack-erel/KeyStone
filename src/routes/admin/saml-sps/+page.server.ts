@@ -169,6 +169,16 @@ export const actions: Actions = {
             return fail(400, { error: "허용되지 않는 NameID Format 입니다." });
         }
 
+        // ctrls H-SAML-4: 보안 설정 변경을 audit 로그에 정확히 기록.
+        // 특히 cert / acsUrl / wantAuthnRequestsSigned 는 침해 후 ACS hijack 시나리오의
+        // 핵심 변수 — admin 권한 일시 탈취 시 ACS URL 을 attacker 서버로 바꾸면 모든
+        // Assertion 이 가로채진다. forensics 가능성 확보를 위해 before/after diff 기록.
+        const [before] = await db
+            .select()
+            .from(samlSps)
+            .where(and(eq(samlSps.id, id), eq(samlSps.tenantId, tenant.id)))
+            .limit(1);
+
         await db
             .update(samlSps)
             .set({
@@ -185,6 +195,33 @@ export const actions: Actions = {
                 updatedAt: new Date(),
             })
             .where(and(eq(samlSps.id, id), eq(samlSps.tenantId, tenant.id)));
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            actorId: locals.user!.id,
+            spOrClientId: before?.entityId ?? null,
+            kind: "saml_sp_updated",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: {
+                spId: id,
+                changed: {
+                    name: before?.name !== name,
+                    acsUrl: before?.acsUrl !== acsUrl,
+                    sloUrl: before?.sloUrl !== (sloUrl || null),
+                    certChanged: (before?.cert ?? null) !== (cert || null),
+                    nameIdFormat: before?.nameIdFormat !== nameIdFormat,
+                    signAssertion: before?.signAssertion !== signAssertion,
+                    signResponse: before?.signResponse !== signResponse,
+                    wantAuthnRequestsSigned: before?.wantAuthnRequestsSigned !== wantAuthnRequestsSigned,
+                    enabled: before?.enabled !== enabled,
+                },
+                newAcsUrl: acsUrl,
+                newSloUrl: sloUrl || null,
+            },
+        });
 
         return { update: true };
     },

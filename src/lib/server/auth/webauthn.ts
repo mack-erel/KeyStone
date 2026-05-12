@@ -169,6 +169,9 @@ export async function verifyPasskeyAuthentication(
     const credentialId = response.id;
 
     // 테넌트 격리: credential 의 소유 user 가 같은 tenant 인 경우만 채택.
+    // ctrls H-AUTH-3: disabled/locked 사용자도 verify 단계를 통과하지 못하도록
+    // active 필터를 SELECT 단계에서 강제. 이전엔 verify 통과 후 별도 status 검사를
+    // 호출자에게 위임했으나, 호출자가 검사를 빠뜨리면 비활성 사용자 인증으로 직결.
     const [row] = await db
         .select({
             cred: credentials,
@@ -176,7 +179,7 @@ export async function verifyPasskeyAuthentication(
         })
         .from(credentials)
         .innerJoin(users, eq(credentials.userId, users.id))
-        .where(and(eq(credentials.credentialId, credentialId), eq(credentials.type, "webauthn"), eq(users.tenantId, tenantId)))
+        .where(and(eq(credentials.credentialId, credentialId), eq(credentials.type, "webauthn"), eq(users.tenantId, tenantId), eq(users.status, "active")))
         .limit(1);
 
     const cred = row?.cred ?? null;
