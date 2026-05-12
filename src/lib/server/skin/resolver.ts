@@ -1,6 +1,7 @@
 import type { DB } from "$lib/server/db";
 import { clientSkins } from "$lib/server/db/schema";
 import { and, eq } from "drizzle-orm";
+import { sanitizeSkinHtml } from "./sanitize";
 
 const R2_PREFIX = "skins/";
 
@@ -102,7 +103,9 @@ export async function resolveSkinHtml(
             if (cached) {
                 const fetchedAt = Number(cached.customMetadata?.fetchedAt ?? 0);
                 if (Date.now() - fetchedAt < skin.cacheTtlSeconds * 1000) {
-                    return await cached.text();
+                    // ctrls C-14: 캐시에 사전 sanitize 적용 후 저장하지만 legacy 캐시
+                    // (sanitize 도입 전에 채워진) 가능성에 대비해 read time 에도 한 번 더.
+                    return await sanitizeSkinHtml(await cached.text());
                 }
             }
         } catch {
@@ -143,8 +146,11 @@ export async function resolveSkinHtml(
         const declared = Number(res.headers.get("Content-Length") ?? 0);
         if (Number.isFinite(declared) && declared > MAX_SKIN_BYTES) return null;
 
-        const html = await res.text();
-        if (html.length > MAX_SKIN_BYTES) return null;
+        const rawHtml = await res.text();
+        if (rawHtml.length > MAX_SKIN_BYTES) return null;
+        // ctrls C-14: 외부 호스트가 손상되어도 임의 script/iframe/외부 form action
+        // 이 사용자 브라우저에 닿지 않도록 sanitize. CSP 가 1차 방어이고 이건 2차.
+        const html = await sanitizeSkinHtml(rawHtml);
 
         if (r2) {
             try {
