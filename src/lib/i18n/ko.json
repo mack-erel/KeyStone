@@ -113,6 +113,7 @@
         "registered_date": "등록:",
         "last_used": "· 마지막 사용:",
         "delete_confirm": "이 패스키를 삭제하시겠습니까?",
+        "delete_password_prompt": "본인 확인을 위해 비밀번호를 입력해 주세요. (비밀번호가 설정되지 않은 계정이면 빈 값으로 진행)",
         "empty": "등록된 패스키가 없습니다.",
         "registering": "등록 중...",
         "register": "패스키 등록"

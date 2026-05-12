@@ -107,8 +107,30 @@ const formError = $derived((form as { error?: string } | null)?.error ?? null);
                                 <button
                                     type="submit"
                                     class="text-sm text-red-500 hover:text-red-700"
-                                    onclick={(e) => {
-                                        if (!confirm(t("passkeys.delete_confirm"))) e.preventDefault();
+                                    onclick={(e: MouseEvent) => {
+                                        // ctrls H-AUTH-5: step-up 재인증 — 세션 탈취 공격자가 정당한 소유자의
+                                        // 패스키를 먼저 지워 복구를 방해하는 시나리오 차단을 위해 비밀번호를 받는다.
+                                        // 사용자가 패스키-only 라면 빈 값 그대로 보내고 서버가 분기 처리.
+                                        if (!confirm(t("passkeys.delete_confirm"))) {
+                                            e.preventDefault();
+                                            return;
+                                        }
+                                        const pw = prompt(t("passkeys.delete_password_prompt"));
+                                        if (pw === null) {
+                                            e.preventDefault();
+                                            return;
+                                        }
+                                        const target = e.currentTarget as HTMLButtonElement;
+                                        const formEl = target.form;
+                                        if (!formEl) return;
+                                        let pwInput = formEl.querySelector('input[name="password"]') as HTMLInputElement | null;
+                                        if (!pwInput) {
+                                            pwInput = document.createElement("input");
+                                            pwInput.type = "hidden";
+                                            pwInput.name = "password";
+                                            formEl.appendChild(pwInput);
+                                        }
+                                        pwInput.value = pw;
                                     }}>
                                     {t("common.delete")}
                                 </button>
