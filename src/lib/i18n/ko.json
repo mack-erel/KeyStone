@@ -319,6 +319,8 @@
         "auth_method_label": "인증 방식",
         "auth_method_none": "none (공개 클라이언트)",
         "pkce_required": "PKCE 필수",
+        "allow_wildcard_redirect_uri": "와일드카드 redirect_uri 매칭 허용 (보안 위험)",
+        "allow_wildcard_redirect_uri_hint": "Redirect URI 에 * 가 포함된 패턴을 매칭하도록 허용합니다. subdomain takeover 시 토큰 탈취로 이어질 수 있어 신뢰 가능한 도메인에서만 활성화하세요.",
         "enabled": "활성",
         "col_name_id": "이름 / Client ID",
         "col_auth": "인증",

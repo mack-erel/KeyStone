@@ -65,7 +65,7 @@ function renderConfirmHtml(actionUrl: string, params: { idTokenHint: string; cli
 async function resolvePostLogoutRedirect(locals: App.Locals, postLogoutRedirectUri: string | null, clientId: string | null, state: string | null): Promise<string> {
     if (!postLogoutRedirectUri || !clientId || !locals.db || !locals.tenant) return "/";
     const [client] = await locals.db
-        .select({ postLogoutRedirectUris: oidcClients.postLogoutRedirectUris })
+        .select({ postLogoutRedirectUris: oidcClients.postLogoutRedirectUris, allowWildcardRedirectUri: oidcClients.allowWildcardRedirectUri })
         .from(oidcClients)
         .where(and(eq(oidcClients.tenantId, locals.tenant.id), eq(oidcClients.clientId, clientId), eq(oidcClients.enabled, true)))
         .limit(1);
@@ -76,7 +76,9 @@ async function resolvePostLogoutRedirect(locals: App.Locals, postLogoutRedirectU
     } catch {
         allowed = [];
     }
-    const isAllowed = Array.isArray(allowed) && allowed.some((p) => matchesRedirectUri(p, postLogoutRedirectUri));
+    // ctrls H-OIDC-4: 와일드카드 매칭은 client.allowWildcardRedirectUri 가 true 인 경우만.
+    const allowWildcard = Boolean(client.allowWildcardRedirectUri);
+    const isAllowed = Array.isArray(allowed) && allowed.some((p) => matchesRedirectUri(p, postLogoutRedirectUri, allowWildcard));
     if (isAllowed) {
         if (state) {
             const u = new URL(postLogoutRedirectUri);
