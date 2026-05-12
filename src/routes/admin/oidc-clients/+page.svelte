@@ -154,6 +154,13 @@ function urisToText(json: string | null): string {
                     <input id="c-pkce" type="checkbox" name="requirePkce" value="true" checked class="h-4 w-4 rounded border-gray-300 text-blue-600" />
                     <label for="c-pkce" class="text-xs text-gray-700">{t("oidc.pkce_required")}</label>
                 </div>
+                <div class="flex items-start gap-2 pt-1 sm:col-span-2">
+                    <input id="c-wildcard" type="checkbox" name="allowWildcardRedirectUri" value="true" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-amber-600" />
+                    <label for="c-wildcard" class="text-xs text-gray-700">
+                        <span class="font-medium text-amber-700">{t("oidc.allow_wildcard_redirect_uri")}</span>
+                        <span class="block text-gray-500">{t("oidc.allow_wildcard_redirect_uri_hint")}</span>
+                    </label>
+                </div>
                 <div class="flex justify-end sm:col-span-2">
                     <button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t("common.add")}</button>
                 </div>
@@ -323,6 +330,19 @@ function urisToText(json: string | null): string {
                                                 <input id="e-enabled-{client.id}" type="checkbox" name="enabled" value="true" checked={client.enabled} class="h-4 w-4 rounded border-gray-300" />
                                                 <label for="e-enabled-{client.id}" class="text-xs text-gray-700">{t("oidc.enabled")}</label>
                                             </div>
+                                        </div>
+                                        <div class="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2">
+                                            <input
+                                                id="e-wildcard-{client.id}"
+                                                type="checkbox"
+                                                name="allowWildcardRedirectUri"
+                                                value="true"
+                                                checked={client.allowWildcardRedirectUri}
+                                                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-amber-600" />
+                                            <label for="e-wildcard-{client.id}" class="text-xs text-gray-700">
+                                                <span class="font-medium text-amber-800">{t("oidc.allow_wildcard_redirect_uri")}</span>
+                                                <span class="block text-gray-500">{t("oidc.allow_wildcard_redirect_uri_hint")}</span>
+                                            </label>
                                         </div>
                                         <div class="flex justify-end gap-2">
                                             <button type="button" onclick={() => (editingId = null)} class="rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-50"

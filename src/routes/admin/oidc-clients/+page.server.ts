@@ -125,6 +125,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             scopes: oidcClients.scopes,
             tokenEndpointAuthMethod: oidcClients.tokenEndpointAuthMethod,
             requirePkce: oidcClients.requirePkce,
+            allowWildcardRedirectUri: oidcClients.allowWildcardRedirectUri,
             enabled: oidcClients.enabled,
             createdAt: oidcClients.createdAt,
         })
@@ -157,6 +158,8 @@ export const actions: Actions = {
         const tokenMethod = tokenMethodRaw as TokenAuthMethod;
         // public client(none)는 PKCE 필수
         const requirePkce = tokenMethod === "none" ? true : fd.get("requirePkce") === "true";
+        // ctrls H-OIDC-4: 와일드카드 redirect_uri 매칭은 명시적 opt-in.
+        const allowWildcardRedirectUri = fd.get("allowWildcardRedirectUri") === "true";
 
         if (!name) return fail(400, { create: true, error: "이름은 필수입니다." });
         if (!redirectUrisRaw) return fail(400, { create: true, error: "Redirect URI 는 필수입니다." });
@@ -193,6 +196,7 @@ export const actions: Actions = {
             scopes: scopesV.value,
             tokenEndpointAuthMethod: tokenMethod,
             requirePkce,
+            allowWildcardRedirectUri,
             enabled: true,
         });
 
@@ -249,6 +253,8 @@ export const actions: Actions = {
             .where(and(eq(oidcClients.id, id), eq(oidcClients.tenantId, tenant.id)))
             .limit(1);
         const requirePkce = existingClient?.tokenEndpointAuthMethod === "none" ? true : fd.get("requirePkce") === "true";
+        // ctrls H-OIDC-4: wildcard redirect_uri opt-in 플래그.
+        const allowWildcardRedirectUri = fd.get("allowWildcardRedirectUri") === "true";
 
         await db
             .update(oidcClients)
@@ -262,6 +268,7 @@ export const actions: Actions = {
                 backchannelLogoutSessionRequired,
                 scopes: scopesV.value,
                 requirePkce,
+                allowWildcardRedirectUri,
                 enabled,
                 updatedAt: new Date(),
             })

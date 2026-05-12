@@ -76,9 +76,13 @@ export function parseRedirectUris(client: OidcClientRecord): string[] {
  *   ✗       https://pr1.ctrls.kr/auth/x               (path 다름)
  *   ✗       http://pr1.ctrls.kr/auth/callback         (scheme 다름)
  */
-export function matchesRedirectUri(pattern: string, candidate: string): boolean {
+// ctrls H-OIDC-4: 와일드카드 매칭은 client 가 명시적으로 허용한 경우에만.
+// 기본 false — admin 이 wildcard 패턴을 등록해 두었어도 plumbing 단에서 거부된다.
+// subdomain takeover (dangling CNAME, 만료된 cloud subdomain 등) 사고면적 제거.
+export function matchesRedirectUri(pattern: string, candidate: string, allowWildcard: boolean = false): boolean {
     if (pattern === candidate) return true;
     if (!pattern.includes("*")) return false;
+    if (!allowWildcard) return false;
 
     const split = (uri: string) => {
         const m = uri.match(/^([^:]+:\/\/)([^/]+)(.*)$/);
@@ -119,7 +123,9 @@ export function matchesRedirectUri(pattern: string, candidate: string): boolean 
 }
 
 export function isAllowedRedirectUri(client: OidcClientRecord, redirectUri: string): boolean {
-    return parseRedirectUris(client).some((pattern) => matchesRedirectUri(pattern, redirectUri));
+    // ctrls H-OIDC-4: client.allowWildcardRedirectUri 가 true 일 때만 와일드카드 매칭 활성.
+    const allowWildcard = Boolean(client.allowWildcardRedirectUri);
+    return parseRedirectUris(client).some((pattern) => matchesRedirectUri(pattern, redirectUri, allowWildcard));
 }
 
 export function parseGrantedScopes(client: OidcClientRecord, requestedScope: string): string[] {

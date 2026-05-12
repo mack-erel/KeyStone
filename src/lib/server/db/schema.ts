@@ -221,6 +221,11 @@ export const oidcClients = sqliteTable(
             .notNull()
             .default("client_secret_basic"),
         requirePkce: integer("require_pkce", { mode: "boolean" }).notNull().default(true),
+        // ctrls H-OIDC-4: wildcard redirect_uri 등록을 client 별 opt-in 으로.
+        // 기본 false — 정확 일치 redirect_uri 만 허용. 와일드카드 패턴이 redirectUris 에
+        // 등록돼 있어도 이 플래그가 true 가 아니면 매칭 자체를 거부.
+        // subdomain takeover (dangling CNAME, 만료된 cloud subdomain) 위험 표면을 사전 차단.
+        allowWildcardRedirectUri: integer("allow_wildcard_redirect_uri", { mode: "boolean" }).notNull().default(false),
         idTokenSignedResponseAlg: text("id_token_signed_response_alg").notNull().default("RS256"),
         jwksUri: text("jwks_uri"),
         jwks: text("jwks"),
