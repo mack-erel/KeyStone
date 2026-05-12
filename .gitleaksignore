@@ -1,0 +1,2 @@
+# False positive: "pbkdf2/argon2id" 는 credentials.secret 컬럼이 어떤 해시 알고리즘 형식을 저장하는지 설명하는 문자열일 뿐, 실제 시크릿이 아님
+02bc8b64f32a78d60cc39c46acfd6d49b384cbbd:src/lib/server/db/schema.ts:generic-api-key:62

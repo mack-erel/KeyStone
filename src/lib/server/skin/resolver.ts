@@ -1,10 +1,21 @@
 import type { DB } from "$lib/server/db";
 import { clientSkins } from "$lib/server/db/schema";
 import { and, eq } from "drizzle-orm";
+import { sanitizeSkinHtml } from "./sanitize";
 
 const R2_PREFIX = "skins/";
 
+// ctrls C-14: SSRF 하드닝 — fetch 시간/응답 크기 한도 + 호스트명 화이트리스트.
 const BLOCKED_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
+const BLOCKED_INTERNAL_HOSTS = new Set([
+    "metadata.google.internal",
+    "metadata.goog",
+    "metadata.azure.com",
+    "instance-data.ec2.internal",
+    "100.100.100.200", // alibaba metadata
+]);
+const FETCH_TIMEOUT_MS = 5_000;
+const MAX_SKIN_BYTES = 512 * 1024; // 512KB — login 페이지 HTML 로 충분히 큰 한도
 
 export function escapeHtml(str: string): string {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -31,15 +42,31 @@ function isFetchUrlAllowed(rawUrl: string): URL | null {
         return null;
     }
     if (url.protocol !== "https:") return null;
+
     const host = url.hostname.toLowerCase();
+
+    // IPv6 literal — URL.hostname 은 brackets 없이 반환하지만 hostname 에 콜론이
+    // 포함됐다면 IPv6 literal 이다. 운영 skin 호스트는 항상 도메인 명을 쓰므로
+    // 안전하게 전체 거절.
+    if (host.includes(":")) return null;
+
     if (BLOCKED_HOSTNAMES.has(host)) return null;
+    if (BLOCKED_INTERNAL_HOSTS.has(host)) return null;
     if (host.endsWith(".local")) return null;
-    // IPv4 private/link-local 차단 (defense-in-depth)
+    if (host.endsWith(".internal")) return null;
+
+    // 단일 라벨 (점 없는) 호스트명은 운영 도메인일 수 없음 — 내부 서비스 이름일
+    // 가능성 큼 (kubernetes service, intranet hosts 등).
+    if (!host.includes(".")) return null;
+
+    // IPv4 private/link-local/loopback 차단 (defense-in-depth)
     if (/^10\./.test(host)) return null;
     if (/^192\.168\./.test(host)) return null;
     if (/^169\.254\./.test(host)) return null;
     if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return null;
     if (/^127\./.test(host)) return null;
+    if (/^0\./.test(host)) return null; // 0.0.0.0/8 전체
+
     return url;
 }
 
@@ -76,7 +103,9 @@ export async function resolveSkinHtml(
             if (cached) {
                 const fetchedAt = Number(cached.customMetadata?.fetchedAt ?? 0);
                 if (Date.now() - fetchedAt < skin.cacheTtlSeconds * 1000) {
-                    return await cached.text();
+                    // ctrls C-14: 캐시에 사전 sanitize 적용 후 저장하지만 legacy 캐시
+                    // (sanitize 도입 전에 채워진) 가능성에 대비해 read time 에도 한 번 더.
+                    return await sanitizeSkinHtml(await cached.text());
                 }
             }
         } catch {
@@ -93,15 +122,35 @@ export async function resolveSkinHtml(
             headers["X-IDP-Token"] = skin.fetchSecret;
         }
 
-        // redirect: "manual" — secret leak via 3xx Location 방지
-        const res = await fetch(fetchUrl.toString(), { headers, redirect: "manual" });
+        // ctrls C-14: fetch 시간 + 응답 크기 cap. slowloris / 거대 응답으로 Worker
+        // CPU/메모리 점유, R2 저장 비용 폭증, 다음 사용자에게 거대 HTML 전송으로 인한
+        // 가용성 공격을 모두 차단.
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+
+        let res: Response;
+        try {
+            // redirect: "manual" — secret leak via 3xx Location 방지
+            res = await fetch(fetchUrl.toString(), { headers, redirect: "manual", signal: ctl.signal });
+        } finally {
+            clearTimeout(timer);
+        }
         if (res.status >= 300 && res.status < 400) return null;
         if (!res.ok) return null;
 
         const contentType = res.headers.get("Content-Type") ?? "";
         if (!contentType.includes("text/html")) return null;
 
-        const html = await res.text();
+        // Content-Length 가 명시되어 있으면 사전 cap. 누락/거짓이어도 아래 text() 결과
+        // 길이로 다시 한 번 검증한다.
+        const declared = Number(res.headers.get("Content-Length") ?? 0);
+        if (Number.isFinite(declared) && declared > MAX_SKIN_BYTES) return null;
+
+        const rawHtml = await res.text();
+        if (rawHtml.length > MAX_SKIN_BYTES) return null;
+        // ctrls C-14: 외부 호스트가 손상되어도 임의 script/iframe/외부 form action
+        // 이 사용자 브라우저에 닿지 않도록 sanitize. CSP 가 1차 방어이고 이건 2차.
+        const html = await sanitizeSkinHtml(rawHtml);
 
         if (r2) {
             try {

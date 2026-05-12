@@ -54,6 +54,11 @@ jobs:
             - name: Checkout
               uses: actions/checkout@v6
 
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+
             - name: Setup Bun
               uses: oven-sh/setup-bun@v2
 
@@ -61,7 +66,9 @@ jobs:
               run: bun install
 
             - name: Setup Wrangler config
-              run: echo '${{ secrets.WRANGLER_JSONC }}' > wrangler.jsonc
+              env:
+                  WRANGLER_JSONC: ${{ secrets.WRANGLER_JSONC }}
+              run: printf '%s' "$WRANGLER_JSONC" > wrangler.jsonc
 
             - name: Generate Wrangler types
               run: bunx wrangler types

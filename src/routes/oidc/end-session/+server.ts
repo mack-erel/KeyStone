@@ -6,6 +6,7 @@ import { clearSessionCookie, revokeSession } from "$lib/server/auth/session";
 import { getActiveSigningKey, verifyIdToken } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, getOidcFrontchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
 import { matchesRedirectUri } from "$lib/server/oidc/client";
+import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 
 function htmlEscape(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -88,7 +89,15 @@ export const GET: RequestHandler = async (event) => {
         });
     }
 
-    const issuer = locals.runtimeConfig.issuerUrl ?? url.origin;
+    // ctrls C-7: 미인증 상태에서는 confirm 페이지 렌더 불요.
+    // 정리할 세션이 없는데 페이지를 그려주면 (1) clickjacking 으로 임의 사용자의 logout
+    // 강제 트리거 표면이 생기고 (2) 유출된 id_token_hint 만으로 IDP 공식 도메인에서
+    // phishing 흐름을 그려낼 수 있어 즉시 거부한다.
+    if (!locals.user || !locals.session) {
+        return new Response(null, { status: 204 });
+    }
+
+    const issuer = resolveIssuerUrl(locals.runtimeConfig, url.origin);
     const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint, { expectedIssuer: issuer });
     if (!claims) {
         return new Response(JSON.stringify({ error: "invalid_id_token_hint" }), {
@@ -107,7 +116,7 @@ export const GET: RequestHandler = async (event) => {
             });
         }
     }
-    if (locals.user && claims.sub !== locals.user.id) {
+    if (claims.sub !== locals.user.id) {
         return new Response(JSON.stringify({ error: "id_token_hint_mismatch" }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
@@ -116,6 +125,7 @@ export const GET: RequestHandler = async (event) => {
 
     // GET 은 사용자 confirmation 페이지를 렌더한다 (CSRF 방지).
     // 실제 로그아웃은 POST 에서 수행된다.
+    // ctrls C-7: clickjacking / 정보 노출 차단을 위해 strict 보안 헤더 부착.
     return new Response(
         renderConfirmHtml(url.pathname, {
             idTokenHint,
@@ -123,7 +133,15 @@ export const GET: RequestHandler = async (event) => {
             postLogoutRedirectUri,
             state,
         }),
-        { headers: { "Content-Type": "text/html; charset=utf-8" } },
+        {
+            headers: {
+                "Content-Type": "text/html; charset=utf-8",
+                "X-Frame-Options": "DENY",
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
+                "Referrer-Policy": "no-referrer",
+                "Cache-Control": "no-store",
+            },
+        },
     );
 };
 
@@ -165,7 +183,7 @@ export const POST: RequestHandler = async (event) => {
         });
     }
 
-    const issuer = locals.runtimeConfig.issuerUrl ?? url.origin;
+    const issuer = resolveIssuerUrl(locals.runtimeConfig, url.origin);
     const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint, { expectedIssuer: issuer });
     if (!claims) {
         return new Response(JSON.stringify({ error: "invalid_id_token_hint" }), {
@@ -198,7 +216,7 @@ export const POST: RequestHandler = async (event) => {
         const idpSessionId = locals.session.idpSessionId;
         const userId = locals.user.id;
 
-        const issuerUrl = locals.runtimeConfig.issuerUrl ?? url.origin;
+        const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
         const signingKeySecret = locals.runtimeConfig.signingKeySecret;
 
         const bcTargets = await getOidcBackchannelTargets(db, tenantId, sessionId);
