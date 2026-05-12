@@ -142,8 +142,15 @@ export async function verifyIdToken(db: DB, tenantId: string, token: string, opt
         if (parts.length !== 3) return null;
         const [headerB64, payloadB64, sigB64] = parts;
         const dec = new TextDecoder();
-        const header = JSON.parse(dec.decode(b64uDecode(headerB64))) as { kid?: string; alg?: string };
+        const header = JSON.parse(dec.decode(b64uDecode(headerB64))) as { kid?: string; alg?: string; typ?: string; crit?: unknown };
         if (header.alg !== "RS256" || !header.kid) return null;
+        // ctrls H-OIDC-1: typ / crit 헤더 검증.
+        // - typ: ID Token 은 "JWT" 또는 미명시. logout+jwt 같은 다른 typ 의 토큰이
+        //   id_token_hint 위치에 통용되는 type-confusion (logout token 재사용) 차단.
+        // - crit: JWS 표준상 unsupported critical extension 은 거부. 우리는 어떤
+        //   critical extension 도 처리하지 않으므로 header.crit 존재 자체를 거부.
+        if (header.typ && header.typ !== "JWT") return null;
+        if (header.crit !== undefined) return null;
 
         // 회전된 키(rotatedAt != NULL) 또는 비활성 키는 검증에 사용하지 않는다.
         const [row] = await db
@@ -161,6 +168,10 @@ export async function verifyIdToken(db: DB, tenantId: string, token: string, opt
 
         const claims = JSON.parse(dec.decode(b64uDecode(payloadB64))) as Record<string, unknown>;
         const nowSec = Math.floor(Date.now() / 1000);
+        // ctrls H-OIDC-1: BC logout token (claims.events 보유) 가 id_token_hint 로
+        // 재사용되는 시나리오 차단. logout_token 은 events claim 필수, ID token 은
+        // events claim 을 가지지 않는다.
+        if (claims.events !== undefined) return null;
         if (typeof claims.exp === "number" && claims.exp < nowSec) return null;
         if (typeof claims.nbf === "number" && claims.nbf > nowSec + 60) return null;
         if (options?.expectedIssuer && claims.iss !== options.expectedIssuer) return null;
