@@ -14,22 +14,37 @@ export async function findOidcClient(db: DB, tenantId: string, clientId: string)
     return client ?? null;
 }
 
+// ctrls H-OIDC-3: parseBasicAuth 안정화.
+// - atob() 가 invalid base64 에서 throw → try/catch 로 감싸 500 DoS 방지.
+// - 입력 길이 가드 — 비정상적으로 큰 Authorization 헤더 즉시 거부.
+// - sep === -1 (콜론 없음) 인 입력은 RFC 7617 위반이므로 거부 (이전엔 빈 secret 통과).
+const MAX_BASIC_AUTH_BYTES = 4096;
 export function parseBasicAuth(authHeader: string): { clientId: string; clientSecret: string } | null {
     if (!authHeader.startsWith("Basic ")) return null;
-    const decoded = atob(authHeader.slice(6));
-    const sep = decoded.indexOf(":");
+    const raw = authHeader.slice(6).trim();
+    if (raw.length === 0 || raw.length > MAX_BASIC_AUTH_BYTES) return null;
     try {
+        const decoded = atob(raw);
+        const sep = decoded.indexOf(":");
+        if (sep === -1) return null;
         return {
-            clientId: decodeURIComponent(sep > -1 ? decoded.slice(0, sep) : decoded),
-            clientSecret: decodeURIComponent(sep > -1 ? decoded.slice(sep + 1) : ""),
+            clientId: decodeURIComponent(decoded.slice(0, sep)),
+            clientSecret: decodeURIComponent(decoded.slice(sep + 1)),
         };
     } catch {
         return null;
     }
 }
 
-export async function isValidClientSecret(client: OidcClientRecord, clientSecret: string): Promise<boolean> {
-    if (client.tokenEndpointAuthMethod === "none") return true;
+// ctrls H-OIDC-3: public client (auth_method = "none") 의 Basic auth 거부.
+// 기존엔 method === "none" 이면 secret 무관 true 반환 → public client 가 Basic 헤더로
+// 빈 secret 보내도 통과. RFC 6749 §2.3.1: public client 는 인증 정보를 보내선 안 됨.
+// 호출부에서 `hasAuthHeader` 를 넘기지 않으면 (기존 호출 호환) 기존 동작 유지하되,
+// public client 의 secret 은 "" 인 경우만 통과시키도록 강화.
+export async function isValidClientSecret(client: OidcClientRecord, clientSecret: string, hasAuthHeader: boolean = false): Promise<boolean> {
+    if (client.tokenEndpointAuthMethod === "none") {
+        return !hasAuthHeader && clientSecret === "";
+    }
     if (!client.clientSecretHash || !clientSecret) return false;
     const result = await verifyPassword(clientSecret, client.clientSecretHash);
     return result.valid;

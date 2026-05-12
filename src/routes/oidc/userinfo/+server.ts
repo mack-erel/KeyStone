@@ -39,6 +39,21 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         return bearerError("invalid_token", "유효하지 않거나 만료된 액세스 토큰입니다.");
     }
 
+    // ctrls H-OIDC-2: aud 강제. claims.aud (있을 경우) 가 claims.clientId 와 일치해야 한다.
+    // 또한 발급 클라이언트가 현재도 등록되어 있고 enabled 인지 확인 — 비활성/삭제된
+    // 클라이언트의 토큰은 더 이상 userinfo 접근 불가.
+    if (claims.aud && claims.aud !== claims.clientId) {
+        return bearerError("invalid_token", "토큰의 aud 와 client 가 일치하지 않습니다.");
+    }
+    const [issuingClient] = await db
+        .select({ id: oidcClients.id })
+        .from(oidcClients)
+        .where(and(eq(oidcClients.tenantId, tenant.id), eq(oidcClients.clientId, claims.clientId), eq(oidcClients.enabled, true)))
+        .limit(1);
+    if (!issuingClient) {
+        return bearerError("invalid_token", "발급 client 가 더 이상 유효하지 않습니다.");
+    }
+
     const [user] = await db
         .select()
         .from(users)
@@ -74,18 +89,13 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         response.phone_number_verified = Boolean(user.phoneVerifiedAt);
     }
 
-    // 서비스 권한 매핑 — role / 추가 attributes 머지
-    const [client] = await db
-        .select({ id: oidcClients.id })
-        .from(oidcClients)
-        .where(and(eq(oidcClients.tenantId, tenant.id), eq(oidcClients.clientId, claims.clientId)))
-        .limit(1);
-    if (client) {
+    // 서비스 권한 매핑 — role / 추가 attributes 머지 (위에서 검증된 issuingClient 재사용)
+    {
         const assignment = await getActiveAssignment(db, {
             tenantId: tenant.id,
             userId: user.id,
             serviceType: "oidc",
-            serviceRefId: client.id,
+            serviceRefId: issuingClient.id,
         });
         if (assignment?.role) {
             response.roles = [assignment.role.key];

@@ -110,7 +110,7 @@ export const POST: RequestHandler = async (event) => {
         return tokenError("invalid_client", "등록되지 않은 클라이언트입니다.", 401);
     }
 
-    if (!(await isValidClientSecret(client, clientSecret))) {
+    if (!(await isValidClientSecret(client, clientSecret, !!authHeader))) {
         await recordTokenFailure(clientId, "invalid_client", "client_secret 검증 실패");
         return tokenError("invalid_client", "클라이언트 인증에 실패했습니다.", 401);
     }
