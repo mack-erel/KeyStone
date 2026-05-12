@@ -59,3 +59,30 @@ export async function assertNotLastAdmin(db: DB, tenantId: string, userIdToBeCha
     }
     return null;
 }
+
+/**
+ * ctrls C-13: cross-tenant IDOR 가드.
+ *
+ * `params.id` 의 user 가 현재 admin 의 tenant 에 속해 있는지 확인. admin 페이지의
+ * 모든 action (params.id 사용) 진입부에서 호출. 다른 tenant 의 userId 로
+ * `/admin/users/<id>` 에 POST 했을 때 권한 row 가 본 tenant 에 박혀 들어가는
+ * 흐름을 차단한다. 현재 single-tenant 운영이지만 멀티테넌트 활성화 즉시 폭발하는
+ * 결함이라 사전 차단.
+ *
+ * 반환값: 통과면 user 행, 미존재/타 tenant 면 SvelteKit `fail(404, ...)` 형태.
+ */
+export async function assertUserInTenant(
+    db: DB,
+    tenantId: string,
+    userId: string,
+): Promise<{ ok: true; user: { id: string; role: "admin" | "user"; status: "active" | "disabled" | "locked" } } | { ok: false; error: ReturnType<typeof fail> }> {
+    const [row] = await db
+        .select({ id: users.id, role: users.role, status: users.status, tenantId: users.tenantId })
+        .from(users)
+        .where(and(eq(users.id, userId), eq(users.tenantId, tenantId)))
+        .limit(1);
+    if (!row) {
+        return { ok: false, error: fail(404, { error: "사용자를 찾을 수 없습니다." }) };
+    }
+    return { ok: true, user: { id: row.id, role: row.role as "admin" | "user", status: row.status as "active" | "disabled" | "locked" } };
+}

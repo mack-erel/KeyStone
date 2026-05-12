@@ -1,7 +1,7 @@
 import { fail, error } from "@sveltejs/kit";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireAdminContext, assertNotLastAdmin } from "$lib/server/auth/guards";
+import { requireAdminContext, assertNotLastAdmin, assertUserInTenant } from "$lib/server/auth/guards";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { departments, oidcClients, parts, positions, samlSps, serviceRoles, teams, userDepartments, userParts, userServiceAssignments, userTeams, users } from "$lib/server/db/schema";
@@ -177,6 +177,10 @@ export const actions: Actions = {
 
         const role = rawRole as "admin" | "user";
         const status = rawStatus as "active" | "disabled" | "locked";
+
+        // ctrls C-13: cross-tenant IDOR 차단. params.id 가 본 tenant user 인지 명시 검증.
+        const tenantCheck = await assertUserInTenant(db, tenant.id, userId);
+        if (!tenantCheck.ok) return tenantCheck.error;
 
         // 변경 전 role/status 캡처 — 자기-자신 가드, race 가드, role 변경 감지 모두에 사용
         const [before] = await db
@@ -505,6 +509,12 @@ export const actions: Actions = {
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const userId = params.id;
+
+        // ctrls C-13: 다른 tenant 의 userId 가 본 tenant 의 권한 row 로 박혀 들어가는
+        // cross-tenant IDOR 차단. 기존엔 service ref 만 tenant 검증하고 userId 는
+        // 검증 없이 INSERT 했음.
+        const tenantCheck = await assertUserInTenant(db, tenant.id, userId);
+        if (!tenantCheck.ok) return tenantCheck.error;
 
         // form 의 service 필드는 "oidc:<id>" 또는 "saml:<id>" 형태.
         const serviceRaw = String(fd.get("service") ?? "");
