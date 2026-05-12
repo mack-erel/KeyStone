@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 import { asc, and, eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
+import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { departments } from "$lib/server/db/schema";
 
 // ctrls C-11: 부서 트리는 최대 깊이 제한 + 순환 참조 차단.
@@ -70,7 +71,9 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-    create: async ({ locals, request }) => {
+    // ctrls H-ADMIN-1: 부서 트리 변경은 권한 상속에 직결되므로 모든 변경을 audit 기록.
+    create: async (event) => {
+        const { locals, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const name = String(fd.get("name") ?? "").trim();
@@ -92,10 +95,21 @@ export const actions: Actions = {
             description,
             displayOrder: isNaN(displayOrder) ? 0 : displayOrder,
         });
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            actorId: locals.user!.id,
+            kind: "department_created",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { name, code, parentId },
+        });
         return { created: true };
     },
 
-    update: async ({ locals, request }) => {
+    update: async (event) => {
+        const { locals, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const id = String(fd.get("id") ?? "");
@@ -123,16 +137,37 @@ export const actions: Actions = {
                 updatedAt: new Date(),
             })
             .where(and(eq(departments.id, id), eq(departments.tenantId, tenant.id)));
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            actorId: locals.user!.id,
+            kind: "department_updated",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { id, name, code, parentId, status },
+        });
         return { updated: true };
     },
 
-    delete: async ({ locals, request }) => {
+    delete: async (event) => {
+        const { locals, request } = event;
         const { db, tenant } = requireAdminContext(locals);
         const fd = await request.formData();
         const id = String(fd.get("id") ?? "");
         if (!id) return fail(400, { error: "잘못된 요청입니다." });
 
         await db.delete(departments).where(and(eq(departments.id, id), eq(departments.tenantId, tenant.id)));
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            actorId: locals.user!.id,
+            kind: "department_deleted",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { id },
+        });
         return { deleted: true };
     },
 };

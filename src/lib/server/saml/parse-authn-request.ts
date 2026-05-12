@@ -6,8 +6,9 @@
  */
 
 import "reflect-metadata";
-import { DOMParser } from "@xmldom/xmldom";
+import { DOMParser, onErrorStopParsing } from "@xmldom/xmldom";
 import { X509Certificate } from "@peculiar/x509";
+import { env } from "$env/dynamic/private";
 
 const MAX_COMPRESSED_BYTES = 8 * 1024; // 8 KB
 const MAX_DECOMPRESSED_BYTES = 64 * 1024; // 64 KB
@@ -78,6 +79,14 @@ export async function verifySamlRedirectSignature(rawQueryString: string, certPe
         if (sigAlgValue === "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256") {
             algorithm = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
         } else if (sigAlgValue === "http://www.w3.org/2000/09/xmldsig#rsa-sha1") {
+            // ctrls H-SAML-3: SHA-1 SigAlg 기본 거부 (NIST/IETF deprecated).
+            // 레거시 SP 호환이 필요한 경우 환경변수 IDP_ALLOW_SAML_SHA1=true 로 명시 허용.
+            // 향후 PR: samlSps 테이블에 allowSha1Signatures per-SP 플래그 추가 후
+            // 본 분기 폐기.
+            if (env.IDP_ALLOW_SAML_SHA1 !== "true") {
+                return false;
+            }
+            console.warn("[saml] SHA-1 SigAlg 사용됨 — deprecated, SP 측 SHA-256 전환 권장");
             algorithm = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-1" };
         } else {
             return false; // 지원하지 않는 알고리즘
@@ -144,7 +153,10 @@ export async function parseAuthnRequest(samlRequestB64: string, relayState: stri
         throw new Error("AuthnRequest 에 DOCTYPE/ENTITY 선언이 포함되어 있습니다.");
     }
 
-    const parser = new DOMParser();
+    // ctrls H-SAML-5: xmldom 0.9 default 동작은 파싱 에러를 silent 로 무시하고 부분
+    // 결과 반환 — 손상된 XML 이 정상으로 통과될 위험. onErrorStopParsing 으로 error
+    // level 발생 시 즉시 throw 하도록 명시.
+    const parser = new DOMParser({ onError: onErrorStopParsing });
     const doc = parser.parseFromString(xml, "text/xml");
     const root = doc.documentElement;
 

@@ -69,21 +69,30 @@ const script = `
       showError(e&&e.message?e.message:'패스키 인증에 실패했습니다.');
     }
   }
+  // ctrls H-FRONT-2: redirectTo 를 더 이상 DOM input 에서 읽지 않는다.
+  // 외부 스킨이 hidden input 을 임의 값으로 채울 수 있어 (XSS-after-defense 등)
+  // 사용자가 의도하지 않은 내부 경로로 강제 이동될 면적이 있다. URL 의 query
+  // string 만 신뢰 — 서버가 OIDC/SAML 흐름에서 명시적으로 설정한 redirectTo
+  // 만 사용. 추가로 서버 측 sanitizeRedirectTarget 가 최종 검증한다.
+  function readRedirectFromUrl(){
+    try{
+      var u=new URL(window.location.href);
+      var r=u.searchParams.get('redirectTo')||'';
+      if(typeof r!=='string')return '';
+      // 절대 URL / scheme-relative / 백슬래시 모두 거절. 내부 경로만 허용.
+      if(!r.length||r.charAt(0)!=='/'||r.indexOf('//')===0||r.indexOf('\\\\')!==-1)return '';
+      return r;
+    }catch(_){return '';}
+  }
   function init(){
     var btn=document.getElementById('idp-passkey-btn');
     if(btn){
-      var redirInput=document.querySelector('form input[name="redirectTo"]');
-      var redir=redirInput&&typeof redirInput.value==='string'?redirInput.value:'';
-      if(redir&&(redir.charAt(0)!=='/'||redir.indexOf('//')===0))redir='';
-      btn.addEventListener('click',function(){passkeyLogin(btn,redir);});
+      btn.addEventListener('click',function(){passkeyLogin(btn,readRedirectFromUrl());});
     }
     // 커스텀 스킨(skin-scripts)이 호출할 수 있도록 전역 함수 노출
     window.idpPasskeyLogin=function(){
       var b=document.getElementById('passkey')||document.getElementById('idp-passkey-btn')||document.createElement('button');
-      var rInput=document.querySelector('form input[name="redirectTo"]');
-      var r=rInput&&typeof rInput.value==='string'?rInput.value:'';
-      if(r&&(r.charAt(0)!=='/'||r.indexOf('//')===0))r='';
-      passkeyLogin(b,r);
+      passkeyLogin(b,readRedirectFromUrl());
     };
   }
   if(document.readyState==='loading'){

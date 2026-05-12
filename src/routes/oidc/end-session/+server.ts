@@ -12,14 +12,34 @@ function htmlEscape(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
+// ctrls H-FRONT-1: meta refresh URL 의 scheme 을 사전 화이트리스트로 제한.
+// resolvePostLogoutRedirect 가 client 등록된 패턴 매칭은 하지만, admin 이 잘못된
+// 패턴 (예: javascript:) 을 등록한 경우 meta refresh 가 그 URI 로 자동 이동하여
+// IDP 컨텍스트에서 JS 실행될 수 있다. 런타임에서 한 번 더 검증.
+function isSafeRedirectScheme(url: string): boolean {
+    try {
+        const u = new URL(url, "https://placeholder.invalid");
+        return u.protocol === "https:" || u.protocol === "http:";
+    } catch {
+        return false;
+    }
+}
+
 function renderFrontchannelLogoutHtml(iframeUris: string[], redirectTo: string): string {
-    // iframe sandbox: allow-scripts 만 허용. allow-same-origin 은 RP 측 cookie 접근 차단을 위해 제거.
-    const iframes = iframeUris.map((u) => `<iframe src="${htmlEscape(u)}" style="display:none" sandbox="allow-scripts"></iframe>`).join("");
+    // ctrls H-OIDC-6: iframe sandbox 강화.
+    // - sandbox="" (모든 권한 제거) → RP iframe 안에서 script/popup/topnav 전부 차단.
+    //   기존 allow-scripts 는 RP frontchannel logout 표준 (script 로 RP 측 세션 정리)
+    //   상 필요해 보이지만, 본 IDP 는 RP 가 server-side endpoint 만 호출하도록 가정.
+    //   만약 클라이언트 JS 가 필요한 RP 가 있다면 별도 플래그로 분리.
+    // - referrerpolicy="no-referrer" — RP 가 IDP 측 정보를 referer 로 받지 못함.
+    // - loading="eager" — 즉시 로드 (별도 throttle 없음).
+    const iframes = iframeUris.map((u) => `<iframe src="${htmlEscape(u)}" style="display:none" sandbox="" referrerpolicy="no-referrer" loading="eager"></iframe>`).join("");
+    const safeRedirect = isSafeRedirectScheme(redirectTo) ? redirectTo : "/";
     // CSP 는 hash 모드이므로 inline JS 를 피하고 meta refresh 를 사용한다.
     return (
         `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">` +
         `<title>Logging out...</title>` +
-        `<meta http-equiv="refresh" content="3;url=${htmlEscape(redirectTo)}">` +
+        `<meta http-equiv="refresh" content="3;url=${htmlEscape(safeRedirect)}">` +
         `</head><body>` +
         `<p>로그아웃 중...</p>` +
         iframes +
@@ -246,7 +266,16 @@ export const POST: RequestHandler = async (event) => {
             );
             return new Response(html, {
                 status: 200,
-                headers: { "Content-Type": "text/html; charset=utf-8" },
+                headers: {
+                    "Content-Type": "text/html; charset=utf-8",
+                    // ctrls H-OIDC-6: frontchannel logout HTML 응답에 strict CSP / 보안 헤더 부착.
+                    // 외부 origin (RP frontchannel endpoint) 만 frame-src 로 허용, script-src 는
+                    // 완전 차단 (sandbox 가 이미 막지만 defense-in-depth).
+                    "Content-Security-Policy": "default-src 'none'; frame-src https: http://localhost:*; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+                    "X-Frame-Options": "DENY",
+                    "Referrer-Policy": "no-referrer",
+                    "Cache-Control": "no-store",
+                },
             });
         }
 
