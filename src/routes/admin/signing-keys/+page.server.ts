@@ -32,6 +32,14 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 export const actions: Actions = {
     // ── 새 키 생성 + 기존 활성 키 rotate ──────────────────────────────────────
+    // ctrls H-ADMIN-5: rotate 를 atomic batch + partial unique index 기반으로 재설계.
+    // 기존엔 SELECT → UPDATE → INSERT → SELECT → UPDATE 5단계가 분리되어 동시 rotate
+    // 시 active 키 0/2개 race 가능했다.
+    // 1. 새 키 자료 미리 생성 (CPU 집약적 작업은 트랜잭션 밖)
+    // 2. db.batch([deactivate old, insert new as active=true]) 으로 원자 실행
+    // 3. partial unique index (tenantId WHERE active=1) 가 DB 레벨에서 단일 active
+    //    invariant 강제 — concurrent rotate 의 두 번째 INSERT 는 UNIQUE 위반으로
+    //    자동 실패 (batch 전체 rollback).
     rotate: async (event) => {
         const { locals, platform } = event;
         const { db, tenant } = requireAdminContext(locals);
@@ -43,50 +51,36 @@ export const actions: Actions = {
 
         const cn = config.issuerUrl ? new URL(config.issuerUrl).hostname : "idp.local";
 
-        // 동시 rotate 방지 — 활성 키가 정확히 1개여야 한다.
-        // (또 다른 rotate 가 진행 중이면 활성 키가 0개 또는 2개 이상이 된다.)
-        const activeKeys = await db
-            .select({ id: signingKeys.id })
-            .from(signingKeys)
-            .where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true)));
-        if (activeKeys.length > 1) {
-            return fail(409, { error: "다른 rotate 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요." });
-        }
-
-        // 기존 활성 키 비활성화
-        await db
-            .update(signingKeys)
-            .set({ active: false, rotatedAt: new Date() })
-            .where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)));
-
-        // 새 키 생성 — 우선 inactive 로 INSERT 한 뒤 활성화
+        // 새 키 자료 생성 (트랜잭션 밖) — CPU/메모리 비용 큼.
         const { kid, publicKey, privateKey, publicJwk } = await generateRsaSigningKey();
         const privateJwkEncrypted = await wrapPrivateKey(privateKey, config.signingKeySecret);
         const certPem = await generateSelfSignedCert(publicKey, privateKey, cn);
-
         const newId = crypto.randomUUID();
-        await db.insert(signingKeys).values({
-            id: newId,
-            tenantId: tenant.id,
-            kid,
-            alg: "RS256",
-            publicJwk: JSON.stringify(publicJwk),
-            privateJwkEncrypted,
-            certPem,
-            active: false,
-        });
+        const now = new Date();
 
-        // 활성화 직전 다시 검사 — 동시에 rotate 가 활성화한 키가 있다면 실패 처리
-        const stillActive = await db
-            .select({ id: signingKeys.id })
-            .from(signingKeys)
-            .where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true)));
-        if (stillActive.length > 0) {
-            // 우리가 만든 키는 active=false 로 남기고 fail 처리
-            return fail(409, { error: "다른 rotate 작업이 진행 중입니다. 잠시 후 다시 시도해 주세요." });
+        try {
+            await db.batch([
+                // 기존 활성 키 (있다면) 비활성화 + rotatedAt 기록
+                db
+                    .update(signingKeys)
+                    .set({ active: false, rotatedAt: now })
+                    .where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt))),
+                // 새 키 INSERT — 바로 active=true. partial unique index 가 보호.
+                db.insert(signingKeys).values({
+                    id: newId,
+                    tenantId: tenant.id,
+                    kid,
+                    alg: "RS256",
+                    publicJwk: JSON.stringify(publicJwk),
+                    privateJwkEncrypted,
+                    certPem,
+                    active: true,
+                }),
+            ]);
+        } catch {
+            // UNIQUE 위반 (동시 rotate) 또는 기타 DB 에러 → 409
+            return fail(409, { error: "다른 rotate 작업이 진행 중이거나 DB 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." });
         }
-
-        await db.update(signingKeys).set({ active: true }).where(eq(signingKeys.id, newId));
 
         const requestMetadata = getRequestMetadata(event);
         await recordAuditEvent(db, {

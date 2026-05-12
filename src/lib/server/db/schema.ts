@@ -501,7 +501,16 @@ export const signingKeys = sqliteTable(
         rotatedAt: integer("rotated_at", { mode: "timestamp_ms" }),
         notAfter: integer("not_after", { mode: "timestamp_ms" }),
     },
-    (t) => [uniqueIndex("signing_keys_tenant_kid_uidx").on(t.tenantId, t.kid), index("signing_keys_tenant_active_idx").on(t.tenantId, t.active)],
+    (t) => [
+        uniqueIndex("signing_keys_tenant_kid_uidx").on(t.tenantId, t.kid),
+        index("signing_keys_tenant_active_idx").on(t.tenantId, t.active),
+        // ctrls H-ADMIN-5: tenant 당 active=true 인 signing key 는 최대 1개. partial
+        // unique index 로 DB 레벨에서 race 차단 (두 admin 이 동시에 rotate 해도 두 번째
+        // INSERT 가 UNIQUE 위반으로 실패하고 rotation 시도 자체가 안전하게 거부됨).
+        uniqueIndex("signing_keys_tenant_one_active_uidx")
+            .on(t.tenantId)
+            .where(sql`active = 1`),
+    ],
 );
 
 export const auditEvents = sqliteTable(

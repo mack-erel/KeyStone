@@ -78,13 +78,17 @@ function uuid(): string {
 }
 
 // PBKDF2 — password.ts verifyPbkdf2 가 인식하는 형식: `pbkdf2$<digest>:<iter>$<saltB64>$<hashB64>`
+// ctrls H-SEED-1: OWASP 2023 권고 (SHA-256 600k) 충족. 첫 로그인 시 argon2id 로 자동
+// 업그레이드되므로 PBKDF2 hash 는 일시적이지만, bootstrap admin 의 패스워드가 평문
+// 디스크 (env 변수) 에서 한 번이라도 노출됐을 때 크래킹 비용을 OWASP 기준으로 둔다.
 async function hashPasswordPbkdf2(password: string): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iterations = 600_000;
     const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-    const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 }, keyMaterial, 256);
+    const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, keyMaterial, 256);
     const saltB64 = btoa(String.fromCharCode(...salt));
     const hashB64 = btoa(String.fromCharCode(...new Uint8Array(derived)));
-    return `pbkdf2$sha256:100000$${saltB64}$${hashB64}`;
+    return `pbkdf2$sha256:${iterations}$${saltB64}$${hashB64}`;
 }
 
 // ─── reset (replace 모드) ────────────────────────────────────────────────────
