@@ -6,13 +6,21 @@ import { clearSessionCookie, getSessionContext, touchSession } from "$lib/server
 import { getDb } from "$lib/server/db";
 
 // CSRF: state-changing 요청에 대해 same-origin을 강제할 라우트
-const CSRF_PROTECTED = [/^\/admin(\/|$)/, /^\/account(\/|$)/, /^\/(login|signup|find-id|find-password|reset-password|mfa|logout)(\/|$)/, /^\/api\/webauthn\//];
+// ctrls H-AUTH-1: /oidc/end-session 추가 — POST 가 cookie 기반 세션을 폐기하므로
+// browser-initiated CSRF 면적이 있다. 핸들러 자체 Origin 검사 + hook 의 origin
+// 검사 둘 다로 defense-in-depth.
+const CSRF_PROTECTED = [/^\/admin(\/|$)/, /^\/account(\/|$)/, /^\/(login|signup|find-id|find-password|reset-password|mfa|logout)(\/|$)/, /^\/api\/webauthn\//, /^\/oidc\/end-session(\/|$)/];
 
-// CSRF: 프로토콜 자체 인증으로 보호되므로 origin 검사를 건너뛸 라우트
+// CSRF: 프로토콜 자체 인증으로 보호되므로 origin 검사를 건너뛸 라우트 (서버-서버 요청 또는 cookie 미사용)
+// ctrls H-AUTH-1: 기존 정규식이 너무 광범위(`/oidc/` 전체)했기 때문에 정확한 endpoint
+// 단위로 좁혔다. 신규로 추가될 라우트는 기본적으로 CSRF 검사를 받도록 한다.
 const CSRF_SKIP = [
-    /^\/saml\//, // SAML: 서명된 XML
-    /^\/oidc\//, // OIDC: client_secret + PKCE + state
-    /^\/api\/skin-scripts/,
+    // SAML 프로토콜 endpoint — 서명된 XML / SP cert 로 자체 인증
+    /^\/saml\/(sso|slo|metadata)(\/|$)/,
+    // OIDC 프로토콜 endpoint — client_secret/PKCE/Bearer 로 자체 인증, cookie 미사용
+    /^\/oidc\/(authorize|token|userinfo|jwks)(\/|$)/,
+    // 정적 스크립트 응답
+    /^\/api\/skin-scripts(\/|$)/,
 ];
 
 // 인증/계정/관리자 등 캐시 금지 + COOP/CORP 적용 대상
