@@ -249,7 +249,11 @@ export const oidcGrants = sqliteTable(
             .notNull()
             .references(() => users.id, { onDelete: "cascade" }),
         sessionId: text("session_id").references(() => sessions.id, { onDelete: "set null" }),
-        code: text("code").notNull(),
+        // ctrls C-6: authorization code 평문 저장 제거.
+        // 신규 grant 는 codeHash (SHA-256) 만 저장. code 평문 컬럼은 legacy 호환
+        // 위해 nullable 로 유지 — 다음 PR 에서 컬럼 자체 drop.
+        code: text("code"),
+        codeHash: text("code_hash"),
         codeChallenge: text("code_challenge"),
         codeChallengeMethod: text("code_challenge_method", { enum: ["S256", "plain"] }),
         redirectUri: text("redirect_uri").notNull(),
@@ -263,7 +267,14 @@ export const oidcGrants = sqliteTable(
             .notNull()
             .default(sql`(unixepoch() * 1000)`),
     },
-    (t) => [uniqueIndex("oidc_grants_code_uidx").on(t.code), index("oidc_grants_tenant_client_idx").on(t.tenantId, t.clientId), index("oidc_grants_expires_idx").on(t.expiresAt)],
+    (t) => [
+        // 기존 code 평문 unique 는 유지 (legacy grants 가 남아 있는 동안). NULL 다중 허용.
+        uniqueIndex("oidc_grants_code_uidx").on(t.code),
+        // codeHash unique — 신규 grant 의 1회용 invariant. NULL 다중 허용 (legacy row).
+        uniqueIndex("oidc_grants_code_hash_uidx").on(t.codeHash),
+        index("oidc_grants_tenant_client_idx").on(t.tenantId, t.clientId),
+        index("oidc_grants_expires_idx").on(t.expiresAt),
+    ],
 );
 
 export const oidcRefreshTokens = sqliteTable(
