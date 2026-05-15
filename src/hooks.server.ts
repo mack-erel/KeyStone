@@ -23,6 +23,8 @@ const CSRF_SKIP = [
     /^\/api\/skin-scripts(\/|$)/,
     // service-to-service TOTP API — Bearer token 으로 자체 인증, cookie 미사용
     /^\/api\/totp\//,
+    // service-to-service users lookup API — Bearer token 으로 자체 인증
+    /^\/api\/users\//,
 ];
 
 // 인증/계정/관리자 등 캐시 금지 + COOP/CORP 적용 대상
