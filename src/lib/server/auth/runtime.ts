@@ -2,6 +2,12 @@ export interface RuntimeConfig {
     defaultTenantName: string;
     issuerUrl?: string;
     signingKeySecret?: string;
+    /**
+     * stardust dispatcher 가 idp 의 /api/totp/* 를 호출할 때 사용하는 service token.
+     * Authorization: Bearer <token> 헤더로 검증. 단일 fixed token (rotation 은 수동).
+     * 미설정이면 /api/totp/* 라우트 503 반환 (개발 안전).
+     */
+    dispatcherServiceToken?: string;
 }
 
 type EnvLookup = Record<string, unknown>;
@@ -18,6 +24,7 @@ export function getRuntimeConfig(platform: App.Platform | undefined): RuntimeCon
         defaultTenantName: getString(env, "IDP_DEFAULT_TENANT_NAME") ?? "Default Tenant",
         issuerUrl: getString(env, "IDP_ISSUER_URL")?.trim().replace(/\/$/, ""),
         signingKeySecret: getString(env, "IDP_SIGNING_KEY_SECRET"),
+        dispatcherServiceToken: getString(env, "DISPATCHER_SERVICE_TOKEN"),
     };
 }
 
