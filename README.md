@@ -129,6 +129,17 @@ scripts/setup.ts           # 대화형 초기 셋업 스크립트
 | `/api/webauthn/authenticate/verify`  | Passkey 인증 assertion 검증            |
 | `/api/skin-scripts/*`                | OIDC 클라이언트별 커스텀 스킨 스크립트 |
 
+### Service-to-Service TOTP API (`DISPATCHER_SERVICE_TOKEN` 필요)
+
+stardust dispatcher 같은 신뢰된 서비스가 사용자 대신 TOTP 등록 / 검증을 위탁하기 위한 API. 모든 요청은 `Authorization: Bearer $DISPATCHER_SERVICE_TOKEN` 헤더 필요 (constant-time 비교).
+
+| 경로                       | 메서드 | 설명                                                          |
+| -------------------------- | ------ | ------------------------------------------------------------- |
+| `/api/totp/enroll/init`    | POST   | `{userId}` → `{secret, otpAuthUri, username}` (stateless)     |
+| `/api/totp/enroll/confirm` | POST   | `{userId, secret, code}` → 검증 + 영구 저장 + `{backupCodes}` |
+| `/api/totp/verify`         | POST   | `{userId, code}` → step-up 검증 + `{ok, verifiedAt}`          |
+| `/api/totp/status`         | GET    | `?userId=...` → `{enrolled, backupCodeCount, lastUsedAt}`     |
+
 ## 시작하기
 
 ### 사전 요구사항
@@ -180,15 +191,16 @@ wrangler secret put IDP_SIGNING_KEY_SECRET
 
 ## 환경변수
 
-| 변수                                | 필수 | 설명                                                |
-| ----------------------------------- | ---- | --------------------------------------------------- |
-| `IDP_ISSUER_URL`                    | ✅   | OIDC/SAML 발급자 URL (배포 도메인과 일치)           |
-| `IDP_SIGNING_KEY_SECRET`            | ✅   | 서명 키 암호화 KEK (프로덕션은 반드시 Secret)       |
-| `IDP_DEFAULT_TENANT_NAME`           | 선택 | 기본 테넌트 이름 (기본: `My Organization`)          |
-| `CLOUDFLARE_ACCOUNT_ID`             | 선택 | Cloudflare 계정 ID (마이그레이션 스크립트에서 사용) |
-| `CLOUDFLARE_D1_DATABASE_ID`         | 선택 | D1 데이터베이스 ID (마이그레이션 스크립트에서 사용) |
-| `CLOUDFLARE_D1_PREVIEW_DATABASE_ID` | 선택 | 프리뷰용 D1 데이터베이스 ID                         |
-| `CLOUDFLARE_D1_TOKEN`               | 선택 | D1 API 토큰 (`db:migrate` 스크립트에서 사용)        |
+| 변수                                | 필수 | 설명                                                                                     |
+| ----------------------------------- | ---- | ---------------------------------------------------------------------------------------- |
+| `IDP_ISSUER_URL`                    | ✅   | OIDC/SAML 발급자 URL (배포 도메인과 일치)                                                |
+| `IDP_SIGNING_KEY_SECRET`            | ✅   | 서명 키 암호화 KEK (프로덕션은 반드시 Secret)                                            |
+| `DISPATCHER_SERVICE_TOKEN`          | 선택 | stardust dispatcher 가 `/api/totp/*` 호출 시 사용할 Bearer 토큰. 미설정이면 해당 API 503 |
+| `IDP_DEFAULT_TENANT_NAME`           | 선택 | 기본 테넌트 이름 (기본: `My Organization`)                                               |
+| `CLOUDFLARE_ACCOUNT_ID`             | 선택 | Cloudflare 계정 ID (마이그레이션 스크립트에서 사용)                                      |
+| `CLOUDFLARE_D1_DATABASE_ID`         | 선택 | D1 데이터베이스 ID (마이그레이션 스크립트에서 사용)                                      |
+| `CLOUDFLARE_D1_PREVIEW_DATABASE_ID` | 선택 | 프리뷰용 D1 데이터베이스 ID                                                              |
+| `CLOUDFLARE_D1_TOKEN`               | 선택 | D1 API 토큰 (`db:migrate` 스크립트에서 사용)                                             |
 
 > **참고**: 초기 관리자 계정은 `bun run setup` 실행 시 D1에 직접 생성됩니다. `IDP_BOOTSTRAP_ADMIN_*` 환경변수는 사용하지 않습니다.
 
