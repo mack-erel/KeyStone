@@ -47,21 +47,6 @@ function renderFrontchannelLogoutHtml(iframeUris: string[], redirectTo: string):
     );
 }
 
-function renderConfirmHtml(actionUrl: string, params: { idTokenHint: string; clientId: string; postLogoutRedirectUri: string | null; state: string | null }): string {
-    const hidden = (name: string, value: string | null): string => (value ? `<input type="hidden" name="${htmlEscape(name)}" value="${htmlEscape(value)}">` : "");
-    return (
-        `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>로그아웃 확인</title></head><body>` +
-        `<h1>로그아웃</h1><p>로그아웃하시겠습니까?</p>` +
-        `<form method="POST" action="${htmlEscape(actionUrl)}">` +
-        hidden("id_token_hint", params.idTokenHint) +
-        hidden("client_id", params.clientId) +
-        hidden("post_logout_redirect_uri", params.postLogoutRedirectUri) +
-        hidden("state", params.state) +
-        `<button type="submit">로그아웃</button>` +
-        `</form></body></html>`
-    );
-}
-
 async function resolvePostLogoutRedirect(locals: App.Locals, postLogoutRedirectUri: string | null, clientId: string | null, state: string | null): Promise<string> {
     if (!postLogoutRedirectUri || !clientId || !locals.db || !locals.tenant) return "/";
     const [client] = await locals.db
@@ -145,30 +130,76 @@ export const GET: RequestHandler = async (event) => {
         });
     }
 
-    // GET 은 사용자 confirmation 페이지를 렌더한다 (CSRF 방지).
-    // 실제 로그아웃은 POST 에서 수행된다.
-    // ctrls C-7: clickjacking / 정보 노출 차단을 위해 strict 보안 헤더 부착.
-    return new Response(
-        renderConfirmHtml(url.pathname, {
-            idTokenHint,
-            clientId: clientId ?? "",
-            postLogoutRedirectUri,
-            state,
-        }),
-        {
-            headers: {
-                "Content-Type": "text/html; charset=utf-8",
-                "X-Frame-Options": "DENY",
-                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
-                "Referrer-Policy": "no-referrer",
-                "Cache-Control": "no-store",
-            },
-        },
-    );
+    // GET 도 valid id_token_hint + 등록된 post_logout_redirect_uri 가 모두 검증된
+    // 시점이면 confirmation 페이지 없이 바로 logout 수행 (RP-Initiated Logout).
+    //
+    // OIDC 명세 5장: confirmation 은 SHOULD (MUST 아님). 검증된 id_token_hint 는
+    // 소유 증명이므로 drive-by logout CSRF 표면은 매우 좁다 (단기 TTL 의 id_token
+    // 유출 + 동일 브라우저 세션 보유 시에만 가능).
+    return executeLogout(event, postLogoutRedirectUri, clientId, state);
 };
 
+async function executeLogout(event: Parameters<RequestHandler>[0], postLogoutRedirectUri: string | null, clientId: string | null, state: string | null): Promise<Response> {
+    const { locals, url, cookies, platform } = event;
+    if (!locals.db || !locals.tenant) {
+        return new Response(JSON.stringify({ error: "server_error" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+        });
+    }
+    if (locals.session && locals.user) {
+        const db = locals.db;
+        const tenantId = locals.tenant.id;
+        const sessionId = locals.session.id;
+        const idpSessionId = locals.session.idpSessionId;
+        const userId = locals.user.id;
+
+        const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
+        const signingKeySecret = locals.runtimeConfig.signingKeySecret;
+
+        const bcTargets = await getOidcBackchannelTargets(db, tenantId, sessionId);
+        const fcTargets = await getOidcFrontchannelTargets(db, tenantId, sessionId, idpSessionId, issuerUrl);
+
+        if (bcTargets.length > 0 && signingKeySecret) {
+            const signingKey = await getActiveSigningKey(db, tenantId, signingKeySecret);
+            if (signingKey) {
+                const bcPromises = bcTargets.map((t) => sendOneBackchannelLogout(t, userId, idpSessionId, issuerUrl, signingKey.privateKey, signingKey.kid).catch(() => undefined));
+                const wait = platform?.ctx?.waitUntil?.bind(platform.ctx);
+                if (wait) {
+                    wait(Promise.all(bcPromises));
+                } else {
+                    await Promise.all(bcPromises);
+                }
+            }
+        }
+
+        await revokeSession(db, idpSessionId);
+        clearSessionCookie(cookies, url);
+
+        if (fcTargets.length > 0) {
+            const redirectTo = await resolvePostLogoutRedirect(locals, postLogoutRedirectUri, clientId, state);
+            const html = renderFrontchannelLogoutHtml(
+                fcTargets.map((t) => t.uri),
+                redirectTo,
+            );
+            return new Response(html, {
+                status: 200,
+                headers: {
+                    "Content-Type": "text/html; charset=utf-8",
+                    "Content-Security-Policy": "default-src 'none'; frame-src https: http://localhost:*; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
+                    "X-Frame-Options": "DENY",
+                    "Referrer-Policy": "no-referrer",
+                    "Cache-Control": "no-store",
+                },
+            });
+        }
+    }
+    const redirectTo = await resolvePostLogoutRedirect(locals, postLogoutRedirectUri, clientId, state);
+    throw redirect(302, redirectTo);
+}
+
 export const POST: RequestHandler = async (event) => {
-    const { locals, url, cookies, request, platform } = event;
+    const { locals, url, request } = event;
 
     // CSRF 방어: Origin 또는 Referer 가 동일 origin 이어야 함.
     const origin = request.headers.get("Origin");
@@ -230,61 +261,5 @@ export const POST: RequestHandler = async (event) => {
         });
     }
 
-    // 세션이 있으면 BC/FC 로그아웃 타깃을 수집·발송한 뒤 세션을 폐기한다.
-    if (locals.session && locals.user) {
-        const db = locals.db;
-        const tenantId = locals.tenant.id;
-        const sessionId = locals.session.id;
-        const idpSessionId = locals.session.idpSessionId;
-        const userId = locals.user.id;
-
-        const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
-        const signingKeySecret = locals.runtimeConfig.signingKeySecret;
-
-        const bcTargets = await getOidcBackchannelTargets(db, tenantId, sessionId);
-        const fcTargets = await getOidcFrontchannelTargets(db, tenantId, sessionId, idpSessionId, issuerUrl);
-
-        if (bcTargets.length > 0 && signingKeySecret) {
-            const signingKey = await getActiveSigningKey(db, tenantId, signingKeySecret);
-            if (signingKey) {
-                const bcPromises = bcTargets.map((t) => sendOneBackchannelLogout(t, userId, idpSessionId, issuerUrl, signingKey.privateKey, signingKey.kid).catch(() => undefined));
-                const wait = platform?.ctx?.waitUntil?.bind(platform.ctx);
-                if (wait) {
-                    wait(Promise.all(bcPromises));
-                } else {
-                    await Promise.all(bcPromises);
-                }
-            }
-        }
-
-        await revokeSession(db, idpSessionId);
-        clearSessionCookie(cookies, url);
-
-        if (fcTargets.length > 0) {
-            const redirectTo = await resolvePostLogoutRedirect(locals, postLogoutRedirectUri, clientId, state);
-            const html = renderFrontchannelLogoutHtml(
-                fcTargets.map((t) => t.uri),
-                redirectTo,
-            );
-            return new Response(html, {
-                status: 200,
-                headers: {
-                    "Content-Type": "text/html; charset=utf-8",
-                    // ctrls H-OIDC-6: frontchannel logout HTML 응답에 strict CSP / 보안 헤더 부착.
-                    // 외부 origin (RP frontchannel endpoint) 만 frame-src 로 허용, script-src 는
-                    // 완전 차단 (sandbox 가 이미 막지만 defense-in-depth).
-                    "Content-Security-Policy": "default-src 'none'; frame-src https: http://localhost:*; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'",
-                    "X-Frame-Options": "DENY",
-                    "Referrer-Policy": "no-referrer",
-                    "Cache-Control": "no-store",
-                },
-            });
-        }
-
-        const redirectTo = await resolvePostLogoutRedirect(locals, postLogoutRedirectUri, clientId, state);
-        throw redirect(302, redirectTo);
-    }
-
-    const redirectTo = await resolvePostLogoutRedirect(locals, postLogoutRedirectUri, clientId, state);
-    throw redirect(302, redirectTo);
+    return executeLogout(event, postLogoutRedirectUri, clientId, state);
 };
