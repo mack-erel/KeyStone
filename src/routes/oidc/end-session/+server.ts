@@ -199,7 +199,7 @@ async function executeLogout(event: Parameters<RequestHandler>[0], postLogoutRed
 }
 
 export const POST: RequestHandler = async (event) => {
-    const { locals, url, cookies, request, platform } = event;
+    const { locals, url, request } = event;
 
     // CSRF 방어: Origin 또는 Referer 가 동일 origin 이어야 함.
     const origin = request.headers.get("Origin");
