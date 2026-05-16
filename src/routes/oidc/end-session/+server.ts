@@ -130,14 +130,25 @@ export const GET: RequestHandler = async (event) => {
         });
     }
 
+    // client_id 누락 시 id_token_hint 의 aud 클레임에서 자동 추출.
+    // 이 시점에 claims 가 이미 verify 통과했으므로 aud 는 신뢰 가능.
+    // post_logout_redirect_uri 의 등록 client 매칭에 필요.
+    const effectiveClientId = clientId ?? deriveClientIdFromAud(claims.aud);
+
     // GET 도 valid id_token_hint + 등록된 post_logout_redirect_uri 가 모두 검증된
     // 시점이면 confirmation 페이지 없이 바로 logout 수행 (RP-Initiated Logout).
     //
     // OIDC 명세 5장: confirmation 은 SHOULD (MUST 아님). 검증된 id_token_hint 는
     // 소유 증명이므로 drive-by logout CSRF 표면은 매우 좁다 (단기 TTL 의 id_token
     // 유출 + 동일 브라우저 세션 보유 시에만 가능).
-    return executeLogout(event, postLogoutRedirectUri, clientId, state);
+    return executeLogout(event, postLogoutRedirectUri, effectiveClientId, state);
 };
+
+function deriveClientIdFromAud(aud: unknown): string | null {
+    if (typeof aud === "string") return aud;
+    if (Array.isArray(aud) && aud.length > 0 && typeof aud[0] === "string") return aud[0];
+    return null;
+}
 
 async function executeLogout(event: Parameters<RequestHandler>[0], postLogoutRedirectUri: string | null, clientId: string | null, state: string | null): Promise<Response> {
     const { locals, url, cookies, platform } = event;
@@ -261,5 +272,7 @@ export const POST: RequestHandler = async (event) => {
         });
     }
 
-    return executeLogout(event, postLogoutRedirectUri, clientId, state);
+    // client_id 누락 시 aud 에서 자동 추출
+    const effectiveClientId = clientId ?? deriveClientIdFromAud(claims.aud);
+    return executeLogout(event, postLogoutRedirectUri, effectiveClientId, state);
 };
