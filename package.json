@@ -16,6 +16,8 @@
         "deploy": "wrangler deploy",
         "deploy:build": "vite build && wrangler deploy",
         "db:generate": "drizzle-kit generate",
+        "db:generate:pg": "DB_DIALECT=postgres drizzle-kit generate",
+        "db:generate:mysql": "DB_DIALECT=mysql drizzle-kit generate",
         "db:push": "drizzle-kit push",
         "db:migrate": "drizzle-kit migrate && bun run db:seed:migrate",
         "db:migrate:preview": "CLOUDFLARE_IS_PREVIEW=true drizzle-kit migrate && bun run db:seed:migrate:preview",
@@ -65,7 +67,9 @@
     },
     "dependencies": {
         "@hicaru/argon2-pure.js": "^0.0.4",
+        "mysql2": "^3.22.5",
         "nodemailer": "^9.0.3",
+        "postgres": "^3.4.9",
         "xml-core": "^1.2.5"
     },
     "overrides": {

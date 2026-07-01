@@ -10,7 +10,7 @@
  */
 
 import { eq, sql } from "drizzle-orm";
-import type { DB } from "$lib/server/db";
+import { type DB, DB_DIALECT } from "$lib/server/db";
 import { rateLimits } from "$lib/server/db/schema";
 
 export interface RateLimitResult {
@@ -37,21 +37,33 @@ export async function checkRateLimit(db: DB, key: string, options: RateLimitOpti
     // 두 윈도우가 지나면 만료
     const currentExpiresAt = new Date(windowStart + options.windowMs * 2);
 
-    // 현재 버킷 원자적 증가
-    const [currentRow] = await db
-        .insert(rateLimits)
-        .values({ key: currentKey, count: 1, expiresAt: currentExpiresAt })
-        .onConflictDoUpdate({
-            target: rateLimits.key,
-            set: { count: sql`${rateLimits.count} + 1` },
-        })
-        .returning({ count: rateLimits.count });
+    // 현재 버킷 원자적 증가.
+    // d1/postgres 는 upsert + RETURNING 을 지원하지만, MySQL 은 RETURNING 이 없으므로
+    // ON DUPLICATE KEY UPDATE 후 재조회로 카운트를 얻는다.
+    // 방언별 upsert API 차이를 캐스팅으로 흡수한다 (정규 DB 타입은 활성 방언 한 종류만
+    // 노출하므로, 비활성 분기의 메서드는 타입에 존재하지 않아 캐스팅이 필요하다).
+    let currentCount: number;
+    const insertValues = { key: currentKey, count: 1, expiresAt: currentExpiresAt };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const insertBuilder = db.insert(rateLimits).values(insertValues) as any;
+    if (DB_DIALECT === "mysql") {
+        // MySQL: RETURNING 미지원 → ON DUPLICATE KEY UPDATE 후 재조회.
+        await insertBuilder.onDuplicateKeyUpdate({ set: { count: sql`${rateLimits.count} + 1` } });
+        const [row] = await db.select({ count: rateLimits.count }).from(rateLimits).where(eq(rateLimits.key, currentKey)).limit(1);
+        currentCount = row?.count ?? 1;
+    } else {
+        // d1 / postgres: upsert + RETURNING.
+        const [row] = (await insertBuilder.onConflictDoUpdate({ target: rateLimits.key, set: { count: sql`${rateLimits.count} + 1` } }).returning({ count: rateLimits.count })) as Array<{
+            count: number;
+        }>;
+        currentCount = row?.count ?? 1;
+    }
 
     // 이전 버킷 조회 (best-effort)
     const [prevRow] = await db.select({ count: rateLimits.count }).from(rateLimits).where(eq(rateLimits.key, prevKey)).limit(1);
 
     const prevCount = prevRow?.count ?? 0;
-    const slidingCount = Math.floor(prevCount * (1 - elapsed / options.windowMs)) + currentRow.count;
+    const slidingCount = Math.floor(prevCount * (1 - elapsed / options.windowMs)) + currentCount;
 
     if (slidingCount > options.limit) {
         return {

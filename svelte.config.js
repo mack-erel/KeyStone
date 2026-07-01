@@ -1,5 +1,21 @@
 import adapter from "@sveltejs/adapter-cloudflare";
 
+// 활성 DB 방언 선택 (배포 단위). d1(기본) | postgres | mysql.
+// `$db-active-schema` alias 를 방언별 스키마 파일로 매핑한다 (빌드/타입체크 공통).
+const DB_DIALECT = process.env.DB_DIALECT || "d1";
+const SCHEMA_FILE_BY_DIALECT = {
+    d1: "schema.sqlite",
+    postgres: "schema.pg",
+    mysql: "schema.mysql",
+};
+const DRIVER_FILE_BY_DIALECT = {
+    d1: "driver-d1",
+    postgres: "driver-pg",
+    mysql: "driver-mysql",
+};
+const activeSchemaFile = SCHEMA_FILE_BY_DIALECT[DB_DIALECT] || SCHEMA_FILE_BY_DIALECT.d1;
+const activeDriverFile = DRIVER_FILE_BY_DIALECT[DB_DIALECT] || DRIVER_FILE_BY_DIALECT.d1;
+
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
     compilerOptions: {
@@ -8,6 +24,12 @@ const config = {
     },
     kit: {
         adapter: adapter(),
+        alias: {
+            // 활성 방언 스키마. src/lib/server/db/schema.ts 배럴이 이 alias 로 재-export 한다.
+            "$db-active-schema": `src/lib/server/db/${activeSchemaFile}.ts`,
+            // 활성 방언의 정규 DB 타입. src/lib/server/db/index.ts 가 이 alias 로 DB 를 가져온다.
+            "$db-active-driver": `src/lib/server/db/${activeDriverFile}.ts`,
+        },
         csp: {
             mode: "hash", // unsafe-inline 제거: SvelteKit이 인라인 스크립트 해시를 자동 추가
             directives: {

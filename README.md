@@ -57,7 +57,7 @@ SAML SP가 `RequestedAuthnContext`로 특정 ACR을 요구하는 경우, 세션 
 
 - **Runtime**: Cloudflare Workers (compatibility flags: `nodejs_als`, `nodejs_compat`)
 - **Framework**: SvelteKit 2 + Svelte 5 (runes), `@sveltejs/adapter-cloudflare`
-- **Database**: Cloudflare D1 (SQLite) + Drizzle ORM
+- **Database**: Cloudflare D1(SQLite) / PostgreSQL / MySQL 중 택1 (Drizzle ORM). PostgreSQL·MySQL 은 Cloudflare Hyperdrive 로 연결 ([DB 방언 선택](#db-방언-선택-d1--postgresql--mysql) 참고)
 - **Object Storage**: Cloudflare R2 (커스텀 로그인 스킨 캐시)
 - **Styling**: Tailwind CSS 4
 - **Crypto**: Web Crypto API (RSA/EC 서명, argon2id 비밀번호 해시), `@simplewebauthn/*`, `xmldsigjs`
@@ -206,41 +206,82 @@ wrangler secret put IDP_SIGNING_KEY_SECRET
 
 ### Cloudflare 바인딩 (`wrangler.jsonc`)
 
-| 바인딩       | 종류 | 용도                                             |
-| ------------ | ---- | ------------------------------------------------ |
-| `DB`         | D1   | 메인 데이터베이스                                |
-| `SKIN_CACHE` | R2   | 커스텀 로그인 스킨 캐시                          |
-| `ASSETS`     | 정적 | SvelteKit 빌드 산출물 (`.svelte-kit/cloudflare`) |
+| 바인딩       | 종류       | 용도                                                       |
+| ------------ | ---------- | ---------------------------------------------------------- |
+| `DB`         | D1         | 메인 데이터베이스 (`DB_DIALECT=d1` 일 때)                  |
+| `HYPERDRIVE` | Hyperdrive | PostgreSQL/MySQL 연결 (`DB_DIALECT=postgres\|mysql` 일 때) |
+| `SKIN_CACHE` | R2         | 커스텀 로그인 스킨 캐시                                    |
+| `ASSETS`     | 정적       | SvelteKit 빌드 산출물 (`.svelte-kit/cloudflare`)           |
 
 ## 개발 워크플로
 
-| 명령                  | 설명                                               |
-| --------------------- | -------------------------------------------------- |
-| `bun run dev`         | Vite 개발 서버 실행                                |
-| `bun run build`       | 프로덕션 빌드                                      |
-| `bun run preview`     | Wrangler로 빌드 산출물 미리보기 (`localhost:4173`) |
-| `bun run check`       | `wrangler types` + `svelte-check` 타입 검사        |
-| `bun run lint`        | Prettier + ESLint 검사                             |
-| `bun run format`      | Prettier 자동 포맷                                 |
-| `bun run gen`         | Wrangler 환경 타입 재생성                          |
-| `bun run db:generate` | Drizzle 마이그레이션 SQL 생성                      |
-| `bun run db:studio`   | Drizzle Studio 실행 (스키마/데이터 GUI)            |
-| `bun run deploy`      | Cloudflare Workers 배포                            |
+| 명령                        | 설명                                               |
+| --------------------------- | -------------------------------------------------- |
+| `bun run dev`               | Vite 개발 서버 실행                                |
+| `bun run build`             | 프로덕션 빌드                                      |
+| `bun run preview`           | Wrangler로 빌드 산출물 미리보기 (`localhost:4173`) |
+| `bun run check`             | `wrangler types` + `svelte-check` 타입 검사        |
+| `bun run lint`              | Prettier + ESLint 검사                             |
+| `bun run format`            | Prettier 자동 포맷                                 |
+| `bun run gen`               | Wrangler 환경 타입 재생성                          |
+| `bun run db:generate`       | Drizzle 마이그레이션 SQL 생성 (D1)                 |
+| `bun run db:generate:pg`    | Drizzle 마이그레이션 SQL 생성 (PostgreSQL)         |
+| `bun run db:generate:mysql` | Drizzle 마이그레이션 SQL 생성 (MySQL)              |
+| `bun run db:studio`         | Drizzle Studio 실행 (스키마/데이터 GUI)            |
+| `bun run deploy`            | Cloudflare Workers 배포                            |
+
+## DB 방언 선택 (d1 / postgresql / mysql)
+
+D1(SQLite)·PostgreSQL·MySQL 을 모두 지원하며, **배포 단위로 하나만** 사용합니다. D1 은 편의성이 높지만 지연이 큰 편이라, 낮은 지연이 필요하면 Cloudflare Hyperdrive 로 PostgreSQL/MySQL 에 연결할 수 있습니다.
+
+방언은 `DB_DIALECT` 환경변수로 선택합니다 (`d1`(기본) | `postgres` | `mysql`). 이 값은 **런타임뿐 아니라 빌드·타입체크·마이그레이션 생성 시점에도** 참조되어 스키마·드라이버를 결정합니다.
+
+```bash
+# PostgreSQL 로 빌드·배포
+DB_DIALECT=postgres bun run build
+DB_DIALECT=postgres bun run deploy   # 또는 wrangler deploy
+
+# MySQL 로 빌드·배포
+DB_DIALECT=mysql bun run build
+```
+
+동작 방식:
+
+- 스키마는 방언별로 분리되어 있습니다: `schema.sqlite.ts` / `schema.pg.ts` / `schema.mysql.ts`. 세 스키마는 테이블·컬럼·인덱스명과 JS 추론 타입이 동일하게 유지되며, 배럴 `schema.ts` 가 `DB_DIALECT` 에 맞는 파일로 해석됩니다.
+- `src/lib/server/db/index.ts` 의 `getDb()` 가 방언에 맞는 드라이버(d1 / postgres-js / mysql2)를 선택합니다. 빌드 시 활성 방언의 드라이버만 워커 번들에 포함됩니다.
+- **PostgreSQL/MySQL 은 `HYPERDRIVE` 바인딩이 필요합니다.**
+
+```bash
+# Hyperdrive 구성 생성 (binding 이름은 반드시 HYPERDRIVE)
+wrangler hyperdrive create keystone-pg    --connection-string="postgres://user:pass@host:5432/db"
+wrangler hyperdrive create keystone-mysql --connection-string="mysql://user:pass@host:3306/db"
+# → 출력된 id 를 wrangler.jsonc 의 hyperdrive[].id 에 채우고 주석 해제
+```
+
+> **참고**: MySQL 은 `UPDATE ... RETURNING` 과 partial(부분) unique index 를 지원하지 않습니다. 해당 로직(인가 코드/WebAuthn challenge 소진, signing key 회전)은 방언별로 분기되어 MySQL 에서는 `affectedRows` 판정·재조회와 트랜잭션으로 동등하게 동작합니다.
 
 ## 데이터베이스 마이그레이션
 
 스키마 변경 → 마이그레이션 생성 → 적용의 흐름은 다음과 같습니다.
 
 ```bash
-# 1. src/lib/server/db/schema*.ts 수정
-# 2. SQL 생성
-bun run db:generate
+# 1. 사용하는 방언의 스키마 파일 수정
+#    - D1        → src/lib/server/db/schema.sqlite.ts
+#    - PostgreSQL → src/lib/server/db/schema.pg.ts
+#    - MySQL      → src/lib/server/db/schema.mysql.ts
+#    (세 스키마의 구조/타입은 동일하게 유지할 것)
 
-# 3. 생성된 drizzle/*.sql 파일 검토 후 커밋
+# 2. SQL 생성 (사용하는 방언에 맞게)
+bun run db:generate          # D1        → drizzle/*.sql
+bun run db:generate:pg       # PostgreSQL → drizzle/pg/*.sql
+bun run db:generate:mysql    # MySQL      → drizzle/mysql/*.sql
 
-# 4. 원격 D1에 적용 (사용자가 직접 실행)
-bun run db:migrate          # 프로덕션
-bun run db:migrate:preview  # 프리뷰
+# 3. 생성된 SQL 파일 검토
+
+# 4. 원격 DB에 적용 (사용자가 직접 실행)
+bun run db:migrate          # D1 프로덕션
+bun run db:migrate:preview  # D1 프리뷰
+# PostgreSQL/MySQL 은 DATABASE_URL 설정 후 drizzle-kit migrate 로 적용
 ```
 
 > ⚠️ 원격 D1에 대한 마이그레이션 적용은 되돌리기 어려우므로, 자동화된 스크립트나 에이전트가 임의로 실행하지 않도록 운영 정책에 포함시키는 것을 권장합니다.

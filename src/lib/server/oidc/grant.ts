@@ -1,5 +1,5 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
-import type { DB } from "$lib/server/db";
+import { type DB, DB_DIALECT } from "$lib/server/db";
 import { oidcGrants } from "$lib/server/db/schema";
 
 export type OidcGrantRecord = typeof oidcGrants.$inferSelect;
@@ -58,10 +58,25 @@ export async function createGrant(db: DB, params: CreateGrantParams): Promise<vo
 export async function findAndConsumeGrant(db: DB, tenantId: string, clientId: string, code: string): Promise<OidcGrantRecord | null> {
     const now = new Date();
     const codeHash = await sha256Base64Url(code);
-    const [grant] = await db
-        .update(oidcGrants)
-        .set({ usedAt: now })
-        .where(and(eq(oidcGrants.codeHash, codeHash), eq(oidcGrants.tenantId, tenantId), eq(oidcGrants.clientId, clientId), isNull(oidcGrants.usedAt), gt(oidcGrants.expiresAt, now)))
-        .returning();
+    const consumeWhere = and(eq(oidcGrants.codeHash, codeHash), eq(oidcGrants.tenantId, tenantId), eq(oidcGrants.clientId, clientId), isNull(oidcGrants.usedAt), gt(oidcGrants.expiresAt, now));
+
+    if (DB_DIALECT === "mysql") {
+        // MySQL 은 UPDATE ... RETURNING 을 지원하지 않는다. 원자적 UPDATE 의 affectedRows 로
+        // "내가 소진에 성공했는지" 를 판정한 뒤, unique 한 codeHash 로 소진된 row 를 재조회한다.
+        // (동시 요청은 isNull(usedAt) 가드로 인해 단 하나만 affectedRows>0 이 된다.)
+        const res = (await db.update(oidcGrants).set({ usedAt: now }).where(consumeWhere)) as unknown as [{ affectedRows: number }];
+        if (!res?.[0]?.affectedRows) return null;
+        const [grant] = await db
+            .select()
+            .from(oidcGrants)
+            .where(and(eq(oidcGrants.codeHash, codeHash), eq(oidcGrants.tenantId, tenantId), eq(oidcGrants.clientId, clientId)))
+            .limit(1);
+        return (grant as OidcGrantRecord | undefined) ?? null;
+    }
+
+    // d1 / postgres: UPDATE ... RETURNING.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateBuilder = db.update(oidcGrants).set({ usedAt: now }).where(consumeWhere) as any;
+    const [grant] = (await updateBuilder.returning()) as OidcGrantRecord[];
     return grant ?? null;
 }
