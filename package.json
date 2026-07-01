@@ -58,14 +58,17 @@
         "tailwindcss": "^4.3.0",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.59.3",
-        "vite": "^8.0.12",
-        "wrangler": "^4.90.0",
+        "vite": "^8.1.2",
+        "wrangler": "^4.106.0",
         "xmldsigjs": "^2.8.7",
         "xpath": "^0.0.34"
     },
     "dependencies": {
         "@hicaru/argon2-pure.js": "^0.0.4",
-        "nodemailer": "^8.0.7",
+        "nodemailer": "^9.0.3",
         "xml-core": "^1.2.5"
+    },
+    "overrides": {
+        "ws": "^8.21.0"
     }
 }
