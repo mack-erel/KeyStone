@@ -83,8 +83,8 @@ export const actions: Actions = {
             });
 
         try {
-            if (DB_DIALECT === "d1") {
-                // D1 전용 batch (정규 DB 타입이 활성 방언일 때만 노출되므로 캐스팅).
+            if (DB_DIALECT === "d1" || DB_DIALECT === "sqlite") {
+                // d1 / libSQL 은 원자적 batch 지원 (정규 DB 타입이 활성 방언일 때만 노출되므로 캐스팅).
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 await (db as any).batch([buildDeactivate(db), buildInsert(db)]);
             } else {

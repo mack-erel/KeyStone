@@ -29,6 +29,19 @@ function mysqlConfig() {
     });
 }
 
+function sqliteConfig() {
+    // libSQL 로컬 파일/Turso. 스키마는 D1 과 동일한 schema.sqlite.ts 를 공유하며
+    // 생성 DDL 도 동일하다. 마이그레이션 journal 만 분리해 둔다.
+    return defineConfig({
+        schema: "./src/lib/server/db/schema.sqlite.ts",
+        out: "./drizzle/sqlite",
+        dialect: "sqlite",
+        dbCredentials: { url: process.env.DATABASE_URL ?? "file:./keystone.db" },
+        verbose: true,
+        strict: true,
+    });
+}
+
 function d1Config() {
     const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
     const isPreview = process.env.CLOUDFLARE_IS_PREVIEW === "true";
@@ -50,4 +63,4 @@ function d1Config() {
     });
 }
 
-export default DB_DIALECT === "postgres" ? pgConfig() : DB_DIALECT === "mysql" ? mysqlConfig() : d1Config();
+export default DB_DIALECT === "postgres" ? pgConfig() : DB_DIALECT === "mysql" ? mysqlConfig() : DB_DIALECT === "sqlite" ? sqliteConfig() : d1Config();

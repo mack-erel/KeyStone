@@ -16,13 +16,37 @@ export type { DbDialect } from "./dialect";
 export type { DB };
 
 // vite.config.ts 의 define 으로 빌드 시 리터럴로 치환됨. 이 리터럴 분기를 esbuild 가
-// dead-code-elimination 하여, 워커 번들에는 활성 방언의 드라이버만 포함된다.
-declare const __DB_DIALECT__: "d1" | "postgres" | "mysql" | undefined;
+// dead-code-elimination 하여, 번들에는 활성 방언의 드라이버만 포함된다.
+declare const __DB_DIALECT__: "d1" | "sqlite" | "postgres" | "mysql" | undefined;
 
-// postgres-js / mysql2 클라이언트는 isolate 전역에서 재사용해 Hyperdrive 연결
-// 재사용을 극대화한다 (요청마다 새 연결을 열지 않는다).
+// 드라이버 클라이언트는 isolate/프로세스 전역에서 재사용해 연결 재사용을 극대화한다
+// (요청마다 새 연결을 열지 않는다).
 let pgSql: unknown;
 let mysqlPool: unknown;
+let libsqlClient: unknown;
+
+/**
+ * libSQL(sqlite) 연결 정보를 해석한다.
+ * url: DATABASE_URL 또는 SQLITE_URL. `file:`/`libsql:`/`http(s):` 스킴이 없으면
+ *      로컬 파일 경로로 보고 `file:` 을 붙인다. (예: "./data/keystone.db")
+ * authToken: Turso 등 원격 libSQL 용 (선택).
+ */
+function resolveLibsqlConfig(platform: App.Platform | undefined): { url: string; authToken?: string } {
+    const platformEnv = platform?.env as Record<string, unknown> | undefined;
+    const nodeEnv = typeof process !== "undefined" ? (process.env as Record<string, string | undefined>) : undefined;
+    const read = (key: string): string | undefined => {
+        const fromPlatform = platformEnv?.[key];
+        if (typeof fromPlatform === "string" && fromPlatform.length > 0) return fromPlatform;
+        const fromNode = nodeEnv?.[key];
+        return fromNode && fromNode.length > 0 ? fromNode : undefined;
+    };
+    const raw = read("DATABASE_URL") ?? read("SQLITE_URL");
+    if (!raw) {
+        throw new Error("DB_DIALECT=sqlite 연결 정보를 찾을 수 없습니다. DATABASE_URL(또는 SQLITE_URL)을 설정하세요. 로컬 파일은 `file:./keystone.db` 또는 경로만(`./keystone.db`) 가능합니다.");
+    }
+    const url = /^(file:|libsql:|https?:|wss?:)/.test(raw) ? raw : `file:${raw}`;
+    return { url, authToken: read("DATABASE_AUTH_TOKEN") ?? read("SQLITE_AUTH_TOKEN") };
+}
 
 /**
  * postgres/mysql 연결 문자열을 해석한다. 우선순위:
@@ -50,6 +74,7 @@ function resolveConnectionString(platform: App.Platform | undefined, dialect: st
 /**
  * 활성 방언에 맞는 drizzle 인스턴스를 반환한다.
  * - d1:       platform.env.DB (D1 바인딩, Workers 전용), 요청마다 FK 제약 활성화(PRAGMA).
+ * - sqlite:   libSQL 로컬 파일(file:) 또는 Turso — DATABASE_URL/SQLITE_URL.
  * - postgres: Hyperdrive / DATABASE_URL → postgres-js.
  * - mysql:    Hyperdrive / DATABASE_URL → mysql2.
  */
@@ -73,6 +98,20 @@ export async function getDb(platform: App.Platform | undefined): Promise<DB> {
             mysqlPool = mysql.createPool({ uri: connectionString, connectionLimit: 5 });
         }
         return drizzle(mysqlPool as never, { schema: schema as never, mode: "default" }) as unknown as DB;
+    }
+
+    if (__DB_DIALECT__ === "sqlite") {
+        // libSQL — 로컬 파일(file:) 또는 Turso 원격
+        const { url, authToken } = resolveLibsqlConfig(platform);
+        const { drizzle } = await import("drizzle-orm/libsql");
+        const { createClient } = await import("@libsql/client");
+        if (!libsqlClient) {
+            libsqlClient = createClient({ url, authToken });
+        }
+        const db = drizzle(libsqlClient as never, { schema: schema as never });
+        // SQLite 은 연결마다 FK 제약이 비활성화됨 — 명시적으로 활성화
+        await db.run(sql`PRAGMA foreign_keys = ON`);
+        return db as unknown as DB;
     }
 
     if (__DB_DIALECT__ === "d1" || typeof __DB_DIALECT__ === "undefined") {

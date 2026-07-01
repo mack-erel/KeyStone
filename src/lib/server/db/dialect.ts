@@ -5,7 +5,10 @@
  * 빌드 시 `vite.config.ts` 의 `define` 이 `__DB_DIALECT__` 를 리터럴로 치환한다.
  * 이 리터럴 분기 덕분에 워커 번들에는 선택된 드라이버(d1/postgres/mysql)만 포함된다.
  */
-export type DbDialect = "d1" | "postgres" | "mysql";
+// d1     : Cloudflare D1 (Workers 전용 SQLite 바인딩)
+// sqlite : libSQL — 로컬 파일(file:) 또는 Turso (순수 Node 등에서 사용)
+// postgres / mysql : Hyperdrive 또는 DATABASE_URL 직결
+export type DbDialect = "d1" | "sqlite" | "postgres" | "mysql";
 
 // vite.config.ts 의 define 으로 빌드 시 "d1" | "postgres" | "mysql" 로 치환됨.
 // 비-Vite 컨텍스트(bun 스크립트 등)에서는 미정의이므로 typeof 가드로 안전하게 처리.

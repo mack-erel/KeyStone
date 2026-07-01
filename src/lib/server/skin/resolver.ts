@@ -2,8 +2,9 @@ import type { DB } from "$lib/server/db";
 import { clientSkins } from "$lib/server/db/schema";
 import { and, eq } from "drizzle-orm";
 import { sanitizeSkinHtml } from "./sanitize";
+import { getSkinCacheStore } from "./storage";
 
-const R2_PREFIX = "skins/";
+const CACHE_PREFIX = "skins/";
 
 // ctrls C-14: SSRF 하드닝 — fetch 시간/응답 크기 한도 + 호스트명 화이트리스트.
 const BLOCKED_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"]);
@@ -106,22 +107,19 @@ export async function resolveSkinHtml(
 
     if (!skin) return null;
 
-    const r2 = (platform?.env as Record<string, unknown> | undefined)?.SKIN_CACHE as R2Bucket | undefined;
-    const cacheKey = `${R2_PREFIX}${tenantId}/${clientType}/${await hashKey(clientRefId)}/${skinType}`;
+    const cache = getSkinCacheStore(platform);
+    const cacheKey = `${CACHE_PREFIX}${tenantId}/${clientType}/${await hashKey(clientRefId)}/${skinType}`;
 
-    if (r2) {
+    if (cache) {
         try {
-            const cached = await r2.get(cacheKey);
-            if (cached) {
-                const fetchedAt = Number(cached.customMetadata?.fetchedAt ?? 0);
-                if (Date.now() - fetchedAt < skin.cacheTtlSeconds * 1000) {
-                    // ctrls C-14: 캐시에 사전 sanitize 적용 후 저장하지만 legacy 캐시
-                    // (sanitize 도입 전에 채워진) 가능성에 대비해 read time 에도 한 번 더.
-                    return await sanitizeSkinHtml(await cached.text());
-                }
+            const cached = await cache.get(cacheKey);
+            if (cached && Date.now() - cached.fetchedAt < skin.cacheTtlSeconds * 1000) {
+                // ctrls C-14: 캐시에 사전 sanitize 적용 후 저장하지만 legacy 캐시
+                // (sanitize 도입 전에 채워진) 가능성에 대비해 read time 에도 한 번 더.
+                return await sanitizeSkinHtml(await cached.text());
             }
         } catch {
-            // R2 오류는 무시하고 원본 fetch로 진행
+            // 캐시 오류는 무시하고 원본 fetch로 진행
         }
     }
 
@@ -164,12 +162,9 @@ export async function resolveSkinHtml(
         // 이 사용자 브라우저에 닿지 않도록 sanitize. CSP 가 1차 방어이고 이건 2차.
         const html = await sanitizeSkinHtml(rawHtml);
 
-        if (r2) {
+        if (cache) {
             try {
-                await r2.put(cacheKey, html, {
-                    customMetadata: { fetchedAt: String(Date.now()) },
-                    httpMetadata: { contentType: "text/html; charset=utf-8" },
-                });
+                await cache.put(cacheKey, html, Date.now());
             } catch {
                 // 캐시 저장 실패는 무시
             }
@@ -188,11 +183,11 @@ export async function invalidateSkinCache(
     clientRefId: string,
     skinType: "login" | "signup" | "find_id" | "find_password" | "mfa" | "reset_password" = "login",
 ): Promise<void> {
-    const r2 = (platform?.env as Record<string, unknown> | undefined)?.SKIN_CACHE as R2Bucket | undefined;
-    if (!r2) return;
-    const cacheKey = `${R2_PREFIX}${tenantId}/${clientType}/${await hashKey(clientRefId)}/${skinType}`;
+    const cache = getSkinCacheStore(platform);
+    if (!cache) return;
+    const cacheKey = `${CACHE_PREFIX}${tenantId}/${clientType}/${await hashKey(clientRefId)}/${skinType}`;
     try {
-        await r2.delete(cacheKey);
+        await cache.delete(cacheKey);
     } catch {
         // 무시
     }

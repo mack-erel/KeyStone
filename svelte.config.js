@@ -13,11 +13,13 @@ const adapter = BUILD_TARGET === "node" ? adapterNode : adapterCloudflare;
 const DB_DIALECT = process.env.DB_DIALECT || "d1";
 const SCHEMA_FILE_BY_DIALECT = {
     d1: "schema.sqlite",
+    sqlite: "schema.sqlite",
     postgres: "schema.pg",
     mysql: "schema.mysql",
 };
 const DRIVER_FILE_BY_DIALECT = {
     d1: "driver-d1",
+    sqlite: "driver-sqlite",
     postgres: "driver-pg",
     mysql: "driver-mysql",
 };

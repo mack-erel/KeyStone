@@ -57,8 +57,8 @@ SAML SP가 `RequestedAuthnContext`로 특정 ACR을 요구하는 경우, 세션 
 
 - **Runtime**: Cloudflare Workers(기본, `nodejs_als`·`nodejs_compat`) 또는 순수 Node 서버(`adapter-node`, `BUILD_TARGET=node`) — [배포 타깃](#배포-타깃-cloudflare-workers-vs-순수-node) 참고
 - **Framework**: SvelteKit 2 + Svelte 5 (runes), `@sveltejs/adapter-cloudflare`
-- **Database**: Cloudflare D1(SQLite) / PostgreSQL / MySQL 중 택1 (Drizzle ORM). PostgreSQL·MySQL 은 Cloudflare Hyperdrive 로 연결 ([DB 방언 선택](#db-방언-선택-d1--postgresql--mysql) 참고)
-- **Object Storage**: Cloudflare R2 (커스텀 로그인 스킨 캐시)
+- **Database**: Cloudflare D1(SQLite) / libSQL(SQLite) / PostgreSQL / MySQL 중 택1 (Drizzle ORM). PostgreSQL·MySQL 은 Hyperdrive 또는 `DATABASE_URL` 직결 ([DB 방언 선택](#db-방언-선택-d1--sqlite--postgresql--mysql) 참고)
+- **Object Storage**: Cloudflare R2 또는 S3 호환(AWS S3·MinIO 등) — 커스텀 로그인 스킨 캐시
 - **Styling**: Tailwind CSS 4
 - **Crypto**: Web Crypto API (RSA/EC 서명, argon2id 비밀번호 해시), `@simplewebauthn/*`, `xmldsigjs`
 - **Language / Tooling**: TypeScript, Bun, ESLint, Prettier
@@ -215,26 +215,34 @@ wrangler secret put IDP_SIGNING_KEY_SECRET
 
 ## 개발 워크플로
 
-| 명령                        | 설명                                               |
-| --------------------------- | -------------------------------------------------- |
-| `bun run dev`               | Vite 개발 서버 실행                                |
-| `bun run build`             | 프로덕션 빌드                                      |
-| `bun run preview`           | Wrangler로 빌드 산출물 미리보기 (`localhost:4173`) |
-| `bun run check`             | `wrangler types` + `svelte-check` 타입 검사        |
-| `bun run lint`              | Prettier + ESLint 검사                             |
-| `bun run format`            | Prettier 자동 포맷                                 |
-| `bun run gen`               | Wrangler 환경 타입 재생성                          |
-| `bun run db:generate`       | Drizzle 마이그레이션 SQL 생성 (D1)                 |
-| `bun run db:generate:pg`    | Drizzle 마이그레이션 SQL 생성 (PostgreSQL)         |
-| `bun run db:generate:mysql` | Drizzle 마이그레이션 SQL 생성 (MySQL)              |
-| `bun run db:studio`         | Drizzle Studio 실행 (스키마/데이터 GUI)            |
-| `bun run deploy`            | Cloudflare Workers 배포                            |
+| 명령                         | 설명                                               |
+| ---------------------------- | -------------------------------------------------- |
+| `bun run dev`                | Vite 개발 서버 실행                                |
+| `bun run build`              | 프로덕션 빌드                                      |
+| `bun run preview`            | Wrangler로 빌드 산출물 미리보기 (`localhost:4173`) |
+| `bun run check`              | `wrangler types` + `svelte-check` 타입 검사        |
+| `bun run lint`               | Prettier + ESLint 검사                             |
+| `bun run format`             | Prettier 자동 포맷                                 |
+| `bun run gen`                | Wrangler 환경 타입 재생성                          |
+| `bun run db:generate`        | Drizzle 마이그레이션 SQL 생성 (D1)                 |
+| `bun run db:generate:sqlite` | Drizzle 마이그레이션 SQL 생성 (libSQL/SQLite)      |
+| `bun run db:generate:pg`     | Drizzle 마이그레이션 SQL 생성 (PostgreSQL)         |
+| `bun run db:generate:mysql`  | Drizzle 마이그레이션 SQL 생성 (MySQL)              |
+| `bun run db:studio`          | Drizzle Studio 실행 (스키마/데이터 GUI)            |
+| `bun run deploy`             | Cloudflare Workers 배포                            |
 
-## DB 방언 선택 (d1 / postgresql / mysql)
+## DB 방언 선택 (d1 / sqlite / postgresql / mysql)
 
-D1(SQLite)·PostgreSQL·MySQL 을 모두 지원하며, **배포 단위로 하나만** 사용합니다. D1 은 편의성이 높지만 지연이 큰 편이라, 낮은 지연이 필요하면 Cloudflare Hyperdrive 로 PostgreSQL/MySQL 에 연결할 수 있습니다.
+D1(SQLite)·libSQL(SQLite)·PostgreSQL·MySQL 을 지원하며, **배포 단위로 하나만** 사용합니다. D1 은 편의성이 높지만 지연이 큰 편이라, 낮은 지연이 필요하면 Cloudflare Hyperdrive 로 PostgreSQL/MySQL 에 연결하거나 자체 DB 에 직결할 수 있습니다.
 
-방언은 `DB_DIALECT` 환경변수로 선택합니다 (`d1`(기본) | `postgres` | `mysql`). 이 값은 **런타임뿐 아니라 빌드·타입체크·마이그레이션 생성 시점에도** 참조되어 스키마·드라이버를 결정합니다.
+방언은 `DB_DIALECT` 환경변수로 선택합니다 (`d1`(기본) | `sqlite` | `postgres` | `mysql`). 이 값은 **런타임뿐 아니라 빌드·타입체크·마이그레이션 생성 시점에도** 참조되어 스키마·드라이버를 결정합니다.
+
+| 방언       | 드라이버         | 연결 대상                                    |
+| ---------- | ---------------- | -------------------------------------------- |
+| `d1`       | `drizzle-orm/d1` | Cloudflare D1 (Workers 전용 바인딩)          |
+| `sqlite`   | libSQL           | 로컬 파일(`file:`) 또는 Turso (순수 Node 등) |
+| `postgres` | postgres-js      | Hyperdrive 또는 `DATABASE_URL` 직결          |
+| `mysql`    | mysql2           | Hyperdrive 또는 `DATABASE_URL` 직결          |
 
 ```bash
 # PostgreSQL 로 빌드·배포
@@ -243,13 +251,16 @@ DB_DIALECT=postgres bun run deploy   # 또는 wrangler deploy
 
 # MySQL 로 빌드·배포
 DB_DIALECT=mysql bun run build
+
+# 로컬 SQLite 파일(libSQL) 로 Node 구동
+BUILD_TARGET=node DB_DIALECT=sqlite DATABASE_URL="file:./keystone.db" bun run build && node build
 ```
 
 동작 방식:
 
-- 스키마는 방언별로 분리되어 있습니다: `schema.sqlite.ts` / `schema.pg.ts` / `schema.mysql.ts`. 세 스키마는 테이블·컬럼·인덱스명과 JS 추론 타입이 동일하게 유지되며, 배럴 `schema.ts` 가 `DB_DIALECT` 에 맞는 파일로 해석됩니다.
-- `src/lib/server/db/index.ts` 의 `getDb()` 가 방언에 맞는 드라이버(d1 / postgres-js / mysql2)를 선택합니다. 빌드 시 활성 방언의 드라이버만 번들에 포함됩니다.
-- **PostgreSQL/MySQL 연결 문자열 우선순위**: Cloudflare 에서는 `HYPERDRIVE` 바인딩 → `DATABASE_URL`(var/secret), 순수 Node 에서는 `DATABASE_URL` 환경변수.
+- 스키마는 방언별로 분리되어 있습니다: `schema.sqlite.ts`(d1·sqlite 공용) / `schema.pg.ts` / `schema.mysql.ts`. 세 스키마는 테이블·컬럼·인덱스명과 JS 추론 타입이 동일하게 유지되며, 배럴 `schema.ts` 가 `DB_DIALECT` 에 맞는 파일로 해석됩니다.
+- `src/lib/server/db/index.ts` 의 `getDb()` 가 방언에 맞는 드라이버(d1 / libSQL / postgres-js / mysql2)를 선택합니다. 빌드 시 활성 방언의 드라이버만 번들에 포함됩니다.
+- **연결 문자열 우선순위**: `sqlite` 는 `DATABASE_URL`/`SQLITE_URL`(`file:` 스킴 없으면 로컬 파일로 간주). `postgres/mysql` 은 Cloudflare 에서 `HYPERDRIVE` 바인딩 → `DATABASE_URL`(var/secret), 순수 Node 에서 `DATABASE_URL`.
 
 ```bash
 # (Cloudflare) Hyperdrive 구성 생성 (binding 이름은 반드시 HYPERDRIVE)
@@ -261,7 +272,7 @@ wrangler hyperdrive create keystone-mysql --connection-string="mysql://user:pass
 
 ### 배포 타깃: Cloudflare Workers vs 순수 Node
 
-`BUILD_TARGET`(`cloudflare`(기본) | `node`)으로 어댑터를 전환합니다. `node` 는 `@sveltejs/adapter-node` 로 빌드되어 Cloudflare 없이 순수 Node 서버로 구동됩니다. Node 에는 `platform` 바인딩이 없으므로 **PostgreSQL/MySQL 만** 사용 가능하며(D1 은 Workers 전용), 연결은 `DATABASE_URL`, 설정값은 `process.env` 로 읽습니다.
+`BUILD_TARGET`(`cloudflare`(기본) | `node`)으로 어댑터를 전환합니다. `node` 는 `@sveltejs/adapter-node` 로 빌드되어 Cloudflare 없이 순수 Node 서버로 구동됩니다. Node 에는 `platform` 바인딩이 없으므로 **PostgreSQL/MySQL/sqlite(libSQL)** 를 사용하며(D1 은 Workers 전용), 연결은 `DATABASE_URL`, 설정값은 `process.env` 로 읽습니다.
 
 ```bash
 # PostgreSQL + 순수 Node 로 빌드·구동
@@ -274,19 +285,29 @@ node build            # adapter-node 산출물 (기본 PORT=3000)
 
 > **참고**: MySQL 은 `UPDATE ... RETURNING` 과 partial(부분) unique index 를 지원하지 않습니다. 해당 로직(인가 코드/WebAuthn challenge 소진, signing key 회전, rate limit upsert)은 방언별로 분기되어 MySQL 에서는 `affectedRows` 판정·재조회와 트랜잭션으로 동등하게 동작합니다.
 
+### 스킨 캐시 스토리지: R2 또는 S3 호환
+
+커스텀 로그인 스킨 캐시는 다음 우선순위로 스토리지를 선택합니다 (미설정 시 캐시 없이 매번 원본 fetch — 정상 동작).
+
+1. **Cloudflare R2 바인딩**(`SKIN_CACHE`) 이 있으면 R2 사용.
+2. 없고 **S3 호환 설정**(`S3_ENDPOINT`/`S3_BUCKET`/`S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`)이 있으면 S3 호환 스토리지 사용.
+
+R2 자체가 S3 호환이므로 AWS S3·MinIO·Ceph 는 물론 R2 의 S3 endpoint 도 그대로 쓸 수 있습니다. 서명은 `aws4fetch` 로 하며 Workers/Node 양쪽에서 동작합니다. path-style/virtual-host 는 `S3_FORCE_PATH_STYLE`(기본 `true`, MinIO/R2 권장)로 제어합니다. 자세한 변수는 [`.env.example`](.env.example) 참고.
+
 ## 데이터베이스 마이그레이션
 
 스키마 변경 → 마이그레이션 생성 → 적용의 흐름은 다음과 같습니다.
 
 ```bash
 # 1. 사용하는 방언의 스키마 파일 수정
-#    - D1        → src/lib/server/db/schema.sqlite.ts
-#    - PostgreSQL → src/lib/server/db/schema.pg.ts
-#    - MySQL      → src/lib/server/db/schema.mysql.ts
+#    - D1 / sqlite → src/lib/server/db/schema.sqlite.ts (공용)
+#    - PostgreSQL  → src/lib/server/db/schema.pg.ts
+#    - MySQL       → src/lib/server/db/schema.mysql.ts
 #    (세 스키마의 구조/타입은 동일하게 유지할 것)
 
 # 2. SQL 생성 (사용하는 방언에 맞게)
-bun run db:generate          # D1        → drizzle/*.sql
+bun run db:generate          # D1         → drizzle/*.sql
+bun run db:generate:sqlite   # libSQL     → drizzle/sqlite/*.sql (DDL 은 D1 과 동일)
 bun run db:generate:pg       # PostgreSQL → drizzle/pg/*.sql
 bun run db:generate:mysql    # MySQL      → drizzle/mysql/*.sql
 

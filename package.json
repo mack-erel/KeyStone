@@ -18,6 +18,7 @@
         "db:generate": "drizzle-kit generate",
         "db:generate:pg": "DB_DIALECT=postgres drizzle-kit generate",
         "db:generate:mysql": "DB_DIALECT=mysql drizzle-kit generate",
+        "db:generate:sqlite": "DB_DIALECT=sqlite drizzle-kit generate",
         "db:push": "drizzle-kit push",
         "db:migrate": "drizzle-kit migrate && bun run db:seed:migrate",
         "db:migrate:preview": "CLOUDFLARE_IS_PREVIEW=true drizzle-kit migrate && bun run db:seed:migrate:preview",
@@ -68,6 +69,8 @@
     },
     "dependencies": {
         "@hicaru/argon2-pure.js": "^0.0.4",
+        "@libsql/client": "^0.17.4",
+        "aws4fetch": "^1.0.20",
         "mysql2": "^3.22.5",
         "nodemailer": "^9.0.3",
         "postgres": "^3.4.9",
