@@ -22,7 +22,7 @@ jobs:
             build-affected: ${{ steps.filter.outputs.build-affected }}
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
 
             - name: Filter paths
               uses: dorny/paths-filter@v4
@@ -52,10 +52,10 @@ jobs:
         if: needs.check-changes.outputs.build-affected == 'true' || github.event_name == 'workflow_dispatch'
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v6
               with:
                   node-version: 22
 
