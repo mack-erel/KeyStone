@@ -55,7 +55,7 @@ SAML SP가 `RequestedAuthnContext`로 특정 ACR을 요구하는 경우, 세션 
 
 ## 기술 스택
 
-- **Runtime**: Cloudflare Workers (compatibility flags: `nodejs_als`, `nodejs_compat`)
+- **Runtime**: Cloudflare Workers(기본, `nodejs_als`·`nodejs_compat`) 또는 순수 Node 서버(`adapter-node`, `BUILD_TARGET=node`) — [배포 타깃](#배포-타깃-cloudflare-workers-vs-순수-node) 참고
 - **Framework**: SvelteKit 2 + Svelte 5 (runes), `@sveltejs/adapter-cloudflare`
 - **Database**: Cloudflare D1(SQLite) / PostgreSQL / MySQL 중 택1 (Drizzle ORM). PostgreSQL·MySQL 은 Cloudflare Hyperdrive 로 연결 ([DB 방언 선택](#db-방언-선택-d1--postgresql--mysql) 참고)
 - **Object Storage**: Cloudflare R2 (커스텀 로그인 스킨 캐시)
@@ -248,17 +248,31 @@ DB_DIALECT=mysql bun run build
 동작 방식:
 
 - 스키마는 방언별로 분리되어 있습니다: `schema.sqlite.ts` / `schema.pg.ts` / `schema.mysql.ts`. 세 스키마는 테이블·컬럼·인덱스명과 JS 추론 타입이 동일하게 유지되며, 배럴 `schema.ts` 가 `DB_DIALECT` 에 맞는 파일로 해석됩니다.
-- `src/lib/server/db/index.ts` 의 `getDb()` 가 방언에 맞는 드라이버(d1 / postgres-js / mysql2)를 선택합니다. 빌드 시 활성 방언의 드라이버만 워커 번들에 포함됩니다.
-- **PostgreSQL/MySQL 은 `HYPERDRIVE` 바인딩이 필요합니다.**
+- `src/lib/server/db/index.ts` 의 `getDb()` 가 방언에 맞는 드라이버(d1 / postgres-js / mysql2)를 선택합니다. 빌드 시 활성 방언의 드라이버만 번들에 포함됩니다.
+- **PostgreSQL/MySQL 연결 문자열 우선순위**: Cloudflare 에서는 `HYPERDRIVE` 바인딩 → `DATABASE_URL`(var/secret), 순수 Node 에서는 `DATABASE_URL` 환경변수.
 
 ```bash
-# Hyperdrive 구성 생성 (binding 이름은 반드시 HYPERDRIVE)
+# (Cloudflare) Hyperdrive 구성 생성 (binding 이름은 반드시 HYPERDRIVE)
 wrangler hyperdrive create keystone-pg    --connection-string="postgres://user:pass@host:5432/db"
 wrangler hyperdrive create keystone-mysql --connection-string="mysql://user:pass@host:3306/db"
 # → 출력된 id 를 wrangler.jsonc 의 hyperdrive[].id 에 채우고 주석 해제
+# (Hyperdrive 없이 직결하려면 DATABASE_URL 을 var/secret 으로 설정)
 ```
 
-> **참고**: MySQL 은 `UPDATE ... RETURNING` 과 partial(부분) unique index 를 지원하지 않습니다. 해당 로직(인가 코드/WebAuthn challenge 소진, signing key 회전)은 방언별로 분기되어 MySQL 에서는 `affectedRows` 판정·재조회와 트랜잭션으로 동등하게 동작합니다.
+### 배포 타깃: Cloudflare Workers vs 순수 Node
+
+`BUILD_TARGET`(`cloudflare`(기본) | `node`)으로 어댑터를 전환합니다. `node` 는 `@sveltejs/adapter-node` 로 빌드되어 Cloudflare 없이 순수 Node 서버로 구동됩니다. Node 에는 `platform` 바인딩이 없으므로 **PostgreSQL/MySQL 만** 사용 가능하며(D1 은 Workers 전용), 연결은 `DATABASE_URL`, 설정값은 `process.env` 로 읽습니다.
+
+```bash
+# PostgreSQL + 순수 Node 로 빌드·구동
+export BUILD_TARGET=node DB_DIALECT=postgres
+export DATABASE_URL="postgres://user:pass@host:5432/db"
+# 필요한 설정도 환경변수로: IDP_SIGNING_KEY_SECRET, IDP_ISSUER_URL, IDP_DEFAULT_TENANT_NAME ...
+bun run build
+node build            # adapter-node 산출물 (기본 PORT=3000)
+```
+
+> **참고**: MySQL 은 `UPDATE ... RETURNING` 과 partial(부분) unique index 를 지원하지 않습니다. 해당 로직(인가 코드/WebAuthn challenge 소진, signing key 회전, rate limit upsert)은 방언별로 분기되어 MySQL 에서는 `affectedRows` 판정·재조회와 트랜잭션으로 동등하게 동작합니다.
 
 ## 데이터베이스 마이그레이션
 

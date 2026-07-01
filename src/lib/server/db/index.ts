@@ -24,23 +24,38 @@ declare const __DB_DIALECT__: "d1" | "postgres" | "mysql" | undefined;
 let pgSql: unknown;
 let mysqlPool: unknown;
 
-function getHyperdriveConnectionString(platform: App.Platform | undefined, dialect: string): string {
-    const conn = platform?.env?.HYPERDRIVE?.connectionString;
-    if (!conn) {
-        throw new Error(`Hyperdrive binding "HYPERDRIVE" is not available. DB_DIALECT=${dialect} 에는 Hyperdrive 바인딩이 필요합니다. wrangler.jsonc 의 hyperdrive 설정과 platform.env 를 확인하세요.`);
-    }
-    return conn;
+/**
+ * postgres/mysql 연결 문자열을 해석한다. 우선순위:
+ *   1. platform.env.HYPERDRIVE.connectionString  (Cloudflare Workers + Hyperdrive)
+ *   2. platform.env.DATABASE_URL                  (Workers 에서 Hyperdrive 없이 직결 — var/secret)
+ *   3. process.env.DATABASE_URL                   (순수 Node 환경)
+ * 이 순서 덕분에 Workers(Hyperdrive/직결)와 Node 환경을 모두 지원한다.
+ */
+function resolveConnectionString(platform: App.Platform | undefined, dialect: string): string {
+    const fromHyperdrive = platform?.env?.HYPERDRIVE?.connectionString;
+    if (fromHyperdrive) return fromHyperdrive;
+
+    const platformEnv = platform?.env as Record<string, unknown> | undefined;
+    const fromPlatformUrl = platformEnv?.DATABASE_URL;
+    if (typeof fromPlatformUrl === "string" && fromPlatformUrl.length > 0) return fromPlatformUrl;
+
+    const fromNodeEnv = typeof process !== "undefined" ? process.env?.DATABASE_URL : undefined;
+    if (fromNodeEnv && fromNodeEnv.length > 0) return fromNodeEnv;
+
+    throw new Error(
+        `DB_DIALECT=${dialect} 연결 문자열을 찾을 수 없습니다. Cloudflare 에서는 HYPERDRIVE 바인딩(또는 DATABASE_URL var/secret), 순수 Node 환경에서는 DATABASE_URL 환경변수를 설정하세요.`,
+    );
 }
 
 /**
  * 활성 방언에 맞는 drizzle 인스턴스를 반환한다.
- * - d1:       platform.env.DB (D1 바인딩), 요청마다 FK 제약 활성화(PRAGMA).
- * - postgres: platform.env.HYPERDRIVE.connectionString → postgres-js.
- * - mysql:    platform.env.HYPERDRIVE.connectionString → mysql2.
+ * - d1:       platform.env.DB (D1 바인딩, Workers 전용), 요청마다 FK 제약 활성화(PRAGMA).
+ * - postgres: Hyperdrive / DATABASE_URL → postgres-js.
+ * - mysql:    Hyperdrive / DATABASE_URL → mysql2.
  */
 export async function getDb(platform: App.Platform | undefined): Promise<DB> {
     if (__DB_DIALECT__ === "postgres") {
-        const connectionString = getHyperdriveConnectionString(platform, "postgres");
+        const connectionString = resolveConnectionString(platform, "postgres");
         const { drizzle } = await import("drizzle-orm/postgres-js");
         const postgres = (await import("postgres")).default;
         if (!pgSql) {
@@ -51,7 +66,7 @@ export async function getDb(platform: App.Platform | undefined): Promise<DB> {
     }
 
     if (__DB_DIALECT__ === "mysql") {
-        const connectionString = getHyperdriveConnectionString(platform, "mysql");
+        const connectionString = resolveConnectionString(platform, "mysql");
         const { drizzle } = await import("drizzle-orm/mysql2");
         const mysql = (await import("mysql2/promise")).default;
         if (!mysqlPool) {
@@ -61,9 +76,11 @@ export async function getDb(platform: App.Platform | undefined): Promise<DB> {
     }
 
     if (__DB_DIALECT__ === "d1" || typeof __DB_DIALECT__ === "undefined") {
-        // Cloudflare D1 (기본)
+        // Cloudflare D1 (Workers 전용)
         if (!platform?.env?.DB) {
-            throw new Error('D1 binding "DB" is not available. Check wrangler.jsonc and platform.env.');
+            throw new Error(
+                'D1 binding "DB" is not available. D1 은 Cloudflare Workers 전용입니다. 순수 Node 환경(adapter-node)에서는 DB_DIALECT=postgres 또는 mysql 을 사용하세요. Workers 라면 wrangler.jsonc 와 platform.env 를 확인하세요.',
+            );
         }
         const { drizzle } = await import("drizzle-orm/d1");
         const db = drizzle(platform.env.DB, { schema: schema as never });

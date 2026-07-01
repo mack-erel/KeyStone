@@ -1,4 +1,12 @@
-import adapter from "@sveltejs/adapter-cloudflare";
+import adapterCloudflare from "@sveltejs/adapter-cloudflare";
+import adapterNode from "@sveltejs/adapter-node";
+
+// 배포 타깃 선택. cloudflare(기본) | node.
+// - cloudflare: Cloudflare Workers (D1/Hyperdrive 바인딩 사용 가능)
+// - node:       순수 Node 서버 (adapter-node). platform 바인딩 없음 → pg/mysql 은
+//               DATABASE_URL, 설정값은 process.env 로 읽는다. D1 은 Workers 전용.
+const BUILD_TARGET = process.env.BUILD_TARGET || "cloudflare";
+const adapter = BUILD_TARGET === "node" ? adapterNode : adapterCloudflare;
 
 // 활성 DB 방언 선택 (배포 단위). d1(기본) | postgres | mysql.
 // `$db-active-schema` alias 를 방언별 스키마 파일로 매핑한다 (빌드/타입체크 공통).
