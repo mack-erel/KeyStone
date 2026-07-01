@@ -3,7 +3,9 @@
 declare global {
     namespace App {
         interface Platform {
-            env: Env & { SKIN_CACHE?: R2Bucket };
+            // HYPERDRIVE: DB_DIALECT=postgres|mysql 일 때 Postgres/MySQL 연결 문자열을 제공하는
+            // Cloudflare Hyperdrive 바인딩 (wrangler 의 hyperdrive 설정으로 주입).
+            env: Env & { SKIN_CACHE?: R2Bucket; HYPERDRIVE?: { connectionString: string } };
             ctx: ExecutionContext;
             caches: CacheStorage;
             cf?: IncomingRequestCfProperties;

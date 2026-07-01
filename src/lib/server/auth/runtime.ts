@@ -12,19 +12,22 @@ export interface RuntimeConfig {
 
 type EnvLookup = Record<string, unknown>;
 
-function getString(env: EnvLookup | undefined, key: string): string | undefined {
+function readString(env: EnvLookup | undefined, key: string): string | undefined {
     const value = env?.[key];
     return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 export function getRuntimeConfig(platform: App.Platform | undefined): RuntimeConfig {
-    const env = platform?.env as EnvLookup | undefined;
+    const platformEnv = platform?.env as EnvLookup | undefined;
+    // Cloudflare 에서는 platform.env, 순수 Node(adapter-node)에서는 process.env 로 설정을 읽는다.
+    const nodeEnv = typeof process !== "undefined" ? (process.env as EnvLookup) : undefined;
+    const getString = (key: string): string | undefined => readString(platformEnv, key) ?? readString(nodeEnv, key);
 
     return {
-        defaultTenantName: getString(env, "IDP_DEFAULT_TENANT_NAME") ?? "Default Tenant",
-        issuerUrl: getString(env, "IDP_ISSUER_URL")?.trim().replace(/\/$/, ""),
-        signingKeySecret: getString(env, "IDP_SIGNING_KEY_SECRET"),
-        dispatcherServiceToken: getString(env, "DISPATCHER_SERVICE_TOKEN"),
+        defaultTenantName: getString("IDP_DEFAULT_TENANT_NAME") ?? "Default Tenant",
+        issuerUrl: getString("IDP_ISSUER_URL")?.trim().replace(/\/$/, ""),
+        signingKeySecret: getString("IDP_SIGNING_KEY_SECRET"),
+        dispatcherServiceToken: getString("DISPATCHER_SERVICE_TOKEN"),
     };
 }
 

@@ -18,6 +18,14 @@
     "workers_dev": true,
     "preview_urls": true,
     "vars": {
+        // ── DB 방언 선택 (배포 단위, 하나만 사용) ──────────────────────────────
+        // "d1"(기본) | "postgres" | "mysql".
+        // postgres/mysql 은 아래 hyperdrive 바인딩이 필요하다.
+        // ⚠️ 이 값은 빌드 시점에도 필요하다 (vite/svelte config 가 스키마·드라이버를 선택).
+        //    빌드 환경에서 DB_DIALECT 환경변수를 동일하게 설정할 것:
+        //    예) DB_DIALECT=postgres bun run build && wrangler deploy
+        "DB_DIALECT": "d1",
+
         // Cloudflare 계정 ID (대시보드 우측 하단에서 확인)
         "CLOUDFLARE_ACCOUNT_ID": "",
 
@@ -45,6 +53,7 @@
             "remote": true,
         },
     ],
+    // ── DB_DIALECT="d1" 일 때 사용 (기본) ─────────────────────────────────────
     "d1_databases": [
         {
             "binding": "DB",
@@ -57,4 +66,18 @@
             "remote": true,
         },
     ],
+
+    // ── DB_DIALECT="postgres" 또는 "mysql" 일 때 사용 ─────────────────────────
+    // Cloudflare Hyperdrive 로 외부 Postgres/MySQL 에 연결한다 (연결 풀링·캐싱으로
+    // D1 대비 낮은 지연). 아래 주석을 해제하고 id 를 채운 뒤 배포하세요.
+    // 생성:
+    //   wrangler hyperdrive create keystone-pg --connection-string="postgres://user:pass@host:5432/db"
+    //   wrangler hyperdrive create keystone-mysql --connection-string="mysql://user:pass@host:3306/db"
+    // (binding 이름은 반드시 HYPERDRIVE — 코드가 platform.env.HYPERDRIVE 를 참조)
+    // "hyperdrive": [
+    //     {
+    //         "binding": "HYPERDRIVE",
+    //         "id": "YOUR_HYPERDRIVE_CONFIG_ID",
+    //     },
+    // ],
 }

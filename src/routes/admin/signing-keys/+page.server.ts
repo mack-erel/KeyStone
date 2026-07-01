@@ -1,6 +1,7 @@
 import { fail } from "@sveltejs/kit";
 import { desc, eq, and, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
+import { type DB, DB_DIALECT } from "$lib/server/db";
 import { requireAdminContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
@@ -58,25 +59,42 @@ export const actions: Actions = {
         const newId = crypto.randomUUID();
         const now = new Date();
 
+        // 두 작업을 원자적으로 실행: (1) 기존 활성 키 비활성화, (2) 새 활성 키 INSERT.
+        // - d1:            db.batch (D1 은 interactive transaction 미지원).
+        // - postgres/mysql: interactive transaction.
+        // d1/postgres 는 partial unique index (tenantId WHERE active) 가 동시 rotate 의
+        // 두 번째 INSERT 를 UNIQUE 위반으로 막아 단일 active invariant 를 DB 레벨에서 강제한다.
+        // MySQL 은 partial unique index 를 지원하지 않으므로 이 트랜잭션이 최선의 보호막이다.
+        const buildDeactivate = (h: Pick<DB, "update">) =>
+            h
+                .update(signingKeys)
+                .set({ active: false, rotatedAt: now })
+                .where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)));
+        const buildInsert = (h: Pick<DB, "insert">) =>
+            h.insert(signingKeys).values({
+                id: newId,
+                tenantId: tenant.id,
+                kid,
+                alg: "RS256",
+                publicJwk: JSON.stringify(publicJwk),
+                privateJwkEncrypted,
+                certPem,
+                active: true,
+            });
+
         try {
-            await db.batch([
-                // 기존 활성 키 (있다면) 비활성화 + rotatedAt 기록
-                db
-                    .update(signingKeys)
-                    .set({ active: false, rotatedAt: now })
-                    .where(and(eq(signingKeys.tenantId, tenant.id), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt))),
-                // 새 키 INSERT — 바로 active=true. partial unique index 가 보호.
-                db.insert(signingKeys).values({
-                    id: newId,
-                    tenantId: tenant.id,
-                    kid,
-                    alg: "RS256",
-                    publicJwk: JSON.stringify(publicJwk),
-                    privateJwkEncrypted,
-                    certPem,
-                    active: true,
-                }),
-            ]);
+            if (DB_DIALECT === "d1" || DB_DIALECT === "sqlite") {
+                // d1 / libSQL 은 원자적 batch 지원 (정규 DB 타입이 활성 방언일 때만 노출되므로 캐스팅).
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (db as any).batch([buildDeactivate(db), buildInsert(db)]);
+            } else {
+                // postgres / mysql: interactive transaction.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (db as any).transaction(async (tx: Pick<DB, "update" | "insert">) => {
+                    await buildDeactivate(tx);
+                    await buildInsert(tx);
+                });
+            }
         } catch {
             // UNIQUE 위반 (동시 rotate) 또는 기타 DB 에러 → 409
             return fail(409, { error: "다른 rotate 작업이 진행 중이거나 DB 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." });

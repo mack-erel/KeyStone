@@ -8,7 +8,7 @@
 
 import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from "@simplewebauthn/server";
 import type { AuthenticatorTransportFuture, AuthenticationResponseJSON, RegistrationResponseJSON } from "@simplewebauthn/server";
-import type { DB } from "$lib/server/db";
+import { type DB, DB_DIALECT } from "$lib/server/db";
 import { credentials, users, webauthnChallenges } from "$lib/server/db/schema";
 import { eq, and, isNull, gt, sql } from "drizzle-orm";
 import { b64uEncode, b64uDecode } from "$lib/server/crypto/keys";
@@ -139,11 +139,18 @@ export async function saveChallenge(db: DB, tenantId: string, challenge: string,
  */
 export async function consumeChallenge(db: DB, tenantId: string, challenge: string): Promise<boolean> {
     const now = new Date();
-    const rows = await db
-        .update(webauthnChallenges)
-        .set({ usedAt: now })
-        .where(and(eq(webauthnChallenges.tenantId, tenantId), eq(webauthnChallenges.challenge, challenge), isNull(webauthnChallenges.usedAt), gt(webauthnChallenges.expiresAt, now)))
-        .returning({ id: webauthnChallenges.id });
+    const consumeWhere = and(eq(webauthnChallenges.tenantId, tenantId), eq(webauthnChallenges.challenge, challenge), isNull(webauthnChallenges.usedAt), gt(webauthnChallenges.expiresAt, now));
+
+    if (DB_DIALECT === "mysql") {
+        // MySQL 은 UPDATE ... RETURNING 미지원 → affectedRows 로 소진 성공 여부 판정.
+        const res = (await db.update(webauthnChallenges).set({ usedAt: now }).where(consumeWhere)) as unknown as [{ affectedRows: number }];
+        return (res?.[0]?.affectedRows ?? 0) > 0;
+    }
+
+    // d1 / postgres: UPDATE ... RETURNING.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const updateBuilder = db.update(webauthnChallenges).set({ usedAt: now }).where(consumeWhere) as any;
+    const rows = (await updateBuilder.returning({ id: webauthnChallenges.id })) as Array<{ id: string }>;
     return rows.length > 0;
 }
 
