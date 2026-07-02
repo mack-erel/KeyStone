@@ -19,11 +19,25 @@ export type { DB };
 // dead-code-elimination 하여, 번들에는 활성 방언의 드라이버만 포함된다.
 declare const __DB_DIALECT__: "d1" | "sqlite" | "postgres" | "mysql" | undefined;
 
-// 드라이버 클라이언트는 isolate/프로세스 전역에서 재사용해 연결 재사용을 극대화한다
-// (요청마다 새 연결을 열지 않는다).
+// 순수 Node(adapter-node) 처럼 프로세스가 장수하는 환경에서는 드라이버 클라이언트를
+// 전역에서 재사용해 연결 생성 비용을 아낀다. 반대로 Cloudflare Workers 는 요청마다
+// 격리(isolate)되며 I/O 객체(소켓)를 요청 간 공유할 수 없으므로 절대 전역 재사용하면
+// 안 된다 — 이전 요청의 죽은 소켓을 다음 요청이 붙잡고 hang 한다. Workers 여부는
+// `platform.ctx.waitUntil` 존재로 판별하고, Workers 에서는 요청당 새 연결을 열고
+// 응답 후 dispose() 로 닫는다.
 let pgSql: unknown;
 let mysqlPool: unknown;
 let libsqlClient: unknown;
+
+/**
+ * getDb() 결과. `dispose` 는 Workers 에서 요청당 연 연결을 응답 완료 후 닫기 위한
+ * 정리 함수다(hooks 가 `ctx.waitUntil(dispose())` 로 호출). Node 전역 재사용 경로나
+ * D1 처럼 닫을 필요가 없으면 undefined.
+ */
+export interface DbHandle {
+    db: DB;
+    dispose?: () => Promise<void>;
+}
 
 /**
  * libSQL(sqlite) 연결 정보를 해석한다.
@@ -77,31 +91,57 @@ function resolveConnectionString(platform: App.Platform | undefined, dialect: st
  * - sqlite:   libSQL 로컬 파일(file:) 또는 Turso — DATABASE_URL/SQLITE_URL.
  * - postgres: Hyperdrive / DATABASE_URL → postgres-js.
  * - mysql:    Hyperdrive / DATABASE_URL → mysql2.
+ *
+ * 반환값의 `dispose` 는 Workers 에서 요청당 연 postgres/mysql 연결을 응답 완료 후
+ * 닫기 위한 함수다(호출부가 `ctx.waitUntil(dispose())`). Node 전역 재사용 경로와
+ * D1/sqlite 는 닫지 않으므로 undefined.
  */
-export async function getDb(platform: App.Platform | undefined): Promise<DB> {
+export async function getDb(platform: App.Platform | undefined): Promise<DbHandle> {
+    // Cloudflare Workers 판별: isolate 는 요청 간 I/O 객체(소켓)를 공유할 수 없으므로
+    // postgres/mysql 연결을 전역 재사용하면 hang 한다. Workers 에서는 요청당 연결을
+    // 새로 열고 dispose 로 닫는다. Node(adapter-node)는 platform.ctx 가 없어 전역 재사용.
+    const isWorkers = typeof platform?.ctx?.waitUntil === "function";
+
     if (__DB_DIALECT__ === "postgres") {
         const connectionString = resolveConnectionString(platform, "postgres");
         const { drizzle } = await import("drizzle-orm/postgres-js");
         const postgres = (await import("postgres")).default;
+        // Hyperdrive 뒤에서는 fetch_types 조회가 불필요/불가하므로 비활성화.
+        // max: Workers 는 invocation 당 최대 6 연결 — Hyperdrive 권장값 5.
+        if (isWorkers) {
+            const client = postgres(connectionString, { max: 5, fetch_types: false });
+            return {
+                db: drizzle(client, { schema: schema as never }) as unknown as DB,
+                dispose: () => client.end({ timeout: 5 }),
+            };
+        }
         if (!pgSql) {
-            // Hyperdrive 뒤에서는 fetch_types 조회가 불필요/불가하므로 비활성화.
             pgSql = postgres(connectionString, { max: 5, fetch_types: false });
         }
-        return drizzle(pgSql as never, { schema: schema as never }) as unknown as DB;
+        return { db: drizzle(pgSql as never, { schema: schema as never }) as unknown as DB };
     }
 
     if (__DB_DIALECT__ === "mysql") {
         const connectionString = resolveConnectionString(platform, "mysql");
         const { drizzle } = await import("drizzle-orm/mysql2");
         const mysql = (await import("mysql2/promise")).default;
+        if (isWorkers) {
+            // disableEval: Workers 런타임에서 mysql2 의 eval 기반 코드 생성이 금지됨.
+            const pool = mysql.createPool({ uri: connectionString, connectionLimit: 5, disableEval: true });
+            return {
+                db: drizzle(pool, { schema: schema as never, mode: "default" }) as unknown as DB,
+                dispose: () => pool.end(),
+            };
+        }
         if (!mysqlPool) {
             mysqlPool = mysql.createPool({ uri: connectionString, connectionLimit: 5 });
         }
-        return drizzle(mysqlPool as never, { schema: schema as never, mode: "default" }) as unknown as DB;
+        return { db: drizzle(mysqlPool as never, { schema: schema as never, mode: "default" }) as unknown as DB };
     }
 
     if (__DB_DIALECT__ === "sqlite") {
-        // libSQL — 로컬 파일(file:) 또는 Turso 원격
+        // libSQL — 로컬 파일(file:) 또는 Turso 원격. HTTP 기반이라 소켓을 장기 점유하지
+        // 않으므로 전역 재사용해도 안전하다.
         const { url, authToken } = resolveLibsqlConfig(platform);
         const { drizzle } = await import("drizzle-orm/libsql");
         const { createClient } = await import("@libsql/client");
@@ -111,7 +151,7 @@ export async function getDb(platform: App.Platform | undefined): Promise<DB> {
         const db = drizzle(libsqlClient as never, { schema: schema as never });
         // SQLite 은 연결마다 FK 제약이 비활성화됨 — 명시적으로 활성화
         await db.run(sql`PRAGMA foreign_keys = ON`);
-        return db as unknown as DB;
+        return { db: db as unknown as DB };
     }
 
     if (__DB_DIALECT__ === "d1" || typeof __DB_DIALECT__ === "undefined") {
@@ -125,7 +165,7 @@ export async function getDb(platform: App.Platform | undefined): Promise<DB> {
         const db = drizzle(platform.env.DB, { schema: schema as never });
         // D1(SQLite)은 연결마다 FK 제약이 비활성화됨 — 매 요청에 명시적으로 활성화
         await db.run(sql`PRAGMA foreign_keys = ON`);
-        return db as unknown as DB;
+        return { db: db as unknown as DB };
     }
 
     throw new Error(`Unknown DB_DIALECT: ${String(__DB_DIALECT__)}`);
