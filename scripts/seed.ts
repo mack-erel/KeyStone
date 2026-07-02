@@ -1,72 +1,28 @@
 /**
- * Keystone IdP — D1 seed 스크립트
+ * Keystone IdP — DB seed 스크립트 (방언 무관: d1 / sqlite / postgres / mysql)
  *
  * 모드:
  * - `ignore` (기본):  기존 데이터 보존, 누락된 기본값만 INSERT (idempotent)
- * - `replace`:       모든 사용자 테이블 DROP → drizzle 마이그레이션 재적용 → seed
+ * - `replace`:       모든 사용자 테이블 DROP → 방언별 마이그레이션 재적용 → seed
  *
- * 환경변수:
- * - CLOUDFLARE_ACCOUNT_ID
- * - CLOUDFLARE_API_TOKEN  (또는 CLOUDFLARE_D1_TOKEN)
- * - CLOUDFLARE_D1_DATABASE_ID  (CLOUDFLARE_IS_PREVIEW=true 일 때는 PREVIEW)
+ * 활성 방언은 `DB_DIALECT`(기본 d1) 로 결정되며 연결 정보는 방언별로 다르다:
+ * - postgres/mysql/sqlite : DATABASE_URL
+ * - d1                    : CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN(or _D1_TOKEN) /
+ *                           CLOUDFLARE_D1_DATABASE_ID (CLOUDFLARE_IS_PREVIEW=true 면 PREVIEW)
  *
  * 선택 환경변수 (지정 시 admin 자동 생성):
  * - IDP_BOOTSTRAP_ADMIN_USERNAME, IDP_BOOTSTRAP_ADMIN_EMAIL,
  *   IDP_BOOTSTRAP_ADMIN_PASSWORD, IDP_BOOTSTRAP_ADMIN_NAME
  *
  * 사용:
- *   bun scripts/seed.ts                              # 운영
- *   CLOUDFLARE_IS_PREVIEW=true bun scripts/seed.ts   # 프리뷰
+ *   DB_DIALECT=postgres bun scripts/seed.ts     # postgres
+ *   bun scripts/seed.ts                          # d1 (기본)
  */
 import * as readline from "node:readline";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-
-const isPreview = process.env.CLOUDFLARE_IS_PREVIEW === "true";
-const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const databaseId = isPreview ? process.env.CLOUDFLARE_D1_PREVIEW_DATABASE_ID : process.env.CLOUDFLARE_D1_DATABASE_ID;
-const token = process.env.CLOUDFLARE_D1_TOKEN ?? process.env.CLOUDFLARE_API_TOKEN;
-
-if (!accountId) {
-    console.error("CLOUDFLARE_ACCOUNT_ID is required");
-    process.exit(1);
-}
-if (!token) {
-    console.error("CLOUDFLARE_API_TOKEN (or CLOUDFLARE_D1_TOKEN) is required");
-    process.exit(1);
-}
-if (!databaseId) {
-    console.error(isPreview ? "CLOUDFLARE_D1_PREVIEW_DATABASE_ID is required for preview mode" : "CLOUDFLARE_D1_DATABASE_ID is required");
-    process.exit(1);
-}
-
-if (isPreview) {
-    console.log(`[preview] using database: ${databaseId}`);
-}
-
-const BASE = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}`;
-const HEADERS = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-
-type Param = string | number | boolean | null;
-
-async function q(sql: string, params: Param[] = []): Promise<void> {
-    const res = await fetch(`${BASE}/raw`, { method: "POST", headers: HEADERS, body: JSON.stringify({ sql, params }) });
-    const data = (await res.json()) as { success: boolean; errors: unknown[] };
-    if (!data.success) throw new Error(`SQL failed: ${JSON.stringify(data.errors)}\nSQL: ${sql}`);
-}
-
-async function qRows<T extends Record<string, unknown>>(sql: string, params: Param[] = []): Promise<T[]> {
-    const res = await fetch(`${BASE}/raw`, { method: "POST", headers: HEADERS, body: JSON.stringify({ sql, params }) });
-    const data = (await res.json()) as {
-        success: boolean;
-        errors: unknown[];
-        result: [{ results: { columns: string[]; rows: unknown[][] } }];
-    };
-    if (!data.success) throw new Error(`SQL failed: ${JSON.stringify(data.errors)}\nSQL: ${sql}`);
-    const r = data.result[0]?.results;
-    if (!r) return [];
-    return r.rows.map((row) => Object.fromEntries(r.columns.map((col, i) => [col, row[i]])) as T);
-}
+import { and, eq } from "drizzle-orm";
+import { openScriptDb, type ScriptDb, type Dialect } from "./lib/db";
 
 function ask(question: string): Promise<string> {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -78,9 +34,7 @@ function uuid(): string {
 }
 
 // PBKDF2 — password.ts verifyPbkdf2 가 인식하는 형식: `pbkdf2$<digest>:<iter>$<saltB64>$<hashB64>`
-// ctrls H-SEED-1: OWASP 2023 권고 (SHA-256 600k) 충족. 첫 로그인 시 argon2id 로 자동
-// 업그레이드되므로 PBKDF2 hash 는 일시적이지만, bootstrap admin 의 패스워드가 평문
-// 디스크 (env 변수) 에서 한 번이라도 노출됐을 때 크래킹 비용을 OWASP 기준으로 둔다.
+// ctrls H-SEED-1: OWASP 2023 권고(SHA-256 600k) 충족. 첫 로그인 시 argon2id 로 자동 업그레이드.
 async function hashPasswordPbkdf2(password: string): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iterations = 600_000;
@@ -91,75 +45,71 @@ async function hashPasswordPbkdf2(password: string): Promise<string> {
     return `pbkdf2$sha256:${iterations}$${saltB64}$${hashB64}`;
 }
 
-// ─── reset (replace 모드) ────────────────────────────────────────────────────
-async function resetDatabase(): Promise<void> {
-    const tables = await qRows<{ name: string; sql: string }>(
-        `SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT IN ('__drizzle_migrations', 'sqlite_sequence') AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'`,
-    );
-    const tableSet = new Set(tables.map((t) => t.name));
+// ─── 방언별 마이그레이션 디렉터리 ──────────────────────────────────────────────
+const MIGRATIONS_DIR_BY_DIALECT: Record<Dialect, string> = {
+    d1: "drizzle",
+    sqlite: "drizzle/sqlite",
+    postgres: "drizzle/pg",
+    mysql: "drizzle/mysql",
+};
 
-    // FK 의존성 위상정렬 — 자식 → 부모 순으로 DROP
-    const deps = new Map<string, Set<string>>();
-    for (const { name, sql } of tables) {
-        const refs = new Set<string>();
-        for (const m of (sql ?? "").matchAll(/REFERENCES\s+[`"]?(\w+)[`"]?/gi)) {
-            if (tableSet.has(m[1]) && m[1] !== name) refs.add(m[1]);
-        }
-        deps.set(name, refs);
+// ─── reset (replace 모드) ──────────────────────────────────────────────────────
+async function resetDatabase(h: ScriptDb): Promise<void> {
+    const tables = await h.listUserTables();
+
+    console.log(`  Dropping ${tables.length} tables...`);
+    if (h.dialect === "postgres") {
+        // CASCADE 로 FK 순서 무시. 식별자 인용.
+        for (const name of tables) await h.execRaw(`DROP TABLE IF EXISTS "${name}" CASCADE`);
+        await h.execRaw(`DROP TABLE IF EXISTS "__drizzle_migrations" CASCADE`);
+        await h.execRaw(`DROP TABLE IF EXISTS "_seed_migrations" CASCADE`);
+    } else if (h.dialect === "mysql") {
+        await h.execRaw("SET FOREIGN_KEY_CHECKS = 0");
+        for (const name of tables) await h.execRaw(`DROP TABLE IF EXISTS \`${name}\``);
+        await h.execRaw("DROP TABLE IF EXISTS `__drizzle_migrations`");
+        await h.execRaw("DROP TABLE IF EXISTS `_seed_migrations`");
+        await h.execRaw("SET FOREIGN_KEY_CHECKS = 1");
+    } else {
+        // sqlite / d1
+        await h.execRaw("PRAGMA foreign_keys = OFF");
+        for (const name of tables) await h.execRaw(`DROP TABLE IF EXISTS "${name}"`);
+        await h.execRaw(`DROP TABLE IF EXISTS "__drizzle_migrations"`);
+        await h.execRaw(`DROP TABLE IF EXISTS "_seed_migrations"`);
+        await h.execRaw("PRAGMA foreign_keys = ON");
     }
-    const inDegree = new Map<string, number>();
-    for (const name of tableSet) inDegree.set(name, 0);
-    for (const refs of deps.values()) for (const ref of refs) inDegree.set(ref, (inDegree.get(ref) ?? 0) + 1);
-
-    const queue = [...tableSet].filter((n) => inDegree.get(n) === 0);
-    const sorted: string[] = [];
-    while (queue.length > 0) {
-        const node = queue.shift()!;
-        sorted.push(node);
-        for (const parent of deps.get(node) ?? []) {
-            const deg = (inDegree.get(parent) ?? 0) - 1;
-            inDegree.set(parent, deg);
-            if (deg === 0) queue.push(parent);
-        }
-    }
-    for (const name of tableSet) if (!sorted.includes(name)) sorted.push(name);
-
-    console.log(`  Dropping ${sorted.length} tables...`);
-    for (const name of sorted) await q(`DROP TABLE IF EXISTS "${name}"`);
-    await q(`DROP TABLE IF EXISTS "__drizzle_migrations"`);
-    await q(`DROP TABLE IF EXISTS "_seed_migrations"`);
     console.log("  All tables dropped.");
 
-    const drizzleDir = resolve(process.cwd(), "drizzle");
-    const sqlFiles = readdirSync(drizzleDir)
+    // 방언별 마이그레이션 파일 재적용
+    const dir = resolve(process.cwd(), MIGRATIONS_DIR_BY_DIALECT[h.dialect]);
+    if (!existsSync(dir)) {
+        throw new Error(`마이그레이션 디렉터리가 없습니다: ${dir}\n먼저 마이그레이션을 생성하세요 (예: DB_DIALECT=${h.dialect} bun run db:generate).`);
+    }
+    const sqlFiles = readdirSync(dir)
         .filter((f) => f.endsWith(".sql"))
         .sort();
-
-    console.log(`Running ${sqlFiles.length} migration file(s)...`);
+    console.log(`Running ${sqlFiles.length} migration file(s) from ${MIGRATIONS_DIR_BY_DIALECT[h.dialect]}...`);
     for (const file of sqlFiles) {
-        const content = readFileSync(join(drizzleDir, file), "utf-8");
-        const statements = content
-            .split("--> statement-breakpoint")
-            .map((s) => s.trim())
-            .filter((s) => s.length > 0);
-        for (const stmt of statements) await q(stmt);
+        const content = readFileSync(join(dir, file), "utf-8").split("--> statement-breakpoint").join("\n");
+        await h.execRaw(content);
         console.log(`  ${file} done`);
     }
 }
 
-// ─── seed (idempotent) ───────────────────────────────────────────────────────
-async function seedDefaults(mode: "replace" | "ignore"): Promise<void> {
-    const now = Date.now();
+// ─── seed (idempotent) ─────────────────────────────────────────────────────────
+async function seedDefaults(h: ScriptDb, mode: "replace" | "ignore"): Promise<void> {
+    const { db, schema } = h;
+    const now = new Date();
+    const { tenants, users, credentials, identities } = schema;
 
     // 1. 기본 tenant — slug='default'
-    const tenants = await qRows<{ id: string }>(`SELECT id FROM tenants WHERE slug = 'default' LIMIT 1`);
+    const tenantRows = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, "default")).limit(1);
     let tenantId: string;
-    if (tenants.length > 0) {
-        tenantId = tenants[0].id;
+    if (tenantRows.length > 0) {
+        tenantId = tenantRows[0].id;
         if (mode === "ignore") console.log(`  ✓ tenant 'default' already exists (id=${tenantId})`);
     } else {
         tenantId = uuid();
-        await q(`INSERT INTO tenants (id, slug, name, status, created_at, updated_at) VALUES (?, 'default', 'Default', 'active', ?, ?)`, [tenantId, now, now]);
+        await db.insert(tenants).values({ id: tenantId, slug: "default", name: "Default", status: "active", createdAt: now, updatedAt: now });
         console.log(`  + created tenant 'default' (id=${tenantId})`);
     }
 
@@ -174,66 +124,73 @@ async function seedDefaults(mode: "replace" | "ignore"): Promise<void> {
         return;
     }
 
-    const existing = await qRows<{ id: string }>(`SELECT id FROM users WHERE tenant_id = ? AND (username = ? OR email = ?) LIMIT 1`, [tenantId, adminUsername, adminEmail]);
+    const existing = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.tenantId, tenantId), eq(users.email, adminEmail)))
+        .limit(1);
     let userId: string;
     if (existing.length > 0) {
         userId = existing[0].id;
         console.log(`  ✓ admin user '${adminUsername}' already exists (id=${userId})`);
     } else {
         userId = uuid();
-        await q(
-            `INSERT INTO users (id, tenant_id, username, email, email_verified_at, display_name, role, status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, 'admin', 'active', ?, ?)`,
-            [userId, tenantId, adminUsername, adminEmail, now, adminName, now, now],
-        );
+        await db.insert(users).values({
+            id: userId,
+            tenantId,
+            username: adminUsername,
+            email: adminEmail,
+            emailVerifiedAt: now,
+            displayName: adminName,
+            role: "admin",
+            status: "active",
+            createdAt: now,
+            updatedAt: now,
+        });
         console.log(`  + created admin user '${adminUsername}' (id=${userId})`);
     }
 
     // 3. password credential
-    const credExists = await qRows<{ id: string }>(`SELECT id FROM credentials WHERE user_id = ? AND type = 'password' LIMIT 1`, [userId]);
+    const credExists = await db
+        .select({ id: credentials.id })
+        .from(credentials)
+        .where(and(eq(credentials.userId, userId), eq(credentials.type, "password")))
+        .limit(1);
     if (credExists.length > 0) {
         console.log(`  ✓ password credential already exists`);
     } else {
-        const credId = uuid();
         const hashed = await hashPasswordPbkdf2(adminPassword);
-        await q(
-            `INSERT INTO credentials (id, user_id, type, secret, label, created_at)
-             VALUES (?, ?, 'password', ?, '비밀번호', ?)`,
-            [credId, userId, hashed, now],
-        );
+        await db.insert(credentials).values({ id: uuid(), userId, type: "password", secret: hashed, label: "비밀번호", createdAt: now });
         console.log(`  + created password credential`);
     }
 
     // 4. local identity
-    const idExists = await qRows<{ id: string }>(`SELECT id FROM identities WHERE user_id = ? AND provider = 'local' LIMIT 1`, [userId]);
+    const idExists = await db
+        .select({ id: identities.id })
+        .from(identities)
+        .where(and(eq(identities.userId, userId), eq(identities.provider, "local")))
+        .limit(1);
     if (idExists.length > 0) {
         console.log(`  ✓ local identity already exists`);
     } else {
-        const identityId = uuid();
-        await q(
-            `INSERT INTO identities (id, tenant_id, user_id, provider, subject, email, linked_at)
-             VALUES (?, ?, ?, 'local', ?, ?, ?)`,
-            [identityId, tenantId, userId, adminEmail, adminEmail, now],
-        );
+        await db.insert(identities).values({ id: uuid(), tenantId, userId, provider: "local", subject: adminEmail, email: adminEmail, linkedAt: now });
         console.log(`  + created local identity`);
     }
 
-    // 5. 등록된 모든 서비스에 표준 role(admin/editor/member) 시드 + admin 유저에게 admin role 매핑
-    await seedServicePermissions(tenantId, userId, now);
+    // 5. 등록된 모든 서비스에 표준 role 시드 + admin 유저에게 admin role 매핑
+    await seedServicePermissions(h, tenantId, userId, now);
 }
 
-type ServiceRow = {
-    id: string;
-    name: string;
-} & Record<string, unknown>;
+async function seedServicePermissions(h: ScriptDb, tenantId: string, adminUserId: string, now: Date): Promise<void> {
+    const { db, schema } = h;
+    const { oidcClients, samlSps, serviceRoles, userServiceAssignments } = schema;
 
-async function seedServicePermissions(tenantId: string, adminUserId: string, now: number): Promise<void> {
-    const oidcClients = await qRows<ServiceRow>(`SELECT id, name FROM oidc_clients WHERE tenant_id = ?`, [tenantId]);
-    const samlSps = await qRows<ServiceRow>(`SELECT id, name FROM saml_sps WHERE tenant_id = ?`, [tenantId]);
+    const oidc = await db.select({ id: oidcClients.id, name: oidcClients.name }).from(oidcClients).where(eq(oidcClients.tenantId, tenantId));
+    const saml = await db.select({ id: samlSps.id, name: samlSps.name }).from(samlSps).where(eq(samlSps.tenantId, tenantId));
 
     const services: { type: "oidc" | "saml"; id: string; name: string }[] = [
-        ...oidcClients.map((c) => ({ type: "oidc" as const, id: c.id, name: c.name })),
-        ...samlSps.map((s) => ({ type: "saml" as const, id: s.id, name: s.name })),
+        ...oidc.map((c: { id: string; name: string }) => ({ type: "oidc" as const, id: c.id, name: c.name })),
+        ...saml.map((s: { id: string; name: string }) => ({ type: "saml" as const, id: s.id, name: s.name })),
     ];
 
     if (services.length === 0) {
@@ -241,7 +198,6 @@ async function seedServicePermissions(tenantId: string, adminUserId: string, now
         return;
     }
 
-    // 표준 role 정의 — member 가 default
     const standardRoles = [
         { key: "admin", label: "관리자", description: "서비스 관리 권한", isDefault: false, displayOrder: 0 },
         { key: "editor", label: "편집자", description: "쓰기/수정 권한", isDefault: false, displayOrder: 10 },
@@ -250,56 +206,98 @@ async function seedServicePermissions(tenantId: string, adminUserId: string, now
 
     for (const svc of services) {
         for (const r of standardRoles) {
-            const existing = await qRows<{ id: string }>(`SELECT id FROM service_roles WHERE service_type = ? AND service_ref_id = ? AND key = ? LIMIT 1`, [svc.type, svc.id, r.key]);
+            const existing = await db
+                .select({ id: serviceRoles.id })
+                .from(serviceRoles)
+                .where(and(eq(serviceRoles.serviceType, svc.type), eq(serviceRoles.serviceRefId, svc.id), eq(serviceRoles.key, r.key)))
+                .limit(1);
             if (existing.length > 0) continue;
-            await q(
-                `INSERT INTO service_roles (id, tenant_id, service_type, service_ref_id, key, label, description, is_default, display_order, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [uuid(), tenantId, svc.type, svc.id, r.key, r.label, r.description, r.isDefault ? 1 : 0, r.displayOrder, now, now],
-            );
+            await db.insert(serviceRoles).values({
+                id: uuid(),
+                tenantId,
+                serviceType: svc.type,
+                serviceRefId: svc.id,
+                key: r.key,
+                label: r.label,
+                description: r.description,
+                isDefault: r.isDefault,
+                displayOrder: r.displayOrder,
+                createdAt: now,
+                updatedAt: now,
+            });
             console.log(`  + service_roles: ${svc.type}:${svc.name} key=${r.key}`);
         }
 
-        // admin 유저에게 admin role 매핑 — 이미 매핑이 있으면 skip
-        const adminRole = await qRows<{ id: string }>(`SELECT id FROM service_roles WHERE service_type = ? AND service_ref_id = ? AND key = 'admin' LIMIT 1`, [svc.type, svc.id]);
+        const adminRole = await db
+            .select({ id: serviceRoles.id })
+            .from(serviceRoles)
+            .where(and(eq(serviceRoles.serviceType, svc.type), eq(serviceRoles.serviceRefId, svc.id), eq(serviceRoles.key, "admin")))
+            .limit(1);
         if (adminRole.length === 0) continue;
 
-        const existingAssignment = await qRows<{ id: string }>(
-            `SELECT id FROM user_service_assignments
-             WHERE tenant_id = ? AND user_id = ? AND service_type = ? AND service_ref_id = ? LIMIT 1`,
-            [tenantId, adminUserId, svc.type, svc.id],
-        );
+        const existingAssignment = await db
+            .select({ id: userServiceAssignments.id })
+            .from(userServiceAssignments)
+            .where(
+                and(
+                    eq(userServiceAssignments.tenantId, tenantId),
+                    eq(userServiceAssignments.userId, adminUserId),
+                    eq(userServiceAssignments.serviceType, svc.type),
+                    eq(userServiceAssignments.serviceRefId, svc.id),
+                ),
+            )
+            .limit(1);
         if (existingAssignment.length > 0) {
             console.log(`  ✓ assignment exists: ${svc.type}:${svc.name}`);
             continue;
         }
 
-        await q(
-            `INSERT INTO user_service_assignments (id, tenant_id, user_id, service_type, service_ref_id, service_role_id, granted_by, granted_at, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [uuid(), tenantId, adminUserId, svc.type, svc.id, adminRole[0].id, adminUserId, now, now],
-        );
+        await db.insert(userServiceAssignments).values({
+            id: uuid(),
+            tenantId,
+            userId: adminUserId,
+            serviceType: svc.type,
+            serviceRefId: svc.id,
+            serviceRoleId: adminRole[0].id,
+            grantedBy: adminUserId,
+            grantedAt: now,
+            createdAt: now,
+        });
         console.log(`  + assignment: admin -> ${svc.type}:${svc.name} role=admin`);
     }
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────
 async function main() {
-    console.log("Seeding idp database...");
+    const h = await openScriptDb();
+    console.log(`Seeding idp database (dialect=${h.dialect})...`);
 
-    const answer = await ask("기존 테이블을 모두 삭제하고 초기화하시겠습니까? (y/N): ");
-    const shouldReset = answer === "y" || answer === "yes";
+    try {
+        // 비대화 실행 지원: SEED_RESET=1 → 초기화, SEED_RESET=0 또는 non-TTY → 기존 보존.
+        // (setup.ts 및 CI 에서 프롬프트 없이 호출)
+        let shouldReset: boolean;
+        if (process.env.SEED_RESET === "1") {
+            shouldReset = true;
+        } else if (process.env.SEED_RESET === "0" || !process.stdin.isTTY) {
+            shouldReset = false;
+        } else {
+            const answer = await ask("기존 테이블을 모두 삭제하고 초기화하시겠습니까? (y/N): ");
+            shouldReset = answer === "y" || answer === "yes";
+        }
 
-    if (shouldReset) {
-        console.log("Resetting database...");
-        await resetDatabase();
-        await seedDefaults("replace");
-    } else {
-        console.log("Skipping existing data, inserting only new rows...");
-        await seedDefaults("ignore");
+        if (shouldReset) {
+            console.log("Resetting database...");
+            await resetDatabase(h);
+            await seedDefaults(h, "replace");
+        } else {
+            console.log("Skipping existing data, inserting only new rows...");
+            await seedDefaults(h, "ignore");
+        }
+
+        console.log("✅ Seed complete!");
+    } finally {
+        await h.close();
     }
-
-    console.log("✅ Seed complete!");
 }
 
 main().catch((e) => {
