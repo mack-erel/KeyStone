@@ -11,6 +11,7 @@ import * as os from "node:os";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { spawnSync, spawn } from "node:child_process";
+import { hashPassword } from "../src/lib/server/auth/password";
 
 // ─── ANSI Colors ─────────────────────────────────────────────────────────────
 const C = {
@@ -1201,17 +1202,10 @@ async function step5_migrate(args: Args, hasPreviewDb: boolean, dbName: string, 
     }
 }
 
-// ─── Password Hashing (same format as src/lib/server/auth/password.ts) ────────
-
-async function hashPasswordForSetup(password: string): Promise<string> {
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-    const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 100_000 }, keyMaterial, 256);
-    const saltB64 = btoa(String.fromCharCode(...salt));
-    const hashB64 = btoa(String.fromCharCode(...new Uint8Array(derived)));
-    // password.ts verifyPbkdf2 가 인식하는 형식: `pbkdf2$<digest>:<iter>$<saltB64>$<hashB64>`
-    return `pbkdf2$sha256:100000$${saltB64}$${hashB64}`;
-}
+// ─── Password Hashing ─────────────────────────────────────────────────────────
+// 앱의 정규 해시(argon2id, @hicaru/argon2-pure.js — 순수 JS, Workers 호환)를 그대로
+// 재사용한다. 과거 PBKDF2 직접 구현은 Workers WebCrypto 의 반복 상한(100k)과 얽혀
+// 검증 불가/OWASP 미달 문제가 있었으므로 제거했다.
 
 function generateRandomPassword(length = 20): string {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
@@ -1290,7 +1284,7 @@ async function step5b_bootstrapConfig(args: Args, dbName: string, previewDbName:
     }
 
     console.log("  비밀번호 해싱 중...");
-    const hashedPassword = await hashPasswordForSetup(password);
+    const hashedPassword = await hashPassword(password);
 
     // .env에 민감하지 않은 값만 저장
     if (fs.existsSync(ENV_FILE)) {
