@@ -1,0 +1,1 @@
+ALTER TABLE `oidc_grants` ADD `acr` text;
