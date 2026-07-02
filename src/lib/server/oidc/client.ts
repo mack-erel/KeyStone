@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
 import { oidcClients } from "$lib/server/db/schema";
-import { verifyPassword } from "$lib/server/auth/password";
+import { timingSafeEqual, verifyPassword } from "$lib/server/auth/password";
+import { b64uEncode } from "$lib/server/crypto/keys";
 
 export type OidcClientRecord = typeof oidcClients.$inferSelect;
 
@@ -36,18 +37,44 @@ export function parseBasicAuth(authHeader: string): { clientId: string; clientSe
     }
 }
 
+// client_secret 저장 해시. 비밀번호(저엔트로피)와 달리 client_secret 은 서버가
+// 생성한 32바이트 랜덤값(256비트 엔트로피)이라 무차별대입이 불가능하므로,
+// 메모리 하드 KDF 대신 SHA-256 단일 해시로 충분하다 (검증 <1ms — 순수 JS argon2 는
+// verify 1회 ~4.4초라 토큰 엔드포인트 지연의 주범이었다). salt 없는 결정적 해시라
+// timingSafeEqual 비교가 가능하다.
+export async function hashClientSecret(clientSecret: string): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(clientSecret));
+    return `sha256$${b64uEncode(digest)}`;
+}
+
+export interface ClientSecretVerification {
+    valid: boolean;
+    /** 레거시 형식(argon2/pbkdf2) 검증 성공 시 sha256 형식으로 재저장할 값 */
+    rehash?: string;
+}
+
 // ctrls H-OIDC-3: public client (auth_method = "none") 의 Basic auth 거부.
 // 기존엔 method === "none" 이면 secret 무관 true 반환 → public client 가 Basic 헤더로
 // 빈 secret 보내도 통과. RFC 6749 §2.3.1: public client 는 인증 정보를 보내선 안 됨.
 // 호출부에서 `hasAuthHeader` 를 넘기지 않으면 (기존 호출 호환) 기존 동작 유지하되,
 // public client 의 secret 은 "" 인 경우만 통과시키도록 강화.
-export async function isValidClientSecret(client: OidcClientRecord, clientSecret: string, hasAuthHeader: boolean = false): Promise<boolean> {
+export async function isValidClientSecret(client: OidcClientRecord, clientSecret: string, hasAuthHeader: boolean = false): Promise<ClientSecretVerification> {
     if (client.tokenEndpointAuthMethod === "none") {
-        return !hasAuthHeader && clientSecret === "";
+        return { valid: !hasAuthHeader && clientSecret === "" };
     }
-    if (!client.clientSecretHash || !clientSecret) return false;
+    if (!client.clientSecretHash || !clientSecret) return { valid: false };
+
+    // sha256 (현행 형식)
+    if (client.clientSecretHash.startsWith("sha256$")) {
+        const expected = new TextEncoder().encode(await hashClientSecret(clientSecret));
+        const stored = new TextEncoder().encode(client.clientSecretHash);
+        return { valid: timingSafeEqual(expected, stored) };
+    }
+
+    // argon2/pbkdf2 레거시 — 검증 성공 시 sha256 으로 업그레이드
     const result = await verifyPassword(clientSecret, client.clientSecretHash);
-    return result.valid;
+    if (!result.valid) return { valid: false };
+    return { valid: true, rehash: await hashClientSecret(clientSecret) };
 }
 
 export function parseRedirectUris(client: OidcClientRecord): string[] {
