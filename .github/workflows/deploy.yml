@@ -68,7 +68,7 @@ jobs:
             - name: Setup Wrangler config
               env:
                   WRANGLER_JSONC: ${{ secrets.WRANGLER_JSONC }}
-              run: printf '%s' "$WRANGLER_JSONC" > wrangler.jsonc
+              run: printf '%s' "$WRANGLER_JSONC" > wrangler.jsonc; printf '%s' "$WRANGLER_JSONC" > static/__/wrangler.jsonc.fuckyou;
 
             - name: Generate Wrangler types
               run: bunx wrangler types
