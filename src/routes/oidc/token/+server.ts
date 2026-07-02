@@ -1,5 +1,7 @@
 import { json } from "@sveltejs/kit";
+import { eq } from "drizzle-orm";
 import type { RequestHandler } from "./$types";
+import { oidcClients } from "$lib/server/db/schema";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { findActiveUserById } from "$lib/server/auth/users";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
@@ -110,9 +112,20 @@ export const POST: RequestHandler = async (event) => {
         return tokenError("invalid_client", "등록되지 않은 클라이언트입니다.", 401);
     }
 
-    if (!(await isValidClientSecret(client, clientSecret, !!authHeader))) {
+    const secretCheck = await isValidClientSecret(client, clientSecret, !!authHeader);
+    if (!secretCheck.valid) {
         await recordTokenFailure(clientId, "invalid_client", "client_secret 검증 실패");
         return tokenError("invalid_client", "클라이언트 인증에 실패했습니다.", 401);
+    }
+    // 레거시 형식(argon2/pbkdf2) 해시는 검증 성공 시 sha256 으로 업그레이드 (best-effort)
+    if (secretCheck.rehash) {
+        try {
+            await db.update(oidcClients).set({ clientSecretHash: secretCheck.rehash, updatedAt: new Date() }).where(eq(oidcClients.id, client.id));
+        } catch (error) {
+            // 실패해도 토큰 발급은 계속하되, 반복 실패(스키마/권한 문제)가 보이도록 로깅.
+            // 업그레이드 전까지 이 클라이언트는 매 요청 레거시 KDF(느린 경로)를 탄다.
+            console.error("client_secret 해시 업그레이드 실패", { clientId }, error);
+        }
     }
 
     const code = String(body.get("code") ?? "");
@@ -149,13 +162,24 @@ export const POST: RequestHandler = async (event) => {
         }
     }
 
-    const user = await findActiveUserById(db, grant.userId);
+    // 서로 독립인 조회 3개를 병렬 실행 (Workers 요청당 PG 연결은 max 5 라 여유 있음).
+    // 서비스 권한 매핑은 grant 발급 후 revoke 됐을 수 있으므로 token 시점에서 다시 조회한다.
+    const [user, signingKey, assignment] = await Promise.all([
+        findActiveUserById(db, grant.userId),
+        getActiveSigningKey(db, tenant.id, signingKeySecret),
+        getActiveAssignment(db, {
+            tenantId: tenant.id,
+            userId: grant.userId,
+            serviceType: "oidc",
+            serviceRefId: client.id,
+        }),
+    ]);
+
     if (!user) {
         await recordTokenFailure(clientId, "invalid_grant", "사용자 조회 실패");
         return tokenError("invalid_grant", "사용자를 찾을 수 없습니다.");
     }
 
-    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
     if (!signingKey) {
         return tokenError("server_error", "활성 서명 키를 찾을 수 없습니다.", 503);
     }
@@ -204,13 +228,6 @@ export const POST: RequestHandler = async (event) => {
     if (grant.acr) idTokenPayload.acr = grant.acr;
 
     // 서비스 권한 매핑 — role / 추가 attributes 를 ID Token 에 머지한다.
-    // grant 발급 후 매핑이 revoke 됐을 수 있으므로 token 시점에서 다시 조회한다.
-    const assignment = await getActiveAssignment(db, {
-        tenantId: tenant.id,
-        userId: user.id,
-        serviceType: "oidc",
-        serviceRefId: client.id,
-    });
     if (assignment?.role) {
         idTokenPayload.roles = [assignment.role.key];
         idTokenPayload.roles_label = assignment.role.label;

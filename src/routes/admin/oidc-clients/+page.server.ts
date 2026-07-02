@@ -4,7 +4,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { oidcClients } from "$lib/server/db/schema";
-import { hashPassword } from "$lib/server/auth/password";
+import { hashClientSecret } from "$lib/server/oidc/client";
 
 function generateClientId(): string {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 20);
@@ -179,7 +179,7 @@ export const actions: Actions = {
 
         const clientId = generateClientId();
         const clientSecret = tokenMethod !== "none" ? generateClientSecret() : null;
-        const clientSecretHashed = clientSecret ? await hashPassword(clientSecret) : null;
+        const clientSecretHashed = clientSecret ? await hashClientSecret(clientSecret) : null;
 
         await db.insert(oidcClients).values({
             id: crypto.randomUUID(),
@@ -298,7 +298,7 @@ export const actions: Actions = {
         if (!id) return fail(400, { error: "잘못된 요청입니다." });
 
         const newSecret = generateClientSecret();
-        const newSecretHashed = await hashPassword(newSecret);
+        const newSecretHashed = await hashClientSecret(newSecret);
         await db
             .update(oidcClients)
             .set({ clientSecretHash: newSecretHashed, updatedAt: new Date() })
