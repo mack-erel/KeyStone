@@ -1,0 +1,1 @@
+ALTER TABLE `oidc_clients` ADD `allow_wildcard_redirect_uri` integer DEFAULT false NOT NULL;

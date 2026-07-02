@@ -44,6 +44,9 @@ const ENV_FILE = path.join(ROOT, ".env");
 
 // ─── CLI Argument Parsing ─────────────────────────────────────────────────────
 interface Args {
+    dialect?: string;
+    databaseUrl?: string;
+    hyperdriveId?: string;
     dbId?: string;
     dbName?: string;
     previewDbId?: string;
@@ -75,6 +78,15 @@ function parseArgs(argv: string[]): Args {
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i];
         switch (arg) {
+            case "--dialect":
+                args.dialect = argv[++i];
+                break;
+            case "--database-url":
+                args.databaseUrl = argv[++i];
+                break;
+            case "--hyperdrive-id":
+                args.hyperdriveId = argv[++i];
+                break;
             case "--db-id":
                 args.dbId = argv[++i];
                 break;
@@ -148,6 +160,9 @@ function printHelp() {
 ${cyan("사용법:")} bun run scripts/setup.ts [옵션]
 
 ${cyan("옵션:")}
+  --dialect <d>            DB 방언: d1(기본) | postgres | mysql | sqlite
+  --database-url <url>     postgres/mysql/sqlite 연결 문자열
+  --hyperdrive-id <id>     (postgres/mysql) Cloudflare Hyperdrive 구성 ID
   --db-id <id>              기존 D1 DB ID 직접 지정
   --db-name <name>          새로 생성할 D1 DB 이름
   --preview-db-id <id>      기존 프리뷰 D1 DB ID 직접 지정
@@ -1480,6 +1495,170 @@ ${cyan("━━━━━━━━━━━━━━━━━━━━━━━━
 `);
 }
 
+// ─── Direct-connection path (postgres / mysql / sqlite) ────────────────────────
+
+type DirectDialect = "postgres" | "mysql" | "sqlite";
+const GEN_SCRIPT_BY_DIALECT: Record<DirectDialect, string> = {
+    postgres: "db:generate:pg",
+    mysql: "db:generate:mysql",
+    sqlite: "db:generate:sqlite",
+};
+const MIGRATE_SCRIPT_BY_DIALECT: Record<DirectDialect, string> = {
+    postgres: "db:migrate:pg",
+    mysql: "db:migrate:mysql",
+    sqlite: "db:migrate:sqlite",
+};
+
+/** 활성 방언 결정: --dialect > process.env.DB_DIALECT > .env DB_DIALECT > 프롬프트(기본 d1). */
+async function resolveSetupDialect(args: Args): Promise<string> {
+    const explicit = (args.dialect ?? process.env.DB_DIALECT ?? "").toLowerCase();
+    if (explicit) return explicit;
+    const fromEnvFile = (loadEnvFile(ENV_FILE).DB_DIALECT ?? "").toLowerCase();
+    if (fromEnvFile) return fromEnvFile;
+    if (args.yes) return "d1";
+    const choice = await select("사용할 DB 방언을 선택하세요", ["d1 (Cloudflare D1 — 기본)", "postgres", "mysql", "sqlite (libSQL/Turso)"]);
+    return ["d1", "postgres", "mysql", "sqlite"][choice - 1];
+}
+
+/** wrangler.jsonc 에 Hyperdrive 바인딩(HYPERDRIVE) 을 설정/갱신한다. */
+function setHyperdriveBinding(id: string) {
+    if (!fs.existsSync(WRANGLER_JSONC)) return;
+    let content = readFile(WRANGLER_JSONC);
+    const activeArr = content.match(/(?<!\/\/\s*)"hyperdrive"\s*:\s*\[[\s\S]*?\]/);
+    if (activeArr && /"binding"\s*:\s*"HYPERDRIVE"/.test(activeArr[0])) {
+        // 기존 활성 바인딩 — id 만 교체
+        content = content.replace(/("binding"\s*:\s*"HYPERDRIVE"[\s\S]*?"id"\s*:\s*)"[^"]*"/, `$1"${id}"`);
+    } else {
+        // 마지막 } 앞에 새 배열 추가
+        content = content.replace(/\}\s*$/, `    "hyperdrive": [\n        {\n            "binding": "HYPERDRIVE",\n            "id": "${id}",\n        },\n    ],\n}\n`);
+    }
+    writeFile(WRANGLER_JSONC, content);
+}
+
+async function step3_directDbSetup(args: Args, dialect: DirectDialect): Promise<{ databaseUrl: string }> {
+    console.log(`\n${cyan(`─── 3. ${dialect} 연결 설정 ───────────────────────────────`)}`);
+    const env = loadEnvFile(ENV_FILE);
+
+    let databaseUrl = args.databaseUrl ?? env.DATABASE_URL ?? "";
+    if (databaseUrl && !args.databaseUrl) {
+        const masked = databaseUrl.replace(/:\/\/([^:]+):[^@]*@/, "://$1:***@");
+        const keep = args.yes || (await confirm(`기존 DATABASE_URL 을 사용하시겠습니까? (${masked})`, true));
+        if (!keep) databaseUrl = "";
+    }
+    if (!databaseUrl) {
+        const example = dialect === "sqlite" ? "file:./keystone.db" : dialect === "postgres" ? "postgres://user:pass@host:5432/db" : "mysql://user:pass@host:3306/db";
+        databaseUrl = await ask(`DATABASE_URL 입력 (예: ${example})`);
+        if (!databaseUrl) {
+            console.error(red("  DATABASE_URL 이 필요합니다. 종료합니다."));
+            closeRL();
+            process.exit(1);
+        }
+    }
+
+    // Hyperdrive (postgres/mysql 만 — Workers 배포용)
+    let hyperdriveId = args.hyperdriveId ?? "";
+    if (dialect !== "sqlite") {
+        if (!hyperdriveId && !args.yes) {
+            const wantHd = await confirm("Cloudflare Workers 배포용 Hyperdrive 바인딩을 설정하시겠습니까?", true);
+            if (wantHd) hyperdriveId = await ask("Hyperdrive 구성 ID (엔터: 건너뜀)", "");
+        }
+        if (hyperdriveId) {
+            setHyperdriveBinding(hyperdriveId);
+            console.log(green(`  ✓ wrangler.jsonc HYPERDRIVE 바인딩 설정 (id: ${hyperdriveId})`));
+        }
+    }
+
+    // .env: DB_DIALECT + DATABASE_URL, wrangler vars: DB_DIALECT (DATABASE_URL 은 민감정보라 .env 전용)
+    let envContent = readFile(ENV_FILE);
+    let wranglerContent = readFile(WRANGLER_JSONC);
+    ({ env: envContent, wrangler: wranglerContent } = applyVar(envContent, wranglerContent, "DB_DIALECT", dialect));
+    const dbUrlRe = /^DATABASE_URL=.*$/m;
+    if (dbUrlRe.test(envContent)) envContent = envContent.replace(dbUrlRe, `DATABASE_URL="${databaseUrl}"`);
+    else envContent += `${envContent.endsWith("\n") ? "" : "\n"}DATABASE_URL="${databaseUrl}"\n`;
+    writeFile(ENV_FILE, envContent);
+    writeFile(WRANGLER_JSONC, wranglerContent);
+    console.log(green("  ✓ .env / wrangler.jsonc 업데이트 (DB_DIALECT, DATABASE_URL)"));
+
+    return { databaseUrl };
+}
+
+async function step5_directMigrate(args: Args, dialect: DirectDialect, databaseUrl: string) {
+    console.log(`\n${cyan("─── 5. 마이그레이션 ────────────────────────────────────────")}`);
+    let doMigrate = args.migrate;
+    if (doMigrate === undefined) doMigrate = await confirm("스키마 마이그레이션을 지금 진행하시겠습니까?", true);
+    if (!doMigrate) {
+        console.log("  마이그레이션 건너뜀");
+        return;
+    }
+    const migrateEnv = { DB_DIALECT: dialect, DATABASE_URL: databaseUrl };
+    console.log(`\n  bun run ${GEN_SCRIPT_BY_DIALECT[dialect]} 실행 중...`);
+    const gen = runCommand("bun", ["run", GEN_SCRIPT_BY_DIALECT[dialect]], { inherit: true, env: migrateEnv });
+    if (!gen.success) {
+        console.error(red("  마이그레이션 생성 실패"));
+        closeRL();
+        process.exit(1);
+    }
+    console.log(`  bun run ${MIGRATE_SCRIPT_BY_DIALECT[dialect]} 실행 중...`);
+    const mig = runCommand("bun", ["run", MIGRATE_SCRIPT_BY_DIALECT[dialect]], { inherit: true, env: migrateEnv });
+    if (!mig.success) {
+        console.error(red("  마이그레이션 적용 실패"));
+        closeRL();
+        process.exit(1);
+    }
+    console.log(green("  ✓ 마이그레이션 완료"));
+}
+
+async function step5b_directBootstrap(args: Args, dialect: DirectDialect, databaseUrl: string): Promise<{ email: string; password: string; generated: boolean } | null> {
+    console.log(`\n${cyan("─── 5b. 초기 관리자 계정 생성 ─────────────────────────────────")}`);
+    const tenantName = args.tenantName ?? (await ask("조직(테넌트) 이름", "My Organization"));
+    const username = args.adminUsername ?? (await ask("초기 관리자 아이디", "admin"));
+    const email = args.adminEmail ?? (await ask("초기 관리자 이메일", "admin@example.com"));
+    const displayName = args.adminName ?? (await ask("초기 관리자 표시 이름", "관리자"));
+    const issuerUrl = args.issuerUrl ?? (await ask("IDP Issuer URL", "http://localhost:5173"));
+
+    let password: string;
+    let generated = false;
+    if (args.adminPassword) {
+        password = args.adminPassword;
+    } else {
+        const input = await ask("초기 관리자 비밀번호 (엔터: 자동 생성)", "");
+        if (input === "") {
+            password = generateRandomPassword(20);
+            generated = true;
+        } else {
+            password = input;
+        }
+    }
+
+    if (fs.existsSync(ENV_FILE)) {
+        let envContent = readFile(ENV_FILE);
+        envContent = envContent.replace(/^IDP_DEFAULT_TENANT_NAME=".*"$/m, `IDP_DEFAULT_TENANT_NAME="${tenantName}"`);
+        envContent = envContent.replace(/^IDP_ISSUER_URL=".*"$/m, `IDP_ISSUER_URL="${issuerUrl}"`);
+        writeFile(ENV_FILE, envContent);
+        console.log(green("  ✓ .env 업데이트 완료 (테넌트 이름, Issuer URL)"));
+    }
+
+    // 검증된 scripts/seed.ts 재사용 — 비밀번호는 env 로 전달, SEED_RESET=0 으로 프롬프트 없이 실행.
+    console.log("  scripts/seed.ts 로 관리자 시드 중...");
+    const seed = runCommand("bun", ["scripts/seed.ts"], {
+        inherit: true,
+        env: {
+            DB_DIALECT: dialect,
+            DATABASE_URL: databaseUrl,
+            SEED_RESET: "0",
+            IDP_BOOTSTRAP_ADMIN_USERNAME: username,
+            IDP_BOOTSTRAP_ADMIN_EMAIL: email,
+            IDP_BOOTSTRAP_ADMIN_PASSWORD: password,
+            IDP_BOOTSTRAP_ADMIN_NAME: displayName,
+        },
+    });
+    if (!seed.success) {
+        console.error(red("  관리자 시드 실패"));
+        return null;
+    }
+    return { email, password, generated };
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
     const argv = process.argv.slice(2);
@@ -1492,29 +1671,35 @@ async function main() {
 
     console.log(`${C.bold}${cyan("=== Keystone 프로젝트 셋업 ===")}${C.reset}`);
 
-    // Step 0: wrangler login check
-    const accountId = await step0_wranglerLogin(args);
-
-    // Step 1: wrangler.jsonc
+    // wrangler.jsonc / .env 생성 (방언 무관)
     await step1_createWranglerJsonc(args);
-
-    // Step 2: .env
     await step2_createEnv(args);
 
-    // Step 3: DB setup
-    const { dbId, dbName, previewDbId, previewDbName } = await step3_dbSetup(args);
+    // 활성 DB 방언 결정
+    const dialect = await resolveSetupDialect(args);
+    console.log(`\n${cyan(`DB 방언: ${dialect}`)}`);
 
-    // Step 4: Update files
-    await step4_updateFiles(dbId, previewDbId, accountId, dbName);
+    let adminResult: { email: string; password: string; generated: boolean } | null = null;
 
-    // Step 4b: R2 bucket
-    await step4b_r2Setup(args);
-
-    // Step 5: Migration
-    await step5_migrate(args, previewDbId !== null, dbName, previewDbName);
-
-    // Step 5b: Bootstrap admin directly in D1
-    const adminResult = await step5b_bootstrapConfig(args, dbName, previewDbName);
+    if (dialect === "d1") {
+        // Cloudflare D1 경로
+        const accountId = await step0_wranglerLogin(args);
+        const { dbId, dbName, previewDbId, previewDbName } = await step3_dbSetup(args);
+        await step4_updateFiles(dbId, previewDbId, accountId, dbName);
+        await step4b_r2Setup(args);
+        await step5_migrate(args, previewDbId !== null, dbName, previewDbName);
+        adminResult = await step5b_bootstrapConfig(args, dbName, previewDbName);
+    } else if (dialect === "postgres" || dialect === "mysql" || dialect === "sqlite") {
+        // 직결(DATABASE_URL) 경로 — postgres / mysql / sqlite
+        const { databaseUrl } = await step3_directDbSetup(args, dialect);
+        await step4b_r2Setup(args);
+        await step5_directMigrate(args, dialect, databaseUrl);
+        adminResult = await step5b_directBootstrap(args, dialect, databaseUrl);
+    } else {
+        console.error(red(`알 수 없는 DB_DIALECT: ${dialect} (d1 | postgres | mysql | sqlite)`));
+        closeRL();
+        process.exit(1);
+    }
 
     await step5c_smtpConfig(args);
 

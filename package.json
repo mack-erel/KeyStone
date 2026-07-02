@@ -27,6 +27,18 @@
         "db:seed:migrate": "bun scripts/seed-migrate.ts",
         "db:seed:migrate:preview": "CLOUDFLARE_IS_PREVIEW=true bun scripts/seed-migrate.ts",
         "db:studio": "drizzle-kit studio",
+        "db:migrate:pg": "DB_DIALECT=postgres drizzle-kit migrate && DB_DIALECT=postgres bun scripts/seed-migrate.ts",
+        "db:seed:pg": "DB_DIALECT=postgres bun scripts/seed.ts",
+        "db:push:pg": "DB_DIALECT=postgres drizzle-kit push",
+        "db:studio:pg": "DB_DIALECT=postgres drizzle-kit studio",
+        "db:migrate:mysql": "DB_DIALECT=mysql drizzle-kit migrate && DB_DIALECT=mysql bun scripts/seed-migrate.ts",
+        "db:seed:mysql": "DB_DIALECT=mysql bun scripts/seed.ts",
+        "db:push:mysql": "DB_DIALECT=mysql drizzle-kit push",
+        "db:studio:mysql": "DB_DIALECT=mysql drizzle-kit studio",
+        "db:migrate:sqlite": "DB_DIALECT=sqlite drizzle-kit migrate && DB_DIALECT=sqlite bun scripts/seed-migrate.ts",
+        "db:seed:sqlite": "DB_DIALECT=sqlite bun scripts/seed.ts",
+        "db:push:sqlite": "DB_DIALECT=sqlite drizzle-kit push",
+        "db:studio:sqlite": "DB_DIALECT=sqlite drizzle-kit studio",
         "setup": "bun run scripts/setup.ts"
     },
     "devDependencies": {

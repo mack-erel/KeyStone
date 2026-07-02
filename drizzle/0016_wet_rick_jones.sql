@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `signing_keys_tenant_one_active_uidx` ON `signing_keys` (`tenant_id`) WHERE active = 1;

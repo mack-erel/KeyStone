@@ -157,15 +157,21 @@ bun install
 bun run setup
 ```
 
-`bun run setup`은 아래 과정을 대화형으로 안내합니다:
+`bun run setup`은 아래 과정을 대화형으로 안내합니다. DB 방언은 `--dialect`(`d1`(기본) | `postgres` | `mysql` | `sqlite`) 또는 `DB_DIALECT` 환경변수로 선택하며, 방언에 따라 3~5단계가 갈라집니다:
 
-1. **wrangler 로그인 확인** — 미로그인 시 `wrangler login` 자동 실행
-2. **설정 파일 생성** — `wrangler.example.jsonc` → `wrangler.jsonc`, `.env.example` → `.env`
-3. **D1 데이터베이스** — 새로 생성하거나 기존 DB 선택 (프리뷰 DB 선택적)
-4. **파일 업데이트** — DB ID 및 계정 ID를 `wrangler.jsonc`, `.env`에 자동 기입
-5. **마이그레이션** — `bun run db:generate` 실행 후 D1에 스키마 적용 (충돌 테이블 감지 및 처리 포함)
-6. **초기 관리자 계정 생성** — 조직명, 관리자 계정 정보, Issuer URL 입력 후 D1에 직접 삽입 (비밀번호 미입력 시 자동 생성)
-7. **서명 키** — `IDP_SIGNING_KEY_SECRET` 자동 생성 또는 직접 입력 후 `.env`에 저장
+1. **설정 파일 생성** — `wrangler.example.jsonc` → `wrangler.jsonc`, `.env.example` → `.env`
+2. **DB 방언 결정** — `--dialect` > `DB_DIALECT` env > `.env` > 프롬프트
+3. **DB 설정**
+    - `d1`: wrangler 로그인 확인 후 D1 새로 생성 또는 기존 DB 선택 (프리뷰 DB 선택적), DB ID·계정 ID를 `wrangler.jsonc`/`.env`에 자동 기입
+    - `postgres`/`mysql`/`sqlite`: `DATABASE_URL` 입력(또는 기존 값 재사용), postgres/mysql 은 Hyperdrive 구성 ID 입력 시 `wrangler.jsonc` 의 `HYPERDRIVE` 바인딩 자동 설정
+4. **마이그레이션** — 방언별 `db:generate*` 실행 후 스키마 적용 (D1 은 충돌 테이블 감지 및 처리 포함)
+5. **초기 관리자 계정 생성** — 조직명, 관리자 계정 정보, Issuer URL 입력 후 DB에 시드 (비밀번호 미입력 시 자동 생성)
+6. **서명 키** — `IDP_SIGNING_KEY_SECRET` 자동 생성 또는 직접 입력 후 `.env`에 저장
+
+```bash
+# 예: PostgreSQL 로 셋업
+bun run setup -- --dialect postgres --database-url "postgres://user:pass@host:5432/db" --hyperdrive-id <id>
+```
 
 > R2 버킷(`keystone-skin-cache`)은 커스텀 로그인 스킨 기능을 사용할 때 필요합니다. 사용하지 않는다면 `wrangler.jsonc`의 `r2_buckets` 항목을 주석 처리해도 됩니다.
 
@@ -202,7 +208,7 @@ wrangler secret put IDP_SIGNING_KEY_SECRET
 | `CLOUDFLARE_D1_PREVIEW_DATABASE_ID` | 선택 | 프리뷰용 D1 데이터베이스 ID                                                              |
 | `CLOUDFLARE_D1_TOKEN`               | 선택 | D1 API 토큰 (`db:migrate` 스크립트에서 사용)                                             |
 
-> **참고**: 초기 관리자 계정은 `bun run setup` 실행 시 D1에 직접 생성됩니다. `IDP_BOOTSTRAP_ADMIN_*` 환경변수는 사용하지 않습니다.
+> **참고**: 초기 관리자 계정은 `bun run setup` 이 생성합니다. 수동/CI 시드가 필요하면 `IDP_BOOTSTRAP_ADMIN_USERNAME` / `IDP_BOOTSTRAP_ADMIN_EMAIL` / `IDP_BOOTSTRAP_ADMIN_PASSWORD` (+선택 `IDP_BOOTSTRAP_ADMIN_NAME`) 를 설정하고 `bun run db:seed`(방언별: `db:seed:pg` 등)를 실행하세요. 비대화 환경에서는 `SEED_RESET=0|1` 로 초기화 여부를 지정합니다.
 
 ### Cloudflare 바인딩 (`wrangler.jsonc`)
 
@@ -228,8 +234,14 @@ wrangler secret put IDP_SIGNING_KEY_SECRET
 | `bun run db:generate:sqlite` | Drizzle 마이그레이션 SQL 생성 (libSQL/SQLite)      |
 | `bun run db:generate:pg`     | Drizzle 마이그레이션 SQL 생성 (PostgreSQL)         |
 | `bun run db:generate:mysql`  | Drizzle 마이그레이션 SQL 생성 (MySQL)              |
+| `bun run db:migrate`         | 마이그레이션 적용 + seed 마이그레이션 (D1)         |
+| `bun run db:migrate:pg`      | 마이그레이션 적용 + seed 마이그레이션 (PostgreSQL) |
+| `bun run db:seed`            | 기본 데이터 시드 — 테넌트/관리자/서비스 role (D1)  |
+| `bun run db:seed:pg`         | 기본 데이터 시드 (PostgreSQL)                      |
 | `bun run db:studio`          | Drizzle Studio 실행 (스키마/데이터 GUI)            |
 | `bun run deploy`             | Cloudflare Workers 배포                            |
+
+> `db:migrate` / `db:seed` / `db:push` / `db:studio` 는 `:pg` / `:mysql` / `:sqlite` 접미사로 방언별 실행이 가능합니다. postgres/mysql/sqlite 는 `DATABASE_URL`, D1 은 `CLOUDFLARE_*` 환경변수를 사용합니다. `scripts/seed.ts` 와 `scripts/seed-migrate.ts` 는 방언 무관(공용 헬퍼 `scripts/lib/db.ts`)이며, D1 은 REST API 로 접근합니다.
 
 ## DB 방언 선택 (d1 / sqlite / postgresql / mysql)
 
@@ -267,7 +279,12 @@ BUILD_TARGET=node DB_DIALECT=sqlite DATABASE_URL="file:./keystone.db" bun run bu
 wrangler hyperdrive create keystone-pg    --connection-string="postgres://user:pass@host:5432/db"
 wrangler hyperdrive create keystone-mysql --connection-string="mysql://user:pass@host:3306/db"
 # → 출력된 id 를 wrangler.jsonc 의 hyperdrive[].id 에 채우고 주석 해제
+#   (또는 bun run setup -- --dialect postgres --hyperdrive-id <id> 로 자동 설정)
 # (Hyperdrive 없이 직결하려면 DATABASE_URL 을 var/secret 으로 설정)
+
+# 스키마 적용 + 시드 (PostgreSQL 예시 — DATABASE_URL 사용)
+bun run db:generate:pg && bun run db:migrate:pg
+bun run db:seed:pg
 ```
 
 ### 배포 타깃: Cloudflare Workers vs 순수 Node
