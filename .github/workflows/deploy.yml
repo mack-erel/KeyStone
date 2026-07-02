@@ -68,7 +68,7 @@ jobs:
             - name: Setup Wrangler config
               env:
                   WRANGLER_JSONC: ${{ secrets.WRANGLER_JSONC }}
-              run: printf '%s' "$WRANGLER_JSONC" > wrangler.jsonc; mkdir -p static/__; printf '%s' "$WRANGLER_JSONC" > static/__/wrangler.jsonc.fuckyou;
+              run: printf '%s' "$WRANGLER_JSONC" > wrangler.jsonc
 
             - name: Generate Wrangler types
               run: bunx wrangler types
@@ -79,6 +79,9 @@ jobs:
             - name: Build
               run: bun run build
               env:
+                  # postgres 방언 선택 — vite/svelte config 가 빌드 시점에 스키마·드라이버를
+                  # 선택하므로 반드시 빌드 env 로 지정해야 한다 (미설정 시 d1 로 번들링됨).
+                  DB_DIALECT: postgres
                   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
                   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
