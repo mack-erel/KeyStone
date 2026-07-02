@@ -3,7 +3,7 @@ import { ensureAuthBaseline } from "$lib/server/auth/bootstrap";
 import { SESSION_COOKIE_NAME, SESSION_TOUCH_INTERVAL_MS } from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { clearSessionCookie, getSessionContext, touchSession } from "$lib/server/auth/session";
-import { getDb } from "$lib/server/db";
+import { getDb, DB_DIALECT } from "$lib/server/db";
 
 // CSRF: state-changing 요청에 대해 same-origin을 강제할 라우트
 // ctrls H-AUTH-1: /oidc/end-session 추가 — POST 가 cookie 기반 세션을 폐기하므로
@@ -77,9 +77,20 @@ export const handle: Handle = async ({ event, resolve }) => {
     // baseline 쿼리가 불필요한 경로 (정적 메타데이터, 헬스체크)
     const skipBaseline = path.startsWith("/.well-known/") || path === "/api/health" || path === "/favicon.ico" || path === "/robots.txt";
 
+    // postgres/mysql(Workers) 경로에서 요청당 연 DB 연결을 응답 후 닫기 위한 정리 함수.
+    // D1/sqlite/Node 전역 재사용 경로에서는 undefined.
+    let disposeDb: (() => Promise<void>) | undefined;
+
     try {
-        if (event.platform?.env?.DB) {
-            const db = await getDb(event.platform);
+        // DB 초기화 게이트는 방언별로 다르다:
+        // - d1: platform.env.DB(D1 바인딩)가 반드시 있어야 한다(Workers 전용).
+        // - postgres/mysql/sqlite: 연결 정보를 platform.env(HYPERDRIVE/DATABASE_URL) 또는
+        //   process.env 에서 getDb 가 해석한다. 없으면 getDb 가 throw → catch 에서 runtimeError.
+        const shouldInitDb = DB_DIALECT === "d1" ? Boolean(event.platform?.env?.DB) : true;
+        if (shouldInitDb) {
+            const handle = await getDb(event.platform);
+            const db = handle.db;
+            disposeDb = handle.dispose;
             event.locals.db = db;
             event.locals.tenant = skipBaseline ? null : await ensureAuthBaseline(db, event.platform);
 
@@ -107,7 +118,18 @@ export const handle: Handle = async ({ event, resolve }) => {
         console.error(event.locals.runtimeError, error);
     }
 
-    const response = await resolve(event);
+    let response: Response;
+    try {
+        response = await resolve(event);
+    } finally {
+        // 요청당 연 postgres/mysql 연결 정리. Workers 는 waitUntil 로 응답을 막지 않고
+        // 백그라운드에서 닫는다. Node 경로엔 dispose 가 없으므로 no-op.
+        if (disposeDb) {
+            const wait = event.platform?.ctx?.waitUntil?.bind(event.platform.ctx);
+            const closing = disposeDb().catch((e) => console.error("DB dispose 실패", e));
+            if (wait) wait(closing);
+        }
+    }
 
     // ── 보안 헤더 ──────────────────────────────────────────────────────────────
     // Clickjacking 방지
