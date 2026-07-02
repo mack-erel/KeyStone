@@ -23,6 +23,7 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { openScriptDb, type ScriptDb, type Dialect } from "./lib/db";
+import { hashPassword } from "../src/lib/server/auth/password";
 
 function ask(question: string): Promise<string> {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -31,18 +32,6 @@ function ask(question: string): Promise<string> {
 
 function uuid(): string {
     return crypto.randomUUID();
-}
-
-// PBKDF2 — password.ts verifyPbkdf2 가 인식하는 형식: `pbkdf2$<digest>:<iter>$<saltB64>$<hashB64>`
-// ctrls H-SEED-1: OWASP 2023 권고(SHA-256 600k) 충족. 첫 로그인 시 argon2id 로 자동 업그레이드.
-async function hashPasswordPbkdf2(password: string): Promise<string> {
-    const salt = crypto.getRandomValues(new Uint8Array(16));
-    const iterations = 600_000;
-    const keyMaterial = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-    const derived = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, keyMaterial, 256);
-    const saltB64 = btoa(String.fromCharCode(...salt));
-    const hashB64 = btoa(String.fromCharCode(...new Uint8Array(derived)));
-    return `pbkdf2$sha256:${iterations}$${saltB64}$${hashB64}`;
 }
 
 // ─── 방언별 마이그레이션 디렉터리 ──────────────────────────────────────────────
@@ -159,7 +148,7 @@ async function seedDefaults(h: ScriptDb, mode: "replace" | "ignore"): Promise<vo
     if (credExists.length > 0) {
         console.log(`  ✓ password credential already exists`);
     } else {
-        const hashed = await hashPasswordPbkdf2(adminPassword);
+        const hashed = await hashPassword(adminPassword);
         await db.insert(credentials).values({ id: uuid(), userId, type: "password", secret: hashed, label: "비밀번호", createdAt: now });
         console.log(`  + created password credential`);
     }
