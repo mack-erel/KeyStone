@@ -60,7 +60,7 @@ export const actions: Actions = {
         const requestMetadata = getRequestMetadata(event);
 
         // 레이트 리밋: IP당 10회/15분
-        const rlKey = `admin-login:${requestMetadata.ip ?? "unknown"}`;
+        const rlKey = `admin-login:${requestMetadata.ipKey}`;
         const rl = await checkRateLimit(db, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
             return fail(429, {

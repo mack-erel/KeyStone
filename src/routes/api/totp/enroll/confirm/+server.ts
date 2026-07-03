@@ -4,6 +4,7 @@ import { requireServiceToken } from "$lib/server/auth/service-token";
 import { TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { encryptTotpSecret, generateBackupCodes, hashBackupCode, verifyTotp } from "$lib/server/auth/totp";
+import { checkRateLimit } from "$lib/server/ratelimit";
 import { credentials, users } from "$lib/server/db/schema";
 
 /**
@@ -30,6 +31,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         throw error(400, "userId, secret, code required");
     }
 
+    // ctrls C3: enrollment 코드 브루트포스 방어 (사용자당 5분 창 10회).
+    const rl = await checkRateLimit(db, `totp-enroll-confirm:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
+    if (!rl.allowed) {
+        throw error(429, "TOTP 등록 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+    }
+
     const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
     if (!u) throw error(404, `user ${userId} not found`);
 
@@ -52,6 +59,8 @@ export const POST: RequestHandler = async ({ request, locals }) => {
         type: TOTP_CREDENTIAL_TYPE,
         secret: encryptedSecret,
         label,
+        // ctrls C3: 등록에 사용한 스텝을 last-used 로 기록 — 동일 코드를 곧바로 /verify 로 재사용 불가.
+        counter: verifiedStep,
     });
 
     const backupCodes = generateBackupCodes();

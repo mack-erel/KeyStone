@@ -79,7 +79,7 @@ export const actions: Actions = {
 
         // IP 기반 레이트리밋 — 60분/5회.
         const meta = getRequestMetadata(event);
-        const rl = await checkRateLimit(db, `find-password:${meta.ip ?? "unknown"}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        const rl = await checkRateLimit(db, `find-password:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
             const msg = `요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
             return fail(429, { error: msg, skinHtml: await resolveSkinForAction(event, false, undefined, msg) });

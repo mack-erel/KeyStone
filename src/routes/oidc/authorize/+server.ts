@@ -21,8 +21,8 @@ export const GET: RequestHandler = async (event) => {
     const { db, tenant } = requireDbContext(locals);
 
     // IP당 60회/분 제한 — grant INSERT DoS 방지
-    const { ip } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `oidc-authorize:${ip ?? "unknown"}`, {
+    const { ip, ipKey } = getRequestMetadata(event);
+    const rl = await checkRateLimit(db, `oidc-authorize:${ipKey}`, {
         windowMs: 60 * 1000,
         limit: 60,
     });

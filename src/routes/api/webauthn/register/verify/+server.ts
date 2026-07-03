@@ -60,8 +60,9 @@ export const POST: RequestHandler = async (event) => {
     const label = typeof body.label === "string" ? sanitizePasskeyLabel(body.label) : "";
 
     const { db: dbForRl, tenant: tenantForRl } = requireDbContext(locals);
-    const ip = (request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-    const rl = await checkRateLimit(dbForRl, `webauthn-register-verify:${tenantForRl.id}:${ip}`, { windowMs: 5 * 60 * 1000, limit: 10 });
+    // cf-connecting-ip 전용(H-ADMIN-3) + IPv6 /64 정규화(C6). 위조 가능한 x-forwarded-for 는 쓰지 않는다.
+    const { ipKey } = getRequestMetadata(event);
+    const rl = await checkRateLimit(dbForRl, `webauthn-register-verify:${tenantForRl.id}:${ipKey}`, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
         throw error(429, "등록 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
     }

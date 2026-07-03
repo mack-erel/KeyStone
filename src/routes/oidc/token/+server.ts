@@ -36,8 +36,7 @@ export const POST: RequestHandler = async (event) => {
     const { signingKeySecret } = locals.runtimeConfig;
 
     // 레이트 리밋: IP당 30회/분
-    const { ip, userAgent } = getRequestMetadata(event);
-    const ipKey = ip ?? "unknown";
+    const { ip, ipKey, userAgent } = getRequestMetadata(event);
     const rl = await checkRateLimit(db, `token:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
     if (!rl.allowed) {
         return new Response(

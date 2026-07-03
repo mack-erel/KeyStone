@@ -8,16 +8,21 @@
  */
 
 import "reflect-metadata";
-import { DOMParser } from "@xmldom/xmldom";
+import { DOMParser, onErrorStopParsing } from "@xmldom/xmldom";
 import { and, eq, isNull, ne } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
 import { samlSessions, samlSps } from "$lib/server/db/schema";
 
 const MAX_COMPRESSED_BYTES = 8 * 1024;
 const MAX_DECOMPRESSED_BYTES = 64 * 1024;
+const ISSUE_INSTANT_SKEW_MS = 5 * 60 * 1000; // ±5분
 
 function xmlEscape(str: string): string {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+    // XML 1.0 에서 허용되지 않는 제어문자(탭/개행/CR 제외)를 먼저 제거한 뒤 escape.
+    // response.ts 와 동일 정책 — LogoutRequest/Response 빌드 시 인젝션 벡터 차단.
+    // eslint-disable-next-line no-control-regex
+    const cleaned = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+    return cleaned.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 function toIso(d: Date): string {
@@ -200,6 +205,10 @@ export interface ParsedLogoutRequest {
     sessionIndexes: string[];
     nameId: string;
     nameIdFormat: string;
+    /** SP 가 명시한 Destination (없으면 null). IdP 는 자기 SLO endpoint 와 일치하는지 검증해야 한다. */
+    destination: string | null;
+    /** LogoutRequest 발급 시각 (skew 검증 통과분) */
+    issueInstant: Date;
 }
 
 export async function parseSamlLogoutRequest(samlRequestB64: string): Promise<ParsedLogoutRequest> {
@@ -208,12 +217,32 @@ export async function parseSamlLogoutRequest(samlRequestB64: string): Promise<Pa
     for (let i = 0; i < raw.length; i++) binary[i] = raw.charCodeAt(i);
     const xml = await inflateRaw(binary);
 
-    const parser = new DOMParser();
+    // XXE / DTD 인젝션 방어 — AuthnRequest 파서와 동일하게 DOCTYPE/ENTITY 를 명시 차단.
+    // (parse-authn-request.ts 와 동일 정책. LogoutRequest 파서에만 이 방어가 빠져 있던
+    //  비대칭을 제거한다.)
+    if (/<!DOCTYPE/i.test(xml) || /<!ENTITY/i.test(xml)) {
+        throw new Error("LogoutRequest 에 DOCTYPE/ENTITY 선언이 포함되어 있습니다.");
+    }
+
+    // xmldom 0.9 기본 동작은 파싱 에러를 silent 무시 — onErrorStopParsing 으로 즉시 throw.
+    const parser = new DOMParser({ onError: onErrorStopParsing });
     const doc = parser.parseFromString(xml, "text/xml");
     const root = doc.documentElement;
     if (!root) throw new Error("LogoutRequest XML 파싱 실패: documentElement 없음");
 
     const id = root.getAttribute("ID") ?? "";
+    const destination = root.getAttribute("Destination") ?? null;
+
+    // IssueInstant skew 검증 (replay 방지) — AuthnRequest 와 동일.
+    const issueInstantStr = root.getAttribute("IssueInstant") ?? "";
+    const issueInstant = issueInstantStr ? new Date(issueInstantStr) : new Date(NaN);
+    if (!issueInstantStr || Number.isNaN(issueInstant.getTime())) {
+        throw new Error("LogoutRequest IssueInstant 가 없거나 유효하지 않습니다.");
+    }
+    const skew = Math.abs(Date.now() - issueInstant.getTime());
+    if (skew > ISSUE_INSTANT_SKEW_MS) {
+        throw new Error(`LogoutRequest IssueInstant 가 허용 범위(±5분)를 벗어납니다 (skew=${skew}ms)`);
+    }
 
     const issuerEls = doc.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:assertion", "Issuer");
     const issuer = issuerEls[0]?.textContent?.trim() ?? "";
@@ -229,7 +258,7 @@ export async function parseSamlLogoutRequest(samlRequestB64: string): Promise<Pa
         if (text) sessionIndexes.push(text);
     }
 
-    return { id, issuer, sessionIndexes, nameId, nameIdFormat };
+    return { id, issuer, sessionIndexes, nameId, nameIdFormat, destination, issueInstant };
 }
 
 // ── DB ───────────────────────────────────────────────────────────────────────

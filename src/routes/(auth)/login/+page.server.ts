@@ -13,7 +13,7 @@ import { identityProviders } from "$lib/server/db/schema";
 import { authenticateLdap } from "$lib/server/ldap/auth";
 import { provisionLdapUser } from "$lib/server/ldap/provision";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
-import { decryptSecret } from "$lib/server/crypto/keys";
+import { decryptSecret, encryptSecret } from "$lib/server/crypto/keys";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 
@@ -113,7 +113,7 @@ export const actions: Actions = {
         const requestMetadata = getRequestMetadata(event);
 
         // 레이트 리밋: IP당 10회/15분
-        const rlKey = `login:${requestMetadata.ip ?? "unknown"}`;
+        const rlKey = `login:${requestMetadata.ipKey}`;
         const rl = await checkRateLimit(db, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
             const msg = `로그인 시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
@@ -146,9 +146,26 @@ export const actions: Actions = {
                     // 복호화 실패 시 인증 진행 불가 — bindPassword 없이 진행하면 null 반환됨
                 }
             } else if (ldapConfig.bindPassword && !ldapConfig.bindPasswordEnc) {
-                // ctrls H-ADMIN-4: 레거시 평문 bindPassword 가 DB 에 남아 있으면 운영 가시화.
-                // admin UI 에서 한 번 저장하면 자동으로 bindPasswordEnc 로 마이그레이션됨.
-                console.warn(`[ldap] provider ${ldapProvider.id} 에 평문 bindPassword 가 남아 있음 — admin 페이지에서 재저장하여 암호화 권장`);
+                // ctrls M-D: 레거시 평문 bindPassword 를 이번 로그인에서 즉시 암호화 마이그레이션한다.
+                // (기존엔 warn 만 하고 평문을 계속 사용 → admin 재저장 전까지 평문이 DB 에 상주.)
+                // 이번 요청의 bind 는 아래에서 평문으로 계속 진행하되, DB 에는 암호문만 남긴다.
+                if (config.signingKeySecret) {
+                    try {
+                        const enc = await encryptSecret(ldapConfig.bindPassword, config.signingKeySecret, "idp-ldap-bind-password-v1");
+                        const { bindPassword: _plain, ...rest } = ldapConfig;
+                        void _plain;
+                        const migrated = { ...rest, bindPasswordEnc: enc };
+                        await db
+                            .update(identityProviders)
+                            .set({ configJson: JSON.stringify(migrated), updatedAt: new Date() })
+                            .where(and(eq(identityProviders.id, ldapProvider.id), eq(identityProviders.tenantId, tenant.id)));
+                    } catch {
+                        // 마이그레이션 실패해도 이번 로그인은 평문으로 진행 (best-effort). 다음 로그인에서 재시도.
+                        console.warn(`[ldap] provider ${ldapProvider.id} 평문 bindPassword 자동 암호화 실패 — admin 페이지에서 재저장 권장`);
+                    }
+                } else {
+                    console.warn(`[ldap] provider ${ldapProvider.id} 에 평문 bindPassword 가 남아 있으나 IDP_SIGNING_KEY_SECRET 미설정으로 암호화 불가`);
+                }
             }
 
             const ldapAttrs = await authenticateLdap(ldapConfig, username, password);

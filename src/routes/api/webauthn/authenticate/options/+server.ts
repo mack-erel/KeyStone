@@ -20,7 +20,7 @@ export const POST: RequestHandler = async (event) => {
     // webauthn_challenges 테이블을 채우는 (D1 storage exhaustion / latency 증가)
     // 면적을 차단. tenant + IP 키, 5분에 30회.
     const meta = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `webauthn-options:${tenant.id}:${meta.ip ?? "unknown"}`, { windowMs: 5 * 60 * 1000, limit: 30 });
+    const rl = await checkRateLimit(db, `webauthn-options:${tenant.id}:${meta.ipKey}`, { windowMs: 5 * 60 * 1000, limit: 30 });
     if (!rl.allowed) {
         throw error(429, `요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 1000)}초 후 다시 시도해 주세요.`);
     }

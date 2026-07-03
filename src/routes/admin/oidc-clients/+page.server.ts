@@ -5,6 +5,7 @@ import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { oidcClients } from "$lib/server/db/schema";
 import { hashClientSecret } from "$lib/server/oidc/client";
+import { ensureCsrfToken, isValidCsrf } from "$lib/server/auth/csrf";
 
 function generateClientId(): string {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 20);
@@ -109,8 +110,9 @@ function normalizeScopes(raw: string): { ok: true; value: string } | { ok: false
     return { ok: true, value: out.join(" ") };
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, cookies, url }) => {
     const { db, tenant } = requireAdminContext(locals);
+    const csrfToken = ensureCsrfToken(cookies, url);
     const rows = await db
         .select({
             id: oidcClients.id,
@@ -133,7 +135,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         .where(eq(oidcClients.tenantId, tenant.id))
         .orderBy(desc(oidcClients.createdAt));
 
-    return { clients: rows };
+    return { clients: rows, csrfToken };
 };
 
 export const actions: Actions = {
@@ -143,6 +145,7 @@ export const actions: Actions = {
         const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
+        if (!isValidCsrf(event.cookies, fd)) return fail(403, { create: true, error: "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요." });
         const name = String(fd.get("name") ?? "").trim();
         const redirectUrisRaw = String(fd.get("redirectUris") ?? "").trim();
         const postLogoutUrisRaw = String(fd.get("postLogoutRedirectUris") ?? "").trim();
@@ -221,6 +224,7 @@ export const actions: Actions = {
         const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
+        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요." });
         const id = String(fd.get("id") ?? "");
         const name = String(fd.get("name") ?? "").trim();
         const redirectUrisRaw = String(fd.get("redirectUris") ?? "").trim();
@@ -294,6 +298,7 @@ export const actions: Actions = {
         const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
+        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요." });
         const id = String(fd.get("id") ?? "");
         if (!id) return fail(400, { error: "잘못된 요청입니다." });
 
@@ -324,6 +329,7 @@ export const actions: Actions = {
         const { db, tenant } = requireAdminContext(locals);
 
         const fd = await event.request.formData();
+        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요." });
         const id = String(fd.get("id") ?? "");
         if (!id) return fail(400, { error: "잘못된 요청입니다." });
 
