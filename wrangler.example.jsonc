@@ -17,6 +17,11 @@
     },
     "workers_dev": true,
     "preview_urls": true,
+    // 관측성: Workers Logs 활성화 (대시보드 실시간 로그·에러 추적). 필요 시 head_sampling_rate 조정.
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1,
+    },
     "vars": {
         // ── DB 방언 선택 (배포 단위, 하나만 사용) ──────────────────────────────
         // "d1"(기본) | "postgres" | "mysql".

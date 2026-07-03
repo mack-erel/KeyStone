@@ -238,7 +238,7 @@ const STATUS_NEXT: Record<string, StatusNext> = {
     {#if data.nextCursor}
         <div class="mt-4 flex justify-center">
             <a
-                href="?{new URLSearchParams({ ...(data.search ? { q: data.search } : {}), cursor: String(data.nextCursor) }).toString()}"
+                href="{resolve('/admin/users')}?{new URLSearchParams({ ...(data.search ? { q: data.search } : {}), cursor: String(data.nextCursor) }).toString()}"
                 class="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
                 {t("common.next_page")}
             </a>
