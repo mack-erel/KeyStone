@@ -33,7 +33,9 @@
         "primary_member": "주소속",
         "remove": "제거",
         "change": "변경",
-        "saving": "저장되었습니다."
+        "saving": "저장되었습니다.",
+        "search": "검색",
+        "next_page": "다음 페이지 →"
     },
     "login": {
         "username": "아이디",
@@ -215,6 +217,8 @@
     "users": {
         "title": "사용자 관리",
         "add_btn": "+ 사용자 추가",
+        "search_placeholder": "이메일 · 아이디 · 이름 검색",
+        "search_empty": "검색 결과가 없습니다.",
         "create_title": "새 사용자 추가",
         "email_label": "이메일 *",
         "username_label": "아이디 (미입력 시 자동)",

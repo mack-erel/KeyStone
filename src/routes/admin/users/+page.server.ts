@@ -1,5 +1,5 @@
 import { fail } from "@sveltejs/kit";
-import { desc, eq, and } from "drizzle-orm";
+import { desc, eq, and, lt, or, sql } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext, assertNotLastAdmin } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
@@ -9,9 +9,36 @@ import { normalizeEmail, normalizeUsername } from "$lib/server/auth/users";
 import { PASSWORD_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
 
-export const load: PageServerLoad = async ({ locals }) => {
+const PAGE_SIZE = 50;
+
+// LIKE 패턴의 와일드카드(%, _, \)를 이스케이프해 사용자 입력이 패턴으로 오작동하지 않게 한다.
+function escapeLike(input: string): string {
+    return input.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+export const load: PageServerLoad = async ({ locals, url }) => {
     const { db, tenant } = requireAdminContext(locals);
-    const rows = await db
+
+    const search = url.searchParams.get("q")?.trim() || null;
+    const cursorParam = url.searchParams.get("cursor")?.trim() || null;
+    const cursorMs = cursorParam ? Number.parseInt(cursorParam, 10) : NaN;
+    const cursor = Number.isFinite(cursorMs) ? new Date(cursorMs) : null;
+
+    const conditions = [eq(users.tenantId, tenant.id)];
+    if (cursor) conditions.push(lt(users.createdAt, cursor));
+    if (search) {
+        // lower(...) LIKE 로 방언 무관 대소문자 무시 부분 일치 (email/username/displayName).
+        const pattern = `%${escapeLike(search.toLowerCase())}%`;
+        const term = or(
+            sql`lower(${users.email}) like ${pattern} escape '\\'`,
+            sql`lower(${users.username}) like ${pattern} escape '\\'`,
+            sql`lower(${users.displayName}) like ${pattern} escape '\\'`,
+        );
+        if (term) conditions.push(term);
+    }
+
+    // PAGE_SIZE+1 행을 조회해 다음 페이지 유무를 판단한다.
+    const rowsPlusOne = await db
         .select({
             id: users.id,
             username: users.username,
@@ -22,10 +49,15 @@ export const load: PageServerLoad = async ({ locals }) => {
             createdAt: users.createdAt,
         })
         .from(users)
-        .where(eq(users.tenantId, tenant.id))
-        .orderBy(desc(users.createdAt));
+        .where(and(...conditions))
+        .orderBy(desc(users.createdAt))
+        .limit(PAGE_SIZE + 1);
 
-    return { users: rows };
+    const hasMore = rowsPlusOne.length > PAGE_SIZE;
+    const rows = hasMore ? rowsPlusOne.slice(0, PAGE_SIZE) : rowsPlusOne;
+    const nextCursor = hasMore && rows.length > 0 ? rows[rows.length - 1].createdAt.getTime() : null;
+
+    return { users: rows, search, pageSize: PAGE_SIZE, nextCursor };
 };
 
 export const actions: Actions = {

@@ -162,9 +162,12 @@ gitleaks detect --log-opts="--all" --redact
     - discovery 에 `refresh_token` grant + `offline_access` scope 광고. README 의 Refresh Token 표기가 실제와 일치하게 됨.
     - 검증: `svelte-check` 0 errors(1192 files), eslint 통과.
 
+- **A4 OIDC introspection/revocation** — `/oidc/introspect`(RFC 7662), `/oidc/revoke`(RFC 7009) 엔드포인트 신설. 공통 클라이언트 인증 헬퍼(`authenticateOidcClient`) 추출. access token(HMAC 검증)·refresh token(해시 조회) 모두 처리, discovery 광고. rate-limit 적용.
+- **A3 admin users 목록 페이지네이션·검색** — 커서 페이지네이션(PAGE_SIZE=50, createdAt 기준) + 방언 무관 `lower() LIKE` 검색(email/username/displayName, LIKE 와일드카드 이스케이프). audit 페이지 패턴 재사용. UI 검색창·다음 페이지 링크 + i18n 키.
+
 ### ⏭️ 남은 단계 (미착수)
 
-- **2단계(잔여)**: SAML Assertion 암호화, users 페이지네이션, OIDC introspection/revocation, authorize 파라미터(prompt/id_token_hint 등).
+- **2단계(잔여)**: SAML Assertion 암호화, authorize 파라미터(prompt/id_token_hint/max_age 등).
 - **3단계**: vitest+CI, 스키마 crosscheck, devDeps 재분류, 헬스체크·관측성, 감사 로그 무결성(H-ADMIN-2).
 - **4단계**: CRUD 팩토리+zod, D1 혼재 정리(사용자 결정: 옵션 유지 — vars/driver 정합만), argon2 재평가, i18n.
 - **관련 후속**: find-password 도 find-id 와 동일 타이밍 구조 — 동일 패턴 적용 검토. TOTP enroll TOCTOU(이중등록)는 스키마 unique 제약 필요(3단계).
