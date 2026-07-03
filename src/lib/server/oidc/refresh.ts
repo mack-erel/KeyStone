@@ -84,6 +84,35 @@ export async function revokeAllUserRefreshTokens(db: DB, userId: string): Promis
         .where(and(eq(oidcRefreshTokens.userId, userId), isNull(oidcRefreshTokens.revokedAt)));
 }
 
+/**
+ * raw refresh token 값으로 활성(미폐기·미만료) 레코드를 조회한다. (introspection 용)
+ * 존재하지만 폐기/만료면 null 을 반환한다.
+ */
+export async function findActiveRefreshToken(db: DB, tenantId: string, clientId: string, presentedToken: string): Promise<OidcRefreshTokenRecord | null> {
+    const tokenHash = await hashRefreshToken(presentedToken);
+    const [record] = await db
+        .select()
+        .from(oidcRefreshTokens)
+        .where(and(eq(oidcRefreshTokens.tokenHash, tokenHash), eq(oidcRefreshTokens.tenantId, tenantId), eq(oidcRefreshTokens.clientId, clientId)))
+        .limit(1);
+    if (!record) return null;
+    if (record.revokedAt) return null;
+    if (record.expiresAt.getTime() < Date.now()) return null;
+    return record;
+}
+
+/**
+ * raw refresh token 값으로 해당 토큰을 폐기한다 (RFC 7009 revocation).
+ * 토큰이 없거나 이미 폐기됐어도 조용히 성공 처리한다 (revocation 은 멱등).
+ */
+export async function revokeRefreshTokenByValue(db: DB, tenantId: string, clientId: string, presentedToken: string): Promise<void> {
+    const tokenHash = await hashRefreshToken(presentedToken);
+    await db
+        .update(oidcRefreshTokens)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(oidcRefreshTokens.tokenHash, tokenHash), eq(oidcRefreshTokens.tenantId, tenantId), eq(oidcRefreshTokens.clientId, clientId), isNull(oidcRefreshTokens.revokedAt)));
+}
+
 export type RotateResult = { ok: true; record: OidcRefreshTokenRecord; newToken: string } | { ok: false; reason: "invalid_grant" | "expired" | "reuse" };
 
 /**

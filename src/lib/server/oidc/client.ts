@@ -15,6 +15,35 @@ export async function findOidcClient(db: DB, tenantId: string, clientId: string)
     return client ?? null;
 }
 
+export type ClientAuthResult = { ok: true; client: OidcClientRecord } | { ok: false; code: string; description: string; status: number };
+
+/**
+ * token/revoke/introspect 엔드포인트 공통 클라이언트 인증.
+ * Basic 헤더 또는 body(client_id/client_secret) 로 인증한다.
+ */
+export async function authenticateOidcClient(db: DB, tenantId: string, authHeader: string | null, body: FormData): Promise<ClientAuthResult> {
+    let clientId: string;
+    let clientSecret: string;
+    if (authHeader) {
+        const parsed = parseBasicAuth(authHeader);
+        if (!parsed) return { ok: false, code: "invalid_client", description: "잘못된 Authorization 헤더입니다.", status: 401 };
+        clientId = parsed.clientId;
+        clientSecret = parsed.clientSecret;
+    } else {
+        clientId = String(body.get("client_id") ?? "");
+        clientSecret = String(body.get("client_secret") ?? "");
+    }
+    if (!clientId) return { ok: false, code: "invalid_client", description: "client_id 가 필요합니다.", status: 401 };
+
+    const client = await findOidcClient(db, tenantId, clientId);
+    if (!client) return { ok: false, code: "invalid_client", description: "등록되지 않은 클라이언트입니다.", status: 401 };
+
+    const secretCheck = await isValidClientSecret(client, clientSecret, !!authHeader);
+    if (!secretCheck.valid) return { ok: false, code: "invalid_client", description: "클라이언트 인증에 실패했습니다.", status: 401 };
+
+    return { ok: true, client };
+}
+
 // ctrls H-OIDC-3: parseBasicAuth 안정화.
 // - atob() 가 invalid base64 에서 throw → try/catch 로 감싸 500 DoS 방지.
 // - 입력 길이 가드 — 비정상적으로 큰 Authorization 헤더 즉시 거부.
