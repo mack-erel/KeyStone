@@ -172,8 +172,18 @@ gitleaks detect --log-opts="--all" --redact
 
 ### ✅ 2단계 완료 — A1/A2/A3/A4/A5 모두 처리됨
 
+### ✅ 3단계 대부분 완료 (2026-07-03)
+
+- **B1 테스트 인프라** — vitest 도입(`vitest.config.ts`, 전용 alias/env 스텁), 핵심 보안 로직 유닛 테스트 6파일 26건(IPv6 정규화·PKCE·TOTP 재사용·SAML 암호화 라운드트립·OIDC scope/redirect·스키마 parity). CI 에 Test 단계 + `test/**` path filter 추가. `bun run test`.
+- **E1 스키마 parity 테스트** — 3방언 schema.{sqlite,pg,mysql} 의 테이블·컬럼 집합 동일성을 CI 에서 강제(컬럼 drift 차단; 인덱스 parity 는 범위 밖 명시).
+- **E3 의존성 재분류** — 런타임 서버 패키지 7종(@simplewebauthn/server, @peculiar/x509, @xmldom/xmldom, @yrneh_jang/ldapjs, reflect-metadata, xmldsigjs, xpath)을 dependencies 로 이동(adapter-node prod prune 대비).
+- **B2 헬스체크** — `/api/health` (liveness + 얕은 DB readiness).
+- **B4 루트 에러 페이지** — `src/routes/+error.svelte` (404/403/503 등 정돈된 화면).
+- **B3 관측성** — `wrangler.example.jsonc` 에 `observability.enabled` 추가(Workers Logs).
+
 ### ⏭️ 남은 단계 (미착수)
 
-- **3단계**: vitest+CI, 스키마 crosscheck, devDeps 재분류, 헬스체크·관측성, 감사 로그 무결성(H-ADMIN-2).
+- **3단계(잔여)**: 감사 로그 무결성(H-ADMIN-2, chained-hash/append-only).
 - **4단계**: CRUD 팩토리+zod, D1 혼재 정리(사용자 결정: 옵션 유지 — vars/driver 정합만), argon2 재평가, i18n.
 - **관련 후속**: find-password 도 find-id 와 동일 타이밍 구조 — 동일 패턴 적용 검토. TOTP enroll TOCTOU(이중등록)는 스키마 unique 제약 필요(3단계).
+- **OIDC 스코프 확장(별도 작업)**: `groups` 매핑(조직/role → groups 배열, 스키마 불필요), `address`(users 주소 컬럼 추가 필요), `organization` 설정 경로 복구(`ALLOWED_OIDC_SCOPES` 에 추가). 상세는 프로젝트 메모리 `oidc-scope-expansion` 참고.
