@@ -8,7 +8,8 @@
  *   3. Signature 를 Assertion 의 <saml:Issuer> 바로 뒤에 삽입 (SAML 스키마 순서)
  */
 
-import { ensureXmlEngine, xmldsigjs } from "./xml-setup";
+import { ensureXmlEngine, xmldsigjs, XMLSerializer } from "./xml-setup";
+import { encryptSamlAssertion } from "./encrypt";
 
 function xmlEscape(str: string): string {
     // XML 1.0 에서 허용되지 않는 제어문자(0x00-0x08, 0x0B-0x0C, 0x0E-0x1F) 를 먼저 제거.
@@ -44,6 +45,10 @@ export interface BuildSamlResponseParams {
     signResponse?: boolean;
     /** AuthnContextClassRef 값 (기본값: PasswordProtectedTransport) */
     authnContextClassRef?: string;
+    /** true 이면 서명된 Assertion 을 SP 공개키로 암호화해 EncryptedAssertion 으로 감싼다. */
+    encryptAssertion?: boolean;
+    /** 암호화 대상 SP 인증서(PEM). encryptAssertion=true 일 때 필수. */
+    spCertPem?: string | null;
 }
 
 export async function buildSignedSamlResponse(params: BuildSamlResponseParams): Promise<string> {
@@ -153,6 +158,29 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
         } else {
             assertionEl.appendChild(sigNode);
         }
+    }
+
+    // ── 4.5. Assertion 암호화 (encryptAssertion: true 일 때) ──────────────────
+    // 서명 이후·Response 서명 이전에 수행한다. 그래야 (a) SP 가 복호화 후 Assertion
+    // 서명을 검증할 수 있고, (b) signResponse 시 Response 서명이 EncryptedAssertion 을
+    // 커버한다. exc-c14n 서명이므로 네임스페이스를 Assertion 에 명시 선언해도 서명은 유효하다.
+    if (params.encryptAssertion) {
+        if (!params.spCertPem) {
+            throw new Error("encryptAssertion=true 이지만 SP 인증서(spCertPem)가 없습니다.");
+        }
+        // 추출된 Assertion 이 자족적이도록 사용 네임스페이스를 명시 선언.
+        assertionEl.setAttribute("xmlns:saml", "urn:oasis:names:tc:SAML:2.0:assertion");
+        assertionEl.setAttribute("xmlns:xs", "http://www.w3.org/2001/XMLSchema");
+        assertionEl.setAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
+
+        const serializer = new XMLSerializer();
+        // @xmldom 의 XMLSerializer 는 자체 Node 타입을 요구하므로 lib.dom Element 를 캐스팅.
+        const assertionXml = serializer.serializeToString(assertionEl as unknown as Parameters<typeof serializer.serializeToString>[0]);
+        const encryptedAssertionXml = await encryptSamlAssertion(assertionXml, params.spCertPem);
+
+        const encDoc = xmldsigjs.Parse(encryptedAssertionXml);
+        const importedEnc = responseDoc.importNode(encDoc.documentElement, true);
+        assertionEl.parentNode?.replaceChild(importedEnc, assertionEl);
     }
 
     // ── 5. Response 서명 (signResponse: true 일 때) ───────────────────────────

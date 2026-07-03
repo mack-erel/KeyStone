@@ -324,6 +324,8 @@ export const GET: RequestHandler = async (event) => {
         certPem: signingKey.certPem,
         privateKey: signingKey.privateKey,
         signResponse: sp.signResponse,
+        encryptAssertion: sp.encryptAssertion,
+        spCertPem: sp.cert,
     });
 
     const requestMetadata = getRequestMetadata(event);

@@ -20,6 +20,7 @@ let createCert = $state("");
 let createSignAssertion = $state(true);
 let createSignResponse = $state(false);
 let createWantSigned = $state(false);
+let createEncryptAssertion = $state(false);
 let createAllowedAttributes = $state("");
 
 let metadataXml = $state("");
@@ -236,6 +237,10 @@ const NAME_ID_OPTIONS = [
                         <input id="s-wantSigned" type="checkbox" name="wantAuthnRequestsSigned" value="true" bind:checked={createWantSigned} class="h-4 w-4 rounded border-gray-300" />
                         <label for="s-wantSigned" class="text-xs text-gray-700">{t("saml.want_signed")}</label>
                     </div>
+                    <div class="flex items-center gap-2">
+                        <input id="s-encryptAssertion" type="checkbox" name="encryptAssertion" value="true" bind:checked={createEncryptAssertion} class="h-4 w-4 rounded border-gray-300" />
+                        <label for="s-encryptAssertion" class="text-xs text-gray-700">{t("saml.encrypt_assertion")}</label>
+                    </div>
                 </div>
                 <div class="sm:col-span-2">
                     <label for="s-cert" class="block text-xs font-medium text-gray-700">{t("saml.cert_label")}</label>
@@ -397,6 +402,16 @@ const NAME_ID_OPTIONS = [
                                                     checked={sp.wantAuthnRequestsSigned}
                                                     class="h-4 w-4 rounded border-gray-300" />
                                                 <label for="e-wantSigned-{sp.id}" class="text-xs text-gray-700">{t("saml.want_signed")}</label>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <input
+                                                    id="e-encryptAssertion-{sp.id}"
+                                                    type="checkbox"
+                                                    name="encryptAssertion"
+                                                    value="true"
+                                                    checked={sp.encryptAssertion}
+                                                    class="h-4 w-4 rounded border-gray-300" />
+                                                <label for="e-encryptAssertion-{sp.id}" class="text-xs text-gray-700">{t("saml.encrypt_assertion")}</label>
                                             </div>
                                             <div class="flex items-center gap-2">
                                                 <input id="e-enabled-{sp.id}" type="checkbox" name="enabled" value="true" checked={sp.enabled} class="h-4 w-4 rounded border-gray-300" />

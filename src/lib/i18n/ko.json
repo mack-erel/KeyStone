@@ -348,6 +348,7 @@
         "slo_url_label": "SLO URL",
         "name_id_label": "NameID Format",
         "sign_assertion": "Assertion 서명",
+        "encrypt_assertion": "Assertion 암호화 (SP 인증서 필요)",
         "sign_response": "Response 서명",
         "want_signed": "AuthnRequest 서명 요구",
         "cert_label": "SP 인증서 (PEM, 선택)",

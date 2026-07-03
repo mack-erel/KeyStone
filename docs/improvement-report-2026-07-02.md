@@ -167,9 +167,13 @@ gitleaks detect --log-opts="--all" --redact
 
 - **A5 OIDC authorize 파라미터** — `prompt`(none/login), `max_age`, `id_token_hint`, `login_hint` 처리. `prompt=none` 시 상호작용 필요하면 `login_required` 를 redirect_uri 로 반환(무UI), 그 외엔 `forceAuthn` 로그인/재인증. `id_token_hint` 는 서명 검증(만료 무시) 후 sub 대조. `login_hint` 는 로그인 아이디 프리필. `verifyIdToken` 에 `ignoreExpiry` 옵션 추가.
 
+- **A2 SAML Assertion 암호화** — `saml/encrypt.ts` 신설. WebCrypto 로 AES-256-CBC(assertion) + RSA-OAEP-mgf1p SHA-1(세션키) `EncryptedAssertion` 구현(외부 라이브러리 없음). `response.ts` 가 서명 후·Response 서명 전에 암호화(exc-c14n 이라 서명 유효). SSO 라우트가 `sp.encryptAssertion`+`sp.cert` 전달. admin saml-sps UI 에 암호화 토글(cert 없으면 활성 거부). `scripts/verify-saml-encryption.ts` 라운드트립 검증 통과(`bun run verify:saml-encryption`).
+    - **주의**: 자체 라운드트립은 통과했으나 실제 SP(Shibboleth/ADFS/SimpleSAMLphp 등) XML-Enc 복호화기와의 상호운용은 별도 테스트 필요.
+
+### ✅ 2단계 완료 — A1/A2/A3/A4/A5 모두 처리됨
+
 ### ⏭️ 남은 단계 (미착수)
 
-- **2단계(잔여)**: SAML Assertion 암호화(A2) — XML-Enc `EncryptedAssertion` 필요, 현 의존성에 XML 암호화 라이브러리 없음. 별도 설계·검증 필요한 큰 작업.
 - **3단계**: vitest+CI, 스키마 crosscheck, devDeps 재분류, 헬스체크·관측성, 감사 로그 무결성(H-ADMIN-2).
 - **4단계**: CRUD 팩토리+zod, D1 혼재 정리(사용자 결정: 옵션 유지 — vars/driver 정합만), argon2 재평가, i18n.
 - **관련 후속**: find-password 도 find-id 와 동일 타이밍 구조 — 동일 패턴 적용 검토. TOTP enroll TOCTOU(이중등록)는 스키마 unique 제약 필요(3단계).

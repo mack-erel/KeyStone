@@ -43,7 +43,8 @@
         "db:seed:sqlite": "DB_DIALECT=sqlite bun scripts/seed.ts",
         "db:push:sqlite": "DB_DIALECT=sqlite drizzle-kit push",
         "db:studio:sqlite": "DB_DIALECT=sqlite drizzle-kit studio",
-        "setup": "bun run scripts/setup.ts"
+        "setup": "bun run scripts/setup.ts",
+        "verify:saml-encryption": "bun scripts/verify-saml-encryption.ts"
     },
     "devDependencies": {
         "@eslint/compat": "^2.1.0",
