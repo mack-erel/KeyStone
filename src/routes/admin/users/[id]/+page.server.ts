@@ -3,6 +3,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext, assertNotLastAdmin, assertUserInTenant } from "$lib/server/auth/guards";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
+import { revokeAllUserRefreshTokens } from "$lib/server/oidc/refresh";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { departments, oidcClients, parts, positions, samlSps, serviceRoles, teams, userDepartments, userParts, userServiceAssignments, userTeams, users } from "$lib/server/db/schema";
 
@@ -259,9 +260,10 @@ export const actions: Actions = {
             }
         }
 
-        // role 변경 시 기존 세션 전부 파기 — 이전 권한 캐시 차단
+        // role 변경 시 기존 세션 + OIDC refresh token 전부 파기 — 이전 권한 캐시 차단
         if (before && before.role !== effectiveRole) {
             await revokeAllUserSessions(db, userId);
+            await revokeAllUserRefreshTokens(db, userId);
         }
 
         const meta = getRequestMetadata(event);

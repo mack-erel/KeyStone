@@ -153,9 +153,18 @@ gitleaks detect --log-opts="--all" --redact
 
 **검증**: `svelte-check` 0 errors / 0 warnings (1191 files), 변경 파일 eslint·prettier 통과. `wrangler types --check` 는 사전 존재하던 `worker-configuration.d.ts` 스테일(D1 브랜치 작업 잔재)로 실패 — 본 변경과 무관하며 사용자가 `wrangler types` 재생성 필요.
 
+### ✅ 2단계 일부 완료 (2026-07-03)
+
+- **A1 Refresh Token 구현** — `src/lib/server/oidc/refresh.ts` 신설(발급·회전·재사용 감지). token 엔드포인트에 `refresh_token` grant 추가:
+    - authorization_code 플로우: `offline_access` scope + 클라이언트 `refresh_token` grant 허용 시 refresh token 발급.
+    - refresh_token grant: 회전(old revoke + `replacedById` + 새 토큰), 재사용/동시사용 감지 시 family 폐기(RFC 6819), scope 축소 지원, 로그아웃(`revokedAt`)된 세션 거부(단 자연 만료는 offline_access 수명 존중).
+    - 전역 무효화: 로그아웃(즉시/SAML SLO 체인)·비밀번호 재설정·관리자 role 변경 시 refresh token 폐기.
+    - discovery 에 `refresh_token` grant + `offline_access` scope 광고. README 의 Refresh Token 표기가 실제와 일치하게 됨.
+    - 검증: `svelte-check` 0 errors(1192 files), eslint 통과.
+
 ### ⏭️ 남은 단계 (미착수)
 
-- **2단계**: Refresh Token 구현(사용자 결정: 구현), SAML Assertion 암호화, users 페이지네이션, OIDC introspection/revocation.
+- **2단계(잔여)**: SAML Assertion 암호화, users 페이지네이션, OIDC introspection/revocation, authorize 파라미터(prompt/id_token_hint 등).
 - **3단계**: vitest+CI, 스키마 crosscheck, devDeps 재분류, 헬스체크·관측성, 감사 로그 무결성(H-ADMIN-2).
 - **4단계**: CRUD 팩토리+zod, D1 혼재 정리(사용자 결정: 옵션 유지 — vars/driver 정합만), argon2 재평가, i18n.
 - **관련 후속**: find-password 도 find-id 와 동일 타이밍 구조 — 동일 패턴 적용 검토. TOTP enroll TOCTOU(이중등록)는 스키마 unique 제약 필요(3단계).

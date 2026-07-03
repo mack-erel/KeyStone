@@ -22,6 +22,7 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { SESSION_COOKIE_NAME } from "$lib/server/auth/constants";
 import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
+import { revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
 import { buildSamlLogoutRequest, buildSamlLogoutResponse, buildSamlSloRedirectUrl, collectPendingSpData, parseSamlLogoutRequest, type PendingSpData } from "$lib/server/saml/slo";
 import { verifySamlRedirectSignature } from "$lib/server/saml/parse-authn-request";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
@@ -141,6 +142,8 @@ async function completeSloChain(event: RequestEvent, state: typeof samlSloStates
             .set({ revokedAt: new Date() })
             .where(and(eq(sessions.id, idpSession.id), eq(sessions.tenantId, tenant.id)));
     }
+    // 이 세션으로 발급된 OIDC refresh token 폐기 (offline_access 무효화).
+    if (idpSession) await revokeRefreshTokensForSession(db, idpSession.id);
 
     // 5. 쿠키 제거
     cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
@@ -382,6 +385,8 @@ export const GET: RequestHandler = async (event) => {
                         .set({ revokedAt: new Date() })
                         .where(and(eq(sessions.id, idpSession.id), eq(sessions.tenantId, tenant.id)));
                 }
+                // 이 세션으로 발급된 OIDC refresh token 폐기 (offline_access 무효화).
+                await revokeRefreshTokensForSession(db, idpSession.id);
             }
             cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
 

@@ -6,6 +6,7 @@ import { users, passwordResetTokens } from "$lib/server/db/schema";
 import { hashPassword } from "$lib/server/auth/password";
 import { hashToken } from "$lib/server/email";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
+import { revokeAllUserRefreshTokens } from "$lib/server/oidc/refresh";
 import { resolve } from "$app/paths";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
@@ -124,8 +125,9 @@ export const actions: Actions = {
             .set({ usedAt: now })
             .where(and(eq(passwordResetTokens.userId, record.userId), isNull(passwordResetTokens.usedAt)));
 
-        // 비밀번호가 바뀌었으므로 기존 세션을 모두 무효화한다.
+        // 비밀번호가 바뀌었으므로 기존 세션과 OIDC refresh token 을 모두 무효화한다.
         await revokeAllUserSessions(db, record.userId, now);
+        await revokeAllUserRefreshTokens(db, record.userId);
 
         const extra = new URLSearchParams();
         if (redirectTo) extra.set("redirectTo", redirectTo);

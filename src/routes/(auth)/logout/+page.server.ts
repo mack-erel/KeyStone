@@ -7,6 +7,7 @@ import { clearSessionCookie, revokeSession } from "$lib/server/auth/session";
 import { SESSION_COOKIE_NAME } from "$lib/server/auth/constants";
 import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
+import { revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
 import { samlSloStates } from "$lib/server/db/schema";
 import { collectPendingSpData } from "$lib/server/saml/slo";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
@@ -93,6 +94,8 @@ async function performLogout(event: RequestEvent): Promise<string | null> {
 
     // SAML 세션이 없으면 즉시 로그아웃 완료
     await revokeSession(db, idpSessionId);
+    // 이 세션으로 발급된 OIDC refresh token 도 함께 폐기 (offline_access 무효화).
+    await revokeRefreshTokensForSession(db, sessionId);
 
     await recordAuditEvent(db, {
         tenantId: tenant.id,
