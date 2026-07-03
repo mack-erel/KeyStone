@@ -165,9 +165,11 @@ gitleaks detect --log-opts="--all" --redact
 - **A4 OIDC introspection/revocation** — `/oidc/introspect`(RFC 7662), `/oidc/revoke`(RFC 7009) 엔드포인트 신설. 공통 클라이언트 인증 헬퍼(`authenticateOidcClient`) 추출. access token(HMAC 검증)·refresh token(해시 조회) 모두 처리, discovery 광고. rate-limit 적용.
 - **A3 admin users 목록 페이지네이션·검색** — 커서 페이지네이션(PAGE_SIZE=50, createdAt 기준) + 방언 무관 `lower() LIKE` 검색(email/username/displayName, LIKE 와일드카드 이스케이프). audit 페이지 패턴 재사용. UI 검색창·다음 페이지 링크 + i18n 키.
 
+- **A5 OIDC authorize 파라미터** — `prompt`(none/login), `max_age`, `id_token_hint`, `login_hint` 처리. `prompt=none` 시 상호작용 필요하면 `login_required` 를 redirect_uri 로 반환(무UI), 그 외엔 `forceAuthn` 로그인/재인증. `id_token_hint` 는 서명 검증(만료 무시) 후 sub 대조. `login_hint` 는 로그인 아이디 프리필. `verifyIdToken` 에 `ignoreExpiry` 옵션 추가.
+
 ### ⏭️ 남은 단계 (미착수)
 
-- **2단계(잔여)**: SAML Assertion 암호화, authorize 파라미터(prompt/id_token_hint/max_age 등).
+- **2단계(잔여)**: SAML Assertion 암호화(A2) — XML-Enc `EncryptedAssertion` 필요, 현 의존성에 XML 암호화 라이브러리 없음. 별도 설계·검증 필요한 큰 작업.
 - **3단계**: vitest+CI, 스키마 crosscheck, devDeps 재분류, 헬스체크·관측성, 감사 로그 무결성(H-ADMIN-2).
 - **4단계**: CRUD 팩토리+zod, D1 혼재 정리(사용자 결정: 옵션 유지 — vars/driver 정합만), argon2 재평가, i18n.
 - **관련 후속**: find-password 도 find-id 와 동일 타이밍 구조 — 동일 패턴 적용 검토. TOTP enroll TOCTOU(이중등록)는 스키마 unique 제약 필요(3단계).

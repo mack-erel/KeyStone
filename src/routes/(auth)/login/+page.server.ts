@@ -79,6 +79,8 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
         runtimeError: locals.runtimeError,
         registered: url.searchParams.get("registered") === "1",
         passwordReset: url.searchParams.get("passwordReset") === "1",
+        // OIDC login_hint 전달 시 아이디 입력란 프리필용.
+        loginHint: url.searchParams.get("loginHint")?.trim() || null,
     };
 };
 
