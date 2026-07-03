@@ -5,7 +5,7 @@ import { users } from "$lib/server/db/schema";
 
 export function requireDbContext(locals: App.Locals) {
     if (!locals.db || !locals.tenant) {
-        throw error(503, locals.runtimeError ?? 'D1 binding "DB" 를 찾을 수 없습니다. Wrangler preview/dev 환경에서 실행 중인지 확인해 주세요.');
+        throw error(503, locals.runtimeError ?? "데이터베이스 연결을 초기화하지 못했습니다. DB 바인딩/DATABASE_URL 및 DB_DIALECT 설정을 확인해 주세요.");
     }
 
     return { db: locals.db, tenant: locals.tenant };
