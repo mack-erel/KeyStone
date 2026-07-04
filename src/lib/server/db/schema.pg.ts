@@ -489,6 +489,9 @@ export const auditEvents = pgTable(
         ip: text("ip"),
         userAgent: text("user_agent"),
         detailJson: text("detail_json"),
+        // ctrls H-ADMIN-2: 행 단위 무결성 HMAC. IDP_SIGNING_KEY_SECRET 파생 키로 계산되어
+        // DB write 권한만으로는 필드 변조/위조 불가(삭제 탐지는 Logpush 미러 권장).
+        hash: text("hash"),
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
     },
     (t) => [index("audit_events_tenant_kind_idx").on(t.tenantId, t.kind), index("audit_events_tenant_created_idx").on(t.tenantId, t.createdAt), index("audit_events_user_idx").on(t.userId)],

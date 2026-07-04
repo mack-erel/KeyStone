@@ -115,7 +115,13 @@ export const actions: Actions = {
                 if (redirectTo) resetParams.set("redirectTo", redirectTo);
                 if (skinHint) resetParams.set("skinHint", skinHint);
                 const resetUrl = `${issuer}/reset-password?${resetParams.toString()}`;
-                await sendPasswordResetEmail(user.email, resetUrl);
+                // ctrls C5(후속): SMTP 왕복을 응답 경로에서 분리해 타이밍 계정 열거를 차단한다.
+                // (find-id 와 동일 패턴 — Workers: waitUntil, Node: fire-and-forget.)
+                const sendPromise = sendPasswordResetEmail(user.email, resetUrl).catch(() => {
+                    // 메일 발송 실패는 조용히 무시
+                });
+                const wait = event.platform?.ctx?.waitUntil?.bind(event.platform.ctx);
+                if (wait) wait(sendPromise);
             } catch {
                 // 조용히 무시
             }

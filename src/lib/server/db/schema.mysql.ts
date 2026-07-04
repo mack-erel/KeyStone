@@ -534,6 +534,9 @@ export const auditEvents = mysqlTable(
         ip: text("ip"),
         userAgent: text("user_agent"),
         detailJson: text("detail_json"),
+        // ctrls H-ADMIN-2: 행 단위 무결성 HMAC. IDP_SIGNING_KEY_SECRET 파생 키로 계산되어
+        // DB write 권한만으로는 필드 변조/위조 불가(삭제 탐지는 Logpush 미러 권장).
+        hash: text("hash"),
         createdAt: datetime("created_at", { mode: "date", fsp: 3 })
             .notNull()
             .default(sql`(CURRENT_TIMESTAMP(3))`),
