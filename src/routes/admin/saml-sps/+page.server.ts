@@ -4,6 +4,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { samlSps } from "$lib/server/db/schema";
+import { isLoopbackHost } from "$lib/server/validation";
 
 export const load: PageServerLoad = async ({ locals }) => {
     const { db, tenant } = requireAdminContext(locals);
@@ -52,8 +53,7 @@ function validateSamlUrl(value: string, label: string): { ok: true } | { ok: fal
     const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
     if (scheme === "https") return { ok: true };
     if (scheme === "http") {
-        const host = parsed.hostname;
-        if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1") return { ok: true };
+        if (isLoopbackHost(parsed.hostname)) return { ok: true };
         return { ok: false, reason: `${label}: http URL 은 localhost/127.0.0.1 만 허용됩니다.` };
     }
     return { ok: false, reason: `${label}: https URL 만 허용됩니다.` };

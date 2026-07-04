@@ -6,6 +6,7 @@ import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { oidcClients } from "$lib/server/db/schema";
 import { hashClientSecret } from "$lib/server/oidc/client";
 import { ensureCsrfToken, isValidCsrf } from "$lib/server/auth/csrf";
+import { isLoopbackHost } from "$lib/server/validation";
 
 function generateClientId(): string {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 20);
@@ -23,10 +24,6 @@ const ALLOWED_TOKEN_AUTH_METHODS = ["client_secret_basic", "client_secret_post",
 type TokenAuthMethod = (typeof ALLOWED_TOKEN_AUTH_METHODS)[number];
 
 const ALLOWED_OIDC_SCOPES = ["openid", "profile", "email", "address", "phone", "offline_access", "groups"] as const;
-
-function isLoopbackHost(hostname: string): boolean {
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
-}
 
 /**
  * 단일 redirect URI / post-logout / channel logout URL 검증.
