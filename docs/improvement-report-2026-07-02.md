@@ -183,7 +183,39 @@ gitleaks detect --log-opts="--all" --redact
 
 ### ⏭️ 남은 단계 (미착수)
 
-- **3단계(잔여)**: 감사 로그 무결성(H-ADMIN-2, chained-hash/append-only).
-- **4단계**: CRUD 팩토리+zod, D1 혼재 정리(사용자 결정: 옵션 유지 — vars/driver 정합만), argon2 재평가, i18n.
-- **관련 후속**: find-password 도 find-id 와 동일 타이밍 구조 — 동일 패턴 적용 검토. TOTP enroll TOCTOU(이중등록)는 스키마 unique 제약 필요(3단계).
-- **OIDC 스코프 확장(별도 작업)**: `groups` 매핑(조직/role → groups 배열, 스키마 불필요), `address`(users 주소 컬럼 추가 필요), `organization` 설정 경로 복구(`ALLOWED_OIDC_SCOPES` 에 추가). 상세는 프로젝트 메모리 `oidc-scope-expansion` 참고.
+(모두 처리됨 — 아래 "최종 처리 현황" 참조)
+
+---
+
+## 최종 처리 현황 (2026-07-04)
+
+### ✅ 3단계 잔여 완료
+
+- **D2 (H-ADMIN-2) 감사 로그 무결성** — `audit_events.hash` 컬럼(3방언) + `recordAuditEvent` 가
+  안정 필드를 IDP_SIGNING_KEY_SECRET 으로 HMAC-SHA256 계산·저장(행 단위 MAC). prev-hash 체인이
+  아니라 동시 쓰기 fork 문제 없음. 행 삭제 탐지는 Logpush 외부 미러 권장(주석 명시). 유닛 테스트 3건.
+  마이그레이션 생성만(drizzle/0018, {pg,mysql,sqlite}/0001) — 적용은 사용자.
+
+### ✅ 4단계 처리
+
+- **E8 D1 정리** — 사용자 결정(옵션 유지)에 맞춰 `app.d.ts` DB optional 타입(f1e6dc6) + 코herent 한
+  `wrangler.example.jsonc`(d1 기본, postgres/mysql 대안 명시)로 이미 정합. driver-d1/index.ts d1 분기 유지.
+  추가 변경 불필요(혼재는 로컬 gitignore config 영역).
+- **E5 CRUD 검증 중복 제거** — loopback 판정을 `$lib/server/validation.ts` 공통 모듈로 추출(3곳 통합).
+- **관련 후속 완료** — find-password 타이밍(waitUntil 분리)까지 적용.
+
+### ⏸️ 의도적 보류 (품질·리스크 사유, 별도 작업 권장)
+
+- **E4/E5 CRUD 팩토리 + zod 전면 도입** — teams/parts/positions/departments 팩토리화는 라우트별 고유
+  검증(계층/키회전)과의 경계 설계가 필요하고, admin CRUD 통합 테스트 하네스 없이 10개 라우트를 일괄
+  리팩터하면 회귀 위험이 큼. 안전한 슬라이스(검증 중복 제거)만 반영. 팩토리+zod 는 통합 테스트와 함께 별도 PR 권장.
+- **D3 (H-DEP-1) argon2 재평가** — 결론: `@node-rs/argon2`(네이티브)는 **Cloudflare Workers 에서 동작 불가**
+  → 현 타깃에 부적합. 순수 JS `@hicaru/argon2-pure.js` 는 Workers 호환이나 CPU 비용 큼. WASM 구현(hash-wasm 등)
+  이 성능 개선 대안이나, 비밀번호 해싱 교체는 버그 시 전원 락아웃 리스크가 커 Workers WASM 검증 + 점진 롤아웃이
+  필요. **현행 유지 권장**, WASM 전환은 별도 검증된 작업으로.
+- **E10 i18n en.json + admin 하드코딩 t() 전환** — 엔진은 locale-keyed(멀티로케일 준비됨)이나, 품질 있는 영어
+  카탈로그(400+ 문자열)와 SSR locale 결정/전환 배선이 필요한 콘텐츠 작업. 기계번역 부분 적용은 UX 저하라
+  보류. 원어민 검수 포함 별도 작업 권장.
+- **TOTP enroll TOCTOU** — 완전 해소엔 (userId, type=totp) partial unique 필요하나 MySQL 미지원(신규 dialect
+  drift 유발). enroll/confirm rate-limit(C3)로 창(window)을 크게 완화한 상태 유지.
+- **OIDC 스코프 확장(별도 메모)**: `groups`/`address`/`organization` — 프로젝트 메모리 `oidc-scope-expansion` 참고.
