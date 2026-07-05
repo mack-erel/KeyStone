@@ -21,6 +21,7 @@ declare global {
             user: import("$lib/server/db/schema").User | null;
             runtimeConfig: import("$lib/server/auth/runtime").RuntimeConfig;
             runtimeError: string | null;
+            locale: import("$lib/i18n.svelte").Locale;
         }
         // interface PageData {}
         // interface PageState {}

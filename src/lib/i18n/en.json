@@ -1,0 +1,107 @@
+{
+    "app": {
+        "title": "Identity Provider"
+    },
+    "nav": {
+        "login": "Log in",
+        "logout": "Log out",
+        "admin": "Admin"
+    },
+    "common": {
+        "name": "Name",
+        "code": "Code",
+        "description": "Description",
+        "status": "Status",
+        "actions": "Actions",
+        "created": "Created",
+        "add": "Add",
+        "cancel": "Cancel",
+        "save": "Save",
+        "edit": "Edit",
+        "delete": "Delete",
+        "confirm_delete": "Are you sure you want to delete this?",
+        "none": "None",
+        "all": "All",
+        "apply": "Apply",
+        "reset": "Reset",
+        "collapse": "Collapse",
+        "expand": "Edit",
+        "status_active": "Active",
+        "status_inactive": "Inactive",
+        "status_disabled": "Disabled",
+        "status_locked": "Locked",
+        "primary_member": "Primary",
+        "remove": "Remove",
+        "change": "Change",
+        "saving": "Saved.",
+        "search": "Search",
+        "next_page": "Next page →"
+    },
+    "login": {
+        "username": "Username",
+        "password": "Password",
+        "submit": "Log in",
+        "subtitle": "Sign in with your local account for M0 admin access.",
+        "or": "OR",
+        "passkey_login": "Sign in with a passkey",
+        "passkey_authenticating": "Authenticating...",
+        "passkey_options_failed": "Failed to request authentication options.",
+        "passkey_verify_failed": "Authentication failed.",
+        "passkey_cancelled": "Passkey authentication was cancelled.",
+        "passkey_failed": "Passkey authentication failed.",
+        "registered_success": "Your account has been created. Please log in.",
+        "password_reset_success": "Your password has been changed. Please log in with your new password."
+    },
+    "mfa_login": {
+        "title": "Two-Factor Authentication",
+        "backup_code_hint": "Please enter your backup code.",
+        "totp_hint": "Please enter the 6-digit code from your authenticator app.",
+        "backup_code_label": "Backup Code",
+        "totp_code_label": "Authentication Code",
+        "confirm": "Confirm",
+        "use_backup": "Sign in with a backup code",
+        "use_totp": "Sign in with an authenticator code",
+        "back_to_login": "← Back to login"
+    },
+    "signup": {
+        "title": "Sign Up",
+        "subtitle": "Create an account to get started.",
+        "username_label": "Username",
+        "username_placeholder": "Lowercase letters, numbers, _ (3-32 characters)",
+        "email_label": "Email",
+        "password_label": "Password",
+        "password_placeholder": "At least 8 characters",
+        "confirm_password_label": "Confirm Password",
+        "submit": "Sign up",
+        "have_account": "Already have an account?",
+        "not_available": "Currently, accounts can only be created by an administrator."
+    },
+    "find_id": {
+        "title": "Find Username",
+        "subtitle": "Enter the email address you used to sign up.",
+        "email_label": "Email",
+        "submit": "Find Username",
+        "result_found": "This is the username registered with that email.",
+        "result_email_sent": "Your full username has been sent to your email.",
+        "result_not_found": "No account is registered with the email you entered.",
+        "not_available": "Finding your username is not currently supported. Please contact your administrator."
+    },
+    "find_password": {
+        "title": "Reset Password",
+        "subtitle": "Enter your username and email, and we will send you a reset link.",
+        "username_label": "Username",
+        "email_label": "Email",
+        "submit": "Send Reset Link",
+        "result_sent": "If the information matches, a password reset link will be sent to your email.",
+        "not_available": "Password recovery is not currently supported. Please contact your administrator."
+    },
+    "reset_password": {
+        "title": "Reset Password",
+        "subtitle": "Please enter your new password.",
+        "password_label": "New Password",
+        "password_placeholder": "At least 8 characters",
+        "confirm_label": "Confirm Password",
+        "submit": "Change Password",
+        "invalid_link": "This link has expired or is invalid."
+    }
+}

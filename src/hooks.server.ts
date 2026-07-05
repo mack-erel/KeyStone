@@ -4,6 +4,7 @@ import { SESSION_COOKIE_NAME, SESSION_TOUCH_INTERVAL_MS } from "$lib/server/auth
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { clearSessionCookie, getSessionContext, touchSession } from "$lib/server/auth/session";
 import { getDb, DB_DIALECT } from "$lib/server/db";
+import { LOCALE_COOKIE_NAME, resolveLocale } from "$lib/server/locale";
 
 // CSRF: state-changing 요청에 대해 same-origin을 강제할 라우트
 // ctrls H-AUTH-1: /oidc/end-session 추가 — POST 가 cookie 기반 세션을 폐기하므로
@@ -40,6 +41,11 @@ export const handle: Handle = async ({ event, resolve }) => {
     event.locals.user = null;
     event.locals.runtimeConfig = getRuntimeConfig(event.platform);
     event.locals.runtimeError = null;
+
+    // SSR 로케일 결정: 쿠키(idp_locale) → Accept-Language → 기본 ko.
+    // %lang% 치환과 +layout.server.ts(data.locale) 가 이 값을 공유해 하이드레이션 미스매치를 방지한다.
+    const locale = resolveLocale(event.cookies.get(LOCALE_COOKIE_NAME), event.request.headers.get("accept-language"));
+    event.locals.locale = locale;
 
     const path = event.url.pathname;
 
@@ -120,7 +126,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 
     let response: Response;
     try {
-        response = await resolve(event);
+        response = await resolve(event, {
+            // app.html 의 %lang% 를 실제 SSR 로케일로 치환 (<html lang>).
+            transformPageChunk: ({ html }) => html.replace("%lang%", locale),
+        });
     } finally {
         // 요청당 연 postgres/mysql 연결 정리. Workers 는 waitUntil 로 응답을 막지 않고
         // 백그라운드에서 닫는다. Node 경로엔 dispose 가 없으므로 no-op.

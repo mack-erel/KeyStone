@@ -2,6 +2,7 @@
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
 import { t } from "$lib/i18n.svelte";
+import LocaleToggle from "$lib/components/LocaleToggle.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
@@ -32,6 +33,7 @@ const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.sk
     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
     {@html skinHtmlEffective}
 {:else}
+    <div class="fixed top-4 right-4 z-40"><LocaleToggle /></div>
     <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
         <div class="w-full max-w-md space-y-6 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
             <div>
@@ -52,7 +54,7 @@ const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.sk
                         type="text"
                         required
                         autocomplete="username"
-                        placeholder="영문 소문자, 숫자, _ (3~32자)"
+                        placeholder={t("signup.username_placeholder")}
                         class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -73,7 +75,7 @@ const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.sk
                         type="password"
                         required
                         autocomplete="new-password"
-                        placeholder="8자 이상"
+                        placeholder={t("signup.password_placeholder")}
                         class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
