@@ -12,6 +12,7 @@ import { verifyPkce } from "$lib/server/oidc/pkce";
 import { issueRefreshToken, rotateRefreshToken, revokeRefreshTokenFamily } from "$lib/server/oidc/refresh";
 import { generateAccessToken, getActiveSigningKey, signJwt } from "$lib/server/crypto/keys";
 import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
+import { getUserMembership, membershipToGroups } from "$lib/server/org/membership";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 import type { DB } from "$lib/server/db";
 import type { OidcClientRecord } from "$lib/server/oidc/client";
@@ -115,6 +116,13 @@ async function buildTokens(params: BuildTokenParams): Promise<{ idToken: string;
             if (RESERVED_ID_TOKEN_CLAIMS.has(k)) continue;
             idTokenPayload[k] = v;
         }
+    }
+
+    // groups scope — 활성 조직 멤버십을 code(없으면 name) 문자열 배열로 매핑.
+    // userinfo 응답과 동일 로직(membershipToGroups)을 공유한다. 표준 claim 이므로 assignment 머지 이후에 설정.
+    if (scopes.has("groups")) {
+        const membership = await getUserMembership(db, user.id);
+        idTokenPayload.groups = membershipToGroups(membership);
     }
 
     const idToken = await signJwt(idTokenPayload, signingKey.privateKey, signingKey.kid);
@@ -240,6 +248,26 @@ export const POST: RequestHandler = async (event) => {
         } catch (error) {
             console.error("client_secret 해시 업그레이드 실패", { clientId }, error);
         }
+    }
+
+    // per-client 레이트 리밋: 인증 성공한 클라이언트당 60회/분.
+    // IP 기반 리밋과 별개로, 자격증명을 아는 남용 클라이언트를 격리한다.
+    const clientRl = await checkRateLimit(db, `token-client:${clientId}`, { windowMs: 60 * 1000, limit: 60 });
+    if (!clientRl.allowed) {
+        await recordTokenFailure(clientId, "rate_limit_exceeded", "client 요청이 너무 많습니다");
+        return new Response(
+            JSON.stringify({
+                error: "rate_limit_exceeded",
+                error_description: "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+            }),
+            {
+                status: 429,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Retry-After": String(Math.ceil(clientRl.retryAfterMs / 1000)),
+                },
+            },
+        );
     }
 
     if (!clientAllowsGrant(client, grantType)) {

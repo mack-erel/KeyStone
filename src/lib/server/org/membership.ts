@@ -39,6 +39,24 @@ export interface UserMembership {
     primaryJobTitle: string | null;
 }
 
+/**
+ * 멤버십을 OIDC `groups` scope 용 문자열 배열로 매핑한다.
+ * 부서 → 팀 → 파트 순으로, 각 항목은 code 우선(없으면 name)으로 라벨링하고 중복은 제거한다.
+ * token 의 id_token 과 userinfo 응답이 동일한 값을 쓰도록 공용화한다.
+ */
+export function membershipToGroups(membership: UserMembership): string[] {
+    const groups: string[] = [];
+    const push = (code: string | null, name: string): void => {
+        const label = (code && code.trim()) || name;
+        if (label) groups.push(label);
+    };
+    for (const d of membership.departments) push(d.code, d.name);
+    for (const t of membership.teams) push(t.code, t.name);
+    for (const p of membership.parts) push(p.code, p.name);
+    // 순서 유지하며 중복 제거.
+    return [...new Set(groups)];
+}
+
 /** 현재 소속 중인 부서/팀/파트 소속 정보를 한 번에 조회 */
 export async function getUserMembership(db: DB, userId: string): Promise<UserMembership> {
     // 현재 소속 부서 (endedAt IS NULL)
