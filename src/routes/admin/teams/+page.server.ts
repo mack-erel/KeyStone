@@ -1,118 +1,58 @@
-import { fail } from "@sveltejs/kit";
 import { asc, and, eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireAdminContext } from "$lib/server/auth/guards";
-import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { departments, teams } from "$lib/server/db/schema";
+import { createAdminCrudRoute, type CrudContext } from "$lib/server/admin/crud-factory";
+import { teamCreateSchema, teamUpdateSchema } from "$lib/server/admin/schemas";
 
-export const load: PageServerLoad = async ({ locals }) => {
-    const { db, tenant } = requireAdminContext(locals);
-
-    const rows = await db
-        .select({
-            id: teams.id,
-            name: teams.name,
-            code: teams.code,
-            departmentId: teams.departmentId,
-            departmentName: departments.name,
-            status: teams.status,
-            createdAt: teams.createdAt,
-        })
-        .from(teams)
-        .leftJoin(departments, eq(teams.departmentId, departments.id))
-        .where(eq(teams.tenantId, tenant.id))
-        .orderBy(asc(departments.name), asc(teams.name));
-
-    const allDepts = await db
-        .select({ id: departments.id, name: departments.name })
+/**
+ * departmentId 참조 무결성: 지정된 부서가 존재하고 동일 tenant 인지 확인.
+ * (없거나 타 tenant → 에러 메시지)
+ */
+async function validateDepartmentRef(ctx: CrudContext, departmentId: string | null): Promise<string | null> {
+    if (!departmentId) return null;
+    const [row] = await ctx.db
+        .select({ id: departments.id })
         .from(departments)
-        .where(and(eq(departments.tenantId, tenant.id), eq(departments.status, "active")))
-        .orderBy(asc(departments.name));
+        .where(and(eq(departments.id, departmentId), eq(departments.tenantId, ctx.tenant.id)))
+        .limit(1);
+    return row ? null : "선택한 부서를 찾을 수 없습니다.";
+}
 
-    return { teams: rows, allDepts };
-};
+// ctrls H-ADMIN-1: 팀 변경은 권한 매핑에 영향이 있으므로 모든 변경을 audit 기록.
+const route = createAdminCrudRoute({
+    table: teams,
+    auditPrefix: "team",
+    createSchema: teamCreateSchema,
+    updateSchema: teamUpdateSchema,
+    load: async ({ db, tenant }) => {
+        const rows = await db
+            .select({
+                id: teams.id,
+                name: teams.name,
+                code: teams.code,
+                departmentId: teams.departmentId,
+                departmentName: departments.name,
+                status: teams.status,
+                createdAt: teams.createdAt,
+            })
+            .from(teams)
+            .leftJoin(departments, eq(teams.departmentId, departments.id))
+            .where(eq(teams.tenantId, tenant.id))
+            .orderBy(asc(departments.name), asc(teams.name));
 
-export const actions: Actions = {
-    // ctrls H-ADMIN-1: 팀 변경은 권한 매핑에 영향이 있으므로 모든 변경을 audit 기록.
-    create: async (event) => {
-        const { locals, request } = event;
-        const { db, tenant } = requireAdminContext(locals);
-        const fd = await request.formData();
-        const name = String(fd.get("name") ?? "").trim();
-        const code = String(fd.get("code") ?? "").trim() || null;
-        const departmentId = String(fd.get("departmentId") ?? "").trim() || null;
-        const description = String(fd.get("description") ?? "").trim() || null;
+        const allDepts = await db
+            .select({ id: departments.id, name: departments.name })
+            .from(departments)
+            .where(and(eq(departments.tenantId, tenant.id), eq(departments.status, "active")))
+            .orderBy(asc(departments.name));
 
-        if (!name) return fail(400, { create: true, error: "팀명을 입력해 주세요." });
-
-        await db.insert(teams).values({
-            tenantId: tenant.id,
-            name,
-            code,
-            departmentId,
-            description,
-        });
-        const meta = getRequestMetadata(event);
-        await recordAuditEvent(db, {
-            tenantId: tenant.id,
-            actorId: locals.user!.id,
-            kind: "team_created",
-            outcome: "success",
-            ip: meta.ip,
-            userAgent: meta.userAgent,
-            detail: { name, code, departmentId },
-        });
-        return { created: true };
+        return { teams: rows, allDepts };
     },
+    beforeCreate: (ctx, values) => validateDepartmentRef(ctx, values.departmentId),
+    beforeUpdate: (ctx, values) => validateDepartmentRef(ctx, values.departmentId),
+    buildCreateDetail: (v) => ({ name: v.name, code: v.code, departmentId: v.departmentId }),
+    buildUpdateDetail: (id, v) => ({ id, name: v.name, code: v.code, departmentId: v.departmentId, status: v.status }),
+});
 
-    update: async (event) => {
-        const { locals, request } = event;
-        const { db, tenant } = requireAdminContext(locals);
-        const fd = await request.formData();
-        const id = String(fd.get("id") ?? "");
-        const name = String(fd.get("name") ?? "").trim();
-        const code = String(fd.get("code") ?? "").trim() || null;
-        const departmentId = String(fd.get("departmentId") ?? "").trim() || null;
-        const description = String(fd.get("description") ?? "").trim() || null;
-        const status = String(fd.get("status") ?? "active") as "active" | "inactive";
-
-        if (!id || !name) return fail(400, { error: "잘못된 요청입니다." });
-
-        await db
-            .update(teams)
-            .set({ name, code, departmentId, description, status, updatedAt: new Date() })
-            .where(and(eq(teams.id, id), eq(teams.tenantId, tenant.id)));
-        const meta = getRequestMetadata(event);
-        await recordAuditEvent(db, {
-            tenantId: tenant.id,
-            actorId: locals.user!.id,
-            kind: "team_updated",
-            outcome: "success",
-            ip: meta.ip,
-            userAgent: meta.userAgent,
-            detail: { id, name, code, departmentId, status },
-        });
-        return { updated: true };
-    },
-
-    delete: async (event) => {
-        const { locals, request } = event;
-        const { db, tenant } = requireAdminContext(locals);
-        const fd = await request.formData();
-        const id = String(fd.get("id") ?? "");
-        if (!id) return fail(400, { error: "잘못된 요청입니다." });
-
-        await db.delete(teams).where(and(eq(teams.id, id), eq(teams.tenantId, tenant.id)));
-        const meta = getRequestMetadata(event);
-        await recordAuditEvent(db, {
-            tenantId: tenant.id,
-            actorId: locals.user!.id,
-            kind: "team_deleted",
-            outcome: "success",
-            ip: meta.ip,
-            userAgent: meta.userAgent,
-            detail: { id },
-        });
-        return { deleted: true };
-    },
-};
+export const load: PageServerLoad = route.load;
+export const actions: Actions = route.actions;
