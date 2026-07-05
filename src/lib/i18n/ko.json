@@ -50,7 +50,11 @@
         "passkey_cancelled": "패스키 인증이 취소되었습니다.",
         "passkey_failed": "패스키 인증에 실패했습니다.",
         "registered_success": "회원가입이 완료되었습니다. 로그인해 주세요.",
-        "password_reset_success": "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요."
+        "password_reset_success": "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.",
+        "err_missing_credentials": "아이디와 비밀번호를 입력해 주세요.",
+        "err_rate_limit": "로그인 시도가 너무 많습니다. {{minutes}}분 후 다시 시도해 주세요.",
+        "err_invalid_credentials": "아이디 또는 비밀번호가 올바르지 않습니다.",
+        "err_mfa_config": "2단계 인증 설정에 문제가 있습니다. 관리자에게 문의해 주세요."
     },
     "admin": {
         "title": "관리자 대시보드",

@@ -12,6 +12,7 @@ import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { getRequestMetadata } from "$lib/server/audit";
+import { translate } from "$lib/i18n/server";
 
 async function resolveSkin(skinHint: string | null, locals: App.Locals, platform: App.Platform | undefined, token: string | null, redirectTo: string | null, flashMsg = ""): Promise<string | null> {
     if (!skinHint || !locals.db || !locals.tenant) return null;
@@ -74,6 +75,7 @@ export const actions: Actions = {
         const redirectTo = sanitizeRedirectTarget(String(formData.get("redirectTo") ?? ""));
         const skinHint = String(formData.get("skinHint") ?? "");
 
+        const locale = event.locals.locale;
         const failWithSkin = async (msg: string) => fail(400, { error: msg, skinHtml: await resolveSkin(skinHint || null, event.locals, event.platform, token || null, redirectTo, msg) });
 
         // ctrls C8: 토큰 제출 브루트포스/자동화 방어. 토큰이 256bit CSPRNG 라 추측 실익은
@@ -81,12 +83,12 @@ export const actions: Actions = {
         const meta = getRequestMetadata(event);
         const rl = await checkRateLimit(db, `reset-password:${meta.ipKey}`, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
-            return failWithSkin(`요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`);
+            return failWithSkin(translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }));
         }
 
-        if (!token) return failWithSkin("유효하지 않은 요청입니다.");
-        if (password.length < 8) return failWithSkin("비밀번호는 8자 이상이어야 합니다.");
-        if (password !== confirmPassword) return failWithSkin("비밀번호가 일치하지 않습니다.");
+        if (!token) return failWithSkin(translate(locale, "reset_password.err_invalid_request"));
+        if (password.length < 8) return failWithSkin(translate(locale, "reset_password.err_password_short"));
+        if (password !== confirmPassword) return failWithSkin(translate(locale, "reset_password.err_password_mismatch"));
 
         const tokenHash = await hashToken(token);
         const now = new Date();
@@ -97,7 +99,7 @@ export const actions: Actions = {
             .where(and(eq(passwordResetTokens.tokenHash, tokenHash), isNull(passwordResetTokens.usedAt)))
             .limit(1);
 
-        if (!record || record.expiresAt < now) return failWithSkin("링크가 만료되었거나 이미 사용된 링크입니다.");
+        if (!record || record.expiresAt < now) return failWithSkin(translate(locale, "reset_password.err_expired_link"));
 
         const hashedPw = await hashPassword(password);
 

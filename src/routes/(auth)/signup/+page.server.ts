@@ -9,6 +9,7 @@ import { resolve } from "$app/paths";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { getRequestMetadata } from "$lib/server/audit";
+import { translate } from "$lib/i18n/server";
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     const skinHint = url.searchParams.get("skinHint");
@@ -70,34 +71,35 @@ export const actions: Actions = {
         const password = String(formData.get("password") ?? "");
         const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
+        const locale = event.locals.locale;
         const failSkin = async (status: number, msg: string) => fail(status, { error: msg, skinHtml: await resolveSkinForAction(event, msg) });
 
         // IP 기반 레이트리밋 — 60분/5회.
         const meta = getRequestMetadata(event);
         const rl = await checkRateLimit(db, `signup:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
-            return failSkin(429, `가입 시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`);
+            return failSkin(429, translate(locale, "signup.err_rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }));
         }
 
-        if (!username || !email || !password) return failSkin(400, "모든 필드를 입력해 주세요.");
-        if (!/^[a-z0-9_]{3,32}$/.test(username)) return failSkin(400, "아이디는 영문 소문자, 숫자, _만 사용 가능하며 3~32자여야 합니다.");
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return failSkin(400, "올바른 이메일 주소를 입력해 주세요.");
-        if (password.length < 8) return failSkin(400, "비밀번호는 8자 이상이어야 합니다.");
-        if (password !== confirmPassword) return failSkin(400, "비밀번호가 일치하지 않습니다.");
+        if (!username || !email || !password) return failSkin(400, translate(locale, "signup.err_missing_fields"));
+        if (!/^[a-z0-9_]{3,32}$/.test(username)) return failSkin(400, translate(locale, "signup.err_invalid_username"));
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return failSkin(400, translate(locale, "signup.err_invalid_email"));
+        if (password.length < 8) return failSkin(400, translate(locale, "signup.err_password_short"));
+        if (password !== confirmPassword) return failSkin(400, translate(locale, "signup.err_password_mismatch"));
 
         const [existingByUsername] = await db
             .select({ id: users.id })
             .from(users)
             .where(and(eq(users.tenantId, tenant.id), eq(users.username, username)))
             .limit(1);
-        if (existingByUsername) return failSkin(409, "이미 사용 중인 아이디입니다.");
+        if (existingByUsername) return failSkin(409, translate(locale, "signup.err_username_taken"));
 
         const [existingByEmail] = await db
             .select({ id: users.id })
             .from(users)
             .where(and(eq(users.tenantId, tenant.id), eq(users.email, email)))
             .limit(1);
-        if (existingByEmail) return failSkin(409, "이미 사용 중인 이메일입니다.");
+        if (existingByEmail) return failSkin(409, translate(locale, "signup.err_email_taken"));
 
         const hashedPw = await hashPassword(password);
         const userId = crypto.randomUUID();

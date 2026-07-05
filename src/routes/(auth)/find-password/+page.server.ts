@@ -8,6 +8,7 @@ import { sendPasswordResetEmail, generateToken } from "$lib/server/email";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { getRequestMetadata } from "$lib/server/audit";
 import { env } from "$env/dynamic/private";
+import { translate } from "$lib/i18n/server";
 
 const RESET_EXPIRY_MS = 60 * 60 * 1000;
 
@@ -72,8 +73,10 @@ export const actions: Actions = {
             .trim()
             .toLowerCase();
 
+        const locale = event.locals.locale;
+
         if (!email || !username) {
-            const msg = "이메일과 아이디를 모두 입력해 주세요.";
+            const msg = translate(locale, "find_password.err_missing_fields");
             return fail(400, { error: msg, skinHtml: await resolveSkinForAction(event, false, undefined, msg) });
         }
 
@@ -81,7 +84,7 @@ export const actions: Actions = {
         const meta = getRequestMetadata(event);
         const rl = await checkRateLimit(db, `find-password:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
-            const msg = `요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
+            const msg = translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) });
             return fail(429, { error: msg, skinHtml: await resolveSkinForAction(event, false, undefined, msg) });
         }
 
