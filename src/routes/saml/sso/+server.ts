@@ -27,6 +27,7 @@ import { acrSatisfies } from "$lib/server/auth/constants";
 import { samlAuthnRequestIds } from "$lib/server/db/schema";
 import type { ParsedAuthnRequest } from "$lib/server/saml/parse-authn-request";
 import { parseAuthnRequest, parseAuthnRequestPost, verifySamlRedirectSignature, encodeRedirectBindingSamlRequest } from "$lib/server/saml/parse-authn-request";
+import { verifyEnvelopedXmlSignature } from "$lib/server/saml/verify-xml-signature";
 import { buildSignedSamlErrorResponse, buildSignedSamlResponse } from "$lib/server/saml/response";
 import { findSp, recordSamlSession, type SamlSpRecord } from "$lib/server/saml/sp";
 import { getUserMembership } from "$lib/server/org/membership";
@@ -547,7 +548,19 @@ export const POST: RequestHandler = async (event) => {
         throw error(400, "SAMLRequest 파라미터가 없습니다.");
     }
 
-    // HTTP-POST 바인딩: base64(XML), deflate 없음.
+    // HTTP-POST 바인딩: base64(XML), deflate 없음. 서명 검증·resume 재인코딩에 재사용하도록
+    // XML 을 한 번만 디코드한다. 파서(parseAuthnRequestPost)와 서명 검증기가 동일한 원본
+    // 문자열을 보게 해, 파싱 결과와 서명 대상이 분기되는 것을 막는다.
+    let xml: string;
+    try {
+        const raw = atob(samlRequestB64);
+        const bin = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bin[i] = raw.charCodeAt(i);
+        xml = new TextDecoder().decode(bin);
+    } catch {
+        throw error(400, "SAMLRequest 파싱 실패");
+    }
+
     let authnRequest: ParsedAuthnRequest;
     try {
         authnRequest = await parseAuthnRequestPost(samlRequestB64, relayState);
@@ -564,12 +577,18 @@ export const POST: RequestHandler = async (event) => {
 
     // ── 서명 검증 (HTTP-POST 바인딩) ───────────────────────────────────────────
     // POST 바인딩의 서명 AuthnRequest 는 URL 쿼리 서명이 아니라 요청 XML 내부의 enveloped
-    // XML 서명(ds:Signature)이다. 현재 코드베이스에는 enveloped XML 서명을 "검증"하는
-    // 구현이 없다 (xmldsigjs 는 Response/Assertion 서명 "생성"에만 사용). 검증할 수 없는
-    // 서명을 통과시키면 위조된 AuthnRequest 를 수용하게 되므로, 서명이 요구되거나 존재하면
-    // 명시적으로 거부한다. (후속 PR: enveloped XML 서명 검증기 도입 후 이 분기 대체.)
+    // XML 서명(ds:Signature)이다. SP 가 서명을 요구(wantAuthnRequestsSigned)하거나 XML 에
+    // 서명이 존재하면, 신뢰하는 SP 인증서(sp.cert) 공개키로만 enveloped 서명을 검증한다.
+    // (KeyInfo 의 인증서는 신뢰하지 않음 — verify-xml-signature.ts 참조.)
     if (sp.wantAuthnRequestsSigned || authnRequest.hasSignature) {
-        throw error(400, "POST 바인딩 서명 AuthnRequest 검증은 아직 지원되지 않습니다. (enveloped XML 서명 검증 미구현 — 후속)");
+        if (!sp.cert) {
+            // 검증에 쓸 SP 인증서가 없으면 서명을 검증할 방법이 없다 → 거부.
+            throw error(400, "SP 인증서가 등록되지 않아 AuthnRequest 서명을 검증할 수 없습니다.");
+        }
+        const sigValid = await verifyEnvelopedXmlSignature(xml, sp.cert);
+        if (!sigValid) {
+            throw error(400, "AuthnRequest 서명 검증에 실패했습니다.");
+        }
     }
 
     const acsUrl = resolveAcsUrl(authnRequest, sp);
@@ -579,12 +598,8 @@ export const POST: RequestHandler = async (event) => {
         throw error(503, "서명 키가 없습니다. 서버를 재시작하여 키를 생성하세요.");
     }
 
-    // 로그인/재인증 후 복귀 URL: POST body 는 GET 리다이렉트로 보존되지 않으므로, 동일 (미서명)
+    // 로그인/재인증 후 복귀 URL: POST body 는 GET 리다이렉트로 보존되지 않으므로, 동일
     // AuthnRequest 를 HTTP-Redirect 바인딩으로 재인코딩해 기존 GET 경로가 그대로 재개하도록 한다.
-    const raw = atob(samlRequestB64);
-    const bin = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) bin[i] = raw.charCodeAt(i);
-    const xml = new TextDecoder().decode(bin);
     const resumeParams = new URLSearchParams();
     resumeParams.set("SAMLRequest", await encodeRedirectBindingSamlRequest(xml));
     if (relayState) resumeParams.set("RelayState", relayState);

@@ -48,7 +48,28 @@
 
         // OIDC/SAML 토큰 발급 issuer URL (배포 도메인과 일치시킬 것)
         "IDP_ISSUER_URL": "",
+
+        // ── 이메일 발송 (비밀번호 재설정 / 아이디 찾기) ─────────────────────────
+        // Workers 배포에서는 nodemailer(raw SMTP)가 동작하지 않으므로 아래
+        // Cloudflare Email Sending 바인딩(send_email)을 사용한다.
+        // EMAIL_FROM 은 반드시 Email Sending 에 온보딩된 도메인의 주소여야 한다.
+        //   온보딩: wrangler email sending enable <yourdomain.com>
+        //   (또는 대시보드 Email > Email Sending 에서 도메인 추가)
+        // 온보딩된 sender 도메인만 있으면 임의 외부 수신자에게 발송 가능하다
+        // (수신자 사전 검증 불필요 — 이는 구 Email Routing forward 의 제약이었다).
+        "EMAIL_FROM": "noreply@yourdomain.com",
+        // 발신자 표시 이름 (선택, 기본값 "KeyStone")
+        "EMAIL_FROM_NAME": "KeyStone",
     },
+    // ── Cloudflare Email Sending 바인딩 ───────────────────────────────────────
+    // 코드가 platform.env.EMAIL 을 참조하므로 binding 이름은 반드시 EMAIL.
+    // from 도메인 온보딩 후 이 바인딩만 있으면 임의 수신자에게 발송된다.
+    // 로컬 개발(wrangler dev)에서 실제 발송을 테스트하려면 "remote": true 추가.
+    "send_email": [
+        {
+            "name": "EMAIL",
+        },
+    ],
     "r2_buckets": [
         {
             // 커스텀 로그인 스킨 R2 캐시 버킷

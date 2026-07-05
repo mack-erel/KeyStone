@@ -1,5 +1,45 @@
-import nodemailer from "nodemailer";
 import { env } from "$env/dynamic/private";
+
+// ── 발송 코어: 런타임 분기 ────────────────────────────────────────────────────
+// B6: nodemailer(raw TCP SMTP)는 Cloudflare Workers 런타임에서 동작하지 않는다
+// (net/tls 미지원). 따라서 발송 경로를 런타임별로 분기한다.
+//   - Cloudflare Workers: send_email 바인딩(platform.env.EMAIL)이 있으면
+//     Cloudflare Email Sending 으로 발송한다. 이 바인딩은 sender 도메인만
+//     온보딩되어 있으면 "임의 외부 수신자"에게 트랜잭션 메일을 보낼 수 있다
+//     (비밀번호 재설정/아이디 찾기에 적합). 수신자 검증이 필요한 것은 구
+//     Email Routing 의 forward 이지, Email Sending 발송 경로가 아니다.
+//   - 그 외(Node/adapter-node): 기존 nodemailer(SMTP)로 발송한다.
+//     nodemailer 는 top-level import 를 제거하고 **동적 import** 로 바꿔
+//     Workers 번들/런타임에 net/tls 의존이 끌려들어가지 않게 한다.
+
+type EnvLookup = Record<string, unknown>;
+
+// send_email 바인딩(SendEmail)은 workerd 런타임이 주입하며 worker-configuration.d.ts
+// 에 전역 타입으로 존재한다. platform.env 는 Env 확장이라 아직 EMAIL 이 선언돼
+// 있지 않을 수 있으므로 방어적으로 조회한다.
+function getEmailBinding(platform: App.Platform | undefined): SendEmail | undefined {
+    const binding = (platform?.env as EnvLookup | undefined)?.EMAIL as SendEmail | undefined;
+    // send() 메서드가 존재해야 유효한 바인딩으로 간주.
+    return binding && typeof binding.send === "function" ? binding : undefined;
+}
+
+function readEnv(platform: App.Platform | undefined, key: string): string | undefined {
+    const fromPlatform = (platform?.env as EnvLookup | undefined)?.[key];
+    if (typeof fromPlatform === "string" && fromPlatform.length > 0) return fromPlatform;
+    // $env/dynamic/private 는 Workers 에서 platform.env, Node 에서 process.env 를 반영한다.
+    const fromEnv = (env as EnvLookup)?.[key];
+    return typeof fromEnv === "string" && fromEnv.length > 0 ? fromEnv : undefined;
+}
+
+// Cloudflare Email 발송에 필요한 sender 정보. from 주소는 반드시 Email Sending 에
+// 온보딩된 도메인이어야 한다(wrangler email sending enable <domain>). 미설정이면
+// null 을 돌려 상위에서 "설정 없음"으로 처리한다.
+function getCloudflareFrom(platform: App.Platform | undefined): { email: string; name: string } | null {
+    const email = readEnv(platform, "EMAIL_FROM");
+    if (!email) return null;
+    const name = readEnv(platform, "EMAIL_FROM_NAME") ?? "KeyStone";
+    return { email, name };
+}
 
 function getSmtpConfig() {
     const hostname = env.SMTP_HOSTNAME;
@@ -18,10 +58,12 @@ function getSmtpConfig() {
     };
 }
 
-async function send(to: string, subject: string, html: string): Promise<void> {
+async function sendViaNodemailer(to: string, subject: string, html: string, text: string): Promise<void> {
     const smtp = getSmtpConfig();
-    if (!smtp) throw new Error("SMTP 설정이 없습니다.");
+    if (!smtp) throw new Error("이메일 발송 설정이 없습니다. (SMTP_* 미설정)");
 
+    // 동적 import: Workers 번들에 net/tls 의존을 top-level 로 끌어오지 않도록.
+    const { default: nodemailer } = await import("nodemailer");
     const transporter = nodemailer.createTransport({
         host: smtp.hostname,
         port: smtp.port,
@@ -31,10 +73,32 @@ async function send(to: string, subject: string, html: string): Promise<void> {
     transporter.setMaxListeners(20);
 
     try {
-        await transporter.sendMail({ from: smtp.senderAddress, to, subject, html });
+        await transporter.sendMail({ from: smtp.senderAddress, to, subject, html, text });
     } finally {
         transporter.close();
     }
+}
+
+// text 파트는 각 발송 함수가 명시적으로 작성해 넘긴다(HTML 을 정규식으로 역파싱하지 않는다 —
+// 불완전 sanitization/이중 언이스케이프를 피하고, text/plain 렌더링 정확도를 높인다).
+async function send(to: string, subject: string, html: string, text: string, platform: App.Platform | undefined): Promise<void> {
+    // 1) Cloudflare Workers 경로 — send_email 바인딩이 있으면 최우선.
+    const emailBinding = getEmailBinding(platform);
+    if (emailBinding) {
+        const from = getCloudflareFrom(platform);
+        if (!from) throw new Error("이메일 발송 설정이 없습니다. (EMAIL_FROM 미설정 — Email Sending 온보딩 도메인 주소 필요)");
+        await emailBinding.send({
+            to,
+            from: { email: from.email, name: from.name },
+            subject,
+            html,
+            text,
+        });
+        return;
+    }
+
+    // 2) Node(adapter-node) 경로 — nodemailer(SMTP). 동적 import.
+    await sendViaNodemailer(to, subject, html, text);
 }
 
 // ctrls H-MAIL-1: 이메일 본문 템플릿에 들어가는 동적 값들은 HTML/attribute
@@ -68,16 +132,17 @@ function baseHtml(title: string, body: string): string {
 </html>`;
 }
 
-export async function sendFindIdEmail(to: string, username: string): Promise<void> {
+export async function sendFindIdEmail(to: string, username: string, platform?: App.Platform): Promise<void> {
     const html = baseHtml(
         "아이디 확인",
         `<p>요청하신 아이디 정보입니다.</p>
 <p style="font-size:20px;font-weight:700;margin:24px 0;">${escapeHtml(username)}</p>`,
     );
-    await send(to, "아이디 안내", html);
+    const text = `요청하신 아이디 정보입니다.\n\n${username}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
+    await send(to, "아이디 안내", html, text, platform);
 }
 
-export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+export async function sendPasswordResetEmail(to: string, resetUrl: string, platform?: App.Platform): Promise<void> {
     const safeUrl = safeAbsoluteUrl(resetUrl);
     if (!safeUrl) {
         // 잘못된 URL 형식이면 메일 발송 자체 거부 — silent skip 으로 user enumeration 차단.
@@ -91,7 +156,8 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   <a href="${escapeHtml(safeUrl)}" style="background:#2563eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">비밀번호 재설정</a>
 </p>`,
     );
-    await send(to, "비밀번호 재설정 안내", html);
+    const text = `아래 링크에서 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다.\n\n${safeUrl}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
+    await send(to, "비밀번호 재설정 안내", html, text, platform);
 }
 
 export async function generateToken(): Promise<{ token: string; tokenHash: string }> {

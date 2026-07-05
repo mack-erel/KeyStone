@@ -120,7 +120,7 @@ export const actions: Actions = {
                 const resetUrl = `${issuer}/reset-password?${resetParams.toString()}`;
                 // ctrls C5(후속): SMTP 왕복을 응답 경로에서 분리해 타이밍 계정 열거를 차단한다.
                 // (find-id 와 동일 패턴 — Workers: waitUntil, Node: fire-and-forget.)
-                const sendPromise = sendPasswordResetEmail(user.email, resetUrl).catch(() => {
+                const sendPromise = sendPasswordResetEmail(user.email, resetUrl, event.platform).catch(() => {
                     // 메일 발송 실패는 조용히 무시
                 });
                 const wait = event.platform?.ctx?.waitUntil?.bind(event.platform.ctx);

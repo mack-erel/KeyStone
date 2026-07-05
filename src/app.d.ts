@@ -7,7 +7,10 @@ declare global {
             // Cloudflare Hyperdrive 바인딩 (wrangler 의 hyperdrive 설정으로 주입).
             // DB: DB_DIALECT=d1 일 때만 존재하는 Cloudflare D1 바인딩. D1 은 선택적 방언이므로
             // 모든 wrangler.jsonc 가 선언하지는 않는다 — optional 로 두어 non-d1 배포에서도 타입이 성립한다.
-            env: Env & { SKIN_CACHE?: R2Bucket; HYPERDRIVE?: { connectionString: string }; DB?: D1Database };
+            // EMAIL: Cloudflare Email Sending 바인딩(send_email). 설정 시 Workers 에서
+            // nodemailer 대신 이 바인딩으로 트랜잭션 메일을 발송한다. wrangler.jsonc 의
+            // send_email 로 주입되며, 없는 배포도 있으므로 optional.
+            env: Env & { SKIN_CACHE?: R2Bucket; HYPERDRIVE?: { connectionString: string }; DB?: D1Database; EMAIL?: SendEmail };
             ctx: ExecutionContext;
             caches: CacheStorage;
             cf?: IncomingRequestCfProperties;
