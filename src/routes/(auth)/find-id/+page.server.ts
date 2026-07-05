@@ -93,7 +93,7 @@ export const actions: Actions = {
             // 왕복을 돌면 응답 시간 차이로 존재 여부가 새어 나간다. 메일 발송을 응답
             // 경로에서 분리해 (Workers: waitUntil, Node: fire-and-forget) 존재/비존재
             // 응답 시간을 균일하게 맞춘다. 메일 발송은 best-effort 이므로 결과를 기다리지 않는다.
-            const sendPromise = sendFindIdEmail(email, user.username).catch(() => {
+            const sendPromise = sendFindIdEmail(email, user.username, event.platform).catch(() => {
                 // 메일 발송 실패는 조용히 무시
             });
             const wait = event.platform?.ctx?.waitUntil?.bind(event.platform.ctx);
