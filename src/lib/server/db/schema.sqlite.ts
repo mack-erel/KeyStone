@@ -55,6 +55,12 @@ export const users = sqliteTable(
         zoneinfo: text("zoneinfo").default("Asia/Seoul"),
         bio: text("bio"),
         birthdate: text("birthdate"), // ISO 8601 날짜 문자열 (YYYY-MM-DD)
+        // 주소 (OIDC address 클레임 구성요소). formatted 는 저장하지 않고 발급 시 조합.
+        addressStreet: text("address_street"),
+        addressLocality: text("address_locality"),
+        addressRegion: text("address_region"),
+        addressPostalCode: text("address_postal_code"),
+        addressCountry: text("address_country"),
         createdAt: integer("created_at", { mode: "timestamp_ms" })
             .notNull()
             .default(sql`(unixepoch() * 1000)`),

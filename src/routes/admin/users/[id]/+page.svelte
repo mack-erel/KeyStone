@@ -135,6 +135,51 @@ const TIMEZONE_OPTIONS = [
                         {/each}
                     </select>
                 </div>
+                <div class="sm:col-span-2">
+                    <label for="addressStreet" class="block text-xs font-medium text-gray-700">{t("user_detail.address_street")}</label>
+                    <input
+                        id="addressStreet"
+                        type="text"
+                        name="addressStreet"
+                        value={data.user.addressStreet ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="addressLocality" class="block text-xs font-medium text-gray-700">{t("user_detail.address_locality")}</label>
+                    <input
+                        id="addressLocality"
+                        type="text"
+                        name="addressLocality"
+                        value={data.user.addressLocality ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="addressRegion" class="block text-xs font-medium text-gray-700">{t("user_detail.address_region")}</label>
+                    <input
+                        id="addressRegion"
+                        type="text"
+                        name="addressRegion"
+                        value={data.user.addressRegion ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="addressPostalCode" class="block text-xs font-medium text-gray-700">{t("user_detail.address_postal_code")}</label>
+                    <input
+                        id="addressPostalCode"
+                        type="text"
+                        name="addressPostalCode"
+                        value={data.user.addressPostalCode ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="addressCountry" class="block text-xs font-medium text-gray-700">{t("user_detail.address_country")}</label>
+                    <input
+                        id="addressCountry"
+                        type="text"
+                        name="addressCountry"
+                        value={data.user.addressCountry ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
                 <div>
                     <label for="role" class="block text-xs font-medium text-gray-700">{t("user_detail.role")}</label>
                     <select id="role" name="role" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">

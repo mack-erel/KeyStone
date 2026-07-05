@@ -223,6 +223,12 @@ export const actions: Actions = {
         const birthdate = String(fd.get("birthdate") ?? "").trim() || null;
         const locale = String(fd.get("locale") ?? "ko-KR").trim();
         const zoneinfo = String(fd.get("zoneinfo") ?? "Asia/Seoul").trim();
+        // 주소 (OIDC address 클레임 구성요소). 빈 값은 null 로 저장.
+        const addressStreet = String(fd.get("addressStreet") ?? "").trim() || null;
+        const addressLocality = String(fd.get("addressLocality") ?? "").trim() || null;
+        const addressRegion = String(fd.get("addressRegion") ?? "").trim() || null;
+        const addressPostalCode = String(fd.get("addressPostalCode") ?? "").trim() || null;
+        const addressCountry = String(fd.get("addressCountry") ?? "").trim() || null;
 
         await db
             .update(users)
@@ -235,6 +241,11 @@ export const actions: Actions = {
                 birthdate,
                 locale,
                 zoneinfo,
+                addressStreet,
+                addressLocality,
+                addressRegion,
+                addressPostalCode,
+                addressCountry,
                 role: effectiveRole,
                 status: effectiveStatus,
                 updatedAt: new Date(),

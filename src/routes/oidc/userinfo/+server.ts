@@ -6,6 +6,7 @@ import { oidcClients, users } from "$lib/server/db/schema";
 import { verifyAccessToken } from "$lib/server/crypto/keys";
 import { getUserMembership, membershipToGroups } from "$lib/server/org/membership";
 import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
+import { buildAddressClaim } from "$lib/server/oidc/claims";
 
 const RESERVED_USERINFO_CLAIMS = new Set(["sub", "iss", "aud", "iat", "exp", "auth_time"]);
 
@@ -87,6 +88,11 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
     if (scopes.has("phone")) {
         response.phone_number = user.phoneNumber;
         response.phone_number_verified = Boolean(user.phoneVerifiedAt);
+    }
+
+    if (scopes.has("address")) {
+        const address = buildAddressClaim(user);
+        if (address) response.address = address;
     }
 
     // 서비스 권한 매핑 — role / 추가 attributes 머지 (위에서 검증된 issuingClient 재사용)

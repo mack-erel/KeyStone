@@ -7,6 +7,7 @@ import { findActiveUserById } from "$lib/server/auth/users";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { findOidcClient, isValidClientSecret, parseBasicAuth } from "$lib/server/oidc/client";
+import { buildAddressClaim } from "$lib/server/oidc/claims";
 import { findAndConsumeGrant } from "$lib/server/oidc/grant";
 import { verifyPkce } from "$lib/server/oidc/pkce";
 import { issueRefreshToken, rotateRefreshToken, revokeRefreshTokenFamily } from "$lib/server/oidc/refresh";
@@ -97,6 +98,10 @@ async function buildTokens(params: BuildTokenParams): Promise<{ idToken: string;
     if (scopes.has("phone")) {
         idTokenPayload.phone_number = user.phoneNumber;
         idTokenPayload.phone_number_verified = Boolean(user.phoneVerifiedAt);
+    }
+    if (scopes.has("address")) {
+        const address = buildAddressClaim(user);
+        if (address) idTokenPayload.address = address;
     }
 
     if (params.nonce) idTokenPayload.nonce = params.nonce;
