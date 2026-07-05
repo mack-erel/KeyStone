@@ -31,7 +31,13 @@ function pemToBase64(pem: string): string {
 }
 
 export interface BuildSamlResponseParams {
-    inResponseTo: string;
+    /**
+     * SP-initiated SSO 의 AuthnRequest ID. 값이 있으면 Response 와 SubjectConfirmationData 에
+     * InResponseTo 속성을 채운다. IdP-initiated(unsolicited) SSO 는 대응되는 요청이 없으므로
+     * null/undefined 로 넘겨 InResponseTo 를 완전히 생략한다 (SAML 2.0 core §3.4 — unsolicited
+     * Response 는 InResponseTo 를 포함하지 않는다).
+     */
+    inResponseTo?: string | null;
     acsUrl: string;
     issuerUrl: string;
     spEntityId: string;
@@ -63,6 +69,9 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
     const sessionNotOnOrAfter = toIso(new Date(now.getTime() + 8 * 60 * 60 * 1000));
     const certB64 = pemToBase64(params.certPem);
 
+    // unsolicited(IdP-initiated) SSO 는 InResponseTo 를 생략한다. 값이 있을 때만 속성을 추가.
+    const inResponseToAttr = params.inResponseTo ? ` InResponseTo="${xmlEscape(params.inResponseTo)}"` : "";
+
     const attributeStmtXml = Object.keys(params.attributes).length
         ? `<saml:AttributeStatement>` +
           Object.entries(params.attributes)
@@ -88,7 +97,7 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
         ` xmlns:xs="http://www.w3.org/2001/XMLSchema"` +
         ` xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"` +
         ` ID="${responseId}" Version="2.0" IssueInstant="${issueInstant}"` +
-        ` InResponseTo="${xmlEscape(params.inResponseTo)}"` +
+        inResponseToAttr +
         ` Destination="${xmlEscape(params.acsUrl)}">` +
         `<saml:Issuer>${xmlEscape(params.issuerUrl)}</saml:Issuer>` +
         `<samlp:Status><samlp:StatusCode Value="urn:oasis:names:tc:SAML:2.0:status:Success"/></samlp:Status>` +
@@ -98,7 +107,7 @@ export async function buildSignedSamlResponse(params: BuildSamlResponseParams): 
         `<saml:NameID Format="${xmlEscape(params.nameIdFormat)}">${xmlEscape(params.nameId)}</saml:NameID>` +
         `<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">` +
         `<saml:SubjectConfirmationData` +
-        ` InResponseTo="${xmlEscape(params.inResponseTo)}"` +
+        inResponseToAttr +
         ` NotOnOrAfter="${notOnOrAfter}"` +
         ` Recipient="${xmlEscape(params.acsUrl)}"/>` +
         `</saml:SubjectConfirmation>` +

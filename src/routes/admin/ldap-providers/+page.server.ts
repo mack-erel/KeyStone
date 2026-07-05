@@ -7,6 +7,7 @@ import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { encryptSecret } from "$lib/server/crypto/keys";
 import { identityProviders } from "$lib/server/db/schema";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
+import { validateLdapHost, validateLdapPort } from "$lib/server/validation";
 
 function buildConfig(fd: FormData): LdapProviderConfig {
     const port = parseInt(String(fd.get("port") ?? "389"), 10);
@@ -47,36 +48,6 @@ function buildConfig(fd: FormData): LdapProviderConfig {
     }
 
     return config;
-}
-
-const ALLOWED_LDAP_PORTS = new Set([389, 636, 3268, 3269]);
-
-const BLOCKED_METADATA_HOSTS = new Set(["metadata.google.internal", "metadata.azure.com", "metadata.azure.internal", "instance-data", "metadata"]);
-
-/**
- * LDAP 호스트가 메타데이터 / link-local 등 명백한 SSRF 표적인지 검사.
- * RFC1918 사설망은 사내 LDAP 정상 사용처가 많아 차단하지 않는다.
- */
-function validateLdapHost(host: string): { ok: true } | { ok: false; reason: string } {
-    const lower = host.toLowerCase();
-    if (BLOCKED_METADATA_HOSTS.has(lower)) {
-        return { ok: false, reason: "클라우드 메타데이터 호스트는 사용할 수 없습니다." };
-    }
-    // 169.254.0.0/16 link-local (AWS IMDS 169.254.169.254 포함)
-    if (/^169\.254\./.test(lower)) {
-        return { ok: false, reason: "link-local(169.254/16) 주소는 사용할 수 없습니다." };
-    }
-    return { ok: true };
-}
-
-function validateLdapPort(port: number): { ok: true } | { ok: false; reason: string } {
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-        return { ok: false, reason: "포트 번호가 올바르지 않습니다." };
-    }
-    if (!ALLOWED_LDAP_PORTS.has(port)) {
-        return { ok: false, reason: `허용되지 않는 LDAP 포트입니다 (허용: ${[...ALLOWED_LDAP_PORTS].join(", ")}).` };
-    }
-    return { ok: true };
 }
 
 // ctrls H-ADMIN-4: signingKeySecret 가 미설정인 상태에서 bindPassword 가 입력되면

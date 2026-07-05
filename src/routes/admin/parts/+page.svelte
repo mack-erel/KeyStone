@@ -53,7 +53,7 @@ function teamLabel(tm: { name: string; departmentName: string | null }) {
                         type="text"
                         name="name"
                         required
-                        placeholder="예: iOS파트"
+                        placeholder={t("parts.name_placeholder")}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -62,7 +62,7 @@ function teamLabel(tm: { name: string; departmentName: string | null }) {
                         id="part-code"
                         type="text"
                         name="code"
-                        placeholder="예: IOS"
+                        placeholder={t("parts.code_placeholder")}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -121,8 +121,19 @@ function teamLabel(tm: { name: string; departmentName: string | null }) {
                                             }}
                                         class="grid grid-cols-2 gap-2 sm:grid-cols-4">
                                         <input type="hidden" name="id" value={part.id} />
-                                        <input type="text" name="name" value={part.name} required placeholder="파트명" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
-                                        <input type="text" name="code" value={part.code ?? ""} placeholder="코드" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
+                                        <input
+                                            type="text"
+                                            name="name"
+                                            value={part.name}
+                                            required
+                                            placeholder={t("parts.col_name")}
+                                            class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
+                                        <input
+                                            type="text"
+                                            name="code"
+                                            value={part.code ?? ""}
+                                            placeholder={t("common.code")}
+                                            class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
                                         <select name="teamId" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none">
                                             <option value="">{t("parts.team_none")}</option>
                                             {#each data.allTeams as tm (tm.id)}

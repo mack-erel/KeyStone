@@ -16,6 +16,7 @@ import type { LdapProviderConfig } from "$lib/server/ldap/types";
 import { decryptSecret, encryptSecret } from "$lib/server/crypto/keys";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
+import { translate } from "$lib/i18n/server";
 
 async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], flashMsg: string, redirectTo: string | null): Promise<string | null> {
     const skinHint = event.url.searchParams.get("skinHint");
@@ -90,9 +91,10 @@ export const actions: Actions = {
         const username = normalizeUsername(String(formData.get("username") ?? ""));
         const password = String(formData.get("password") ?? "");
         const redirectTo = sanitizeRedirectTarget(String(formData.get("redirectTo") ?? ""));
+        const locale = event.locals.locale;
 
         if (!username || !password) {
-            const msg = "아이디와 비밀번호를 입력해 주세요.";
+            const msg = translate(locale, "login.err_missing_credentials");
             return fail(400, {
                 username,
                 redirectTo,
@@ -102,7 +104,7 @@ export const actions: Actions = {
         }
 
         if (!event.locals.db || !event.locals.tenant) {
-            const msg = event.locals.runtimeError ?? 'D1 binding "DB" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요.';
+            const msg = event.locals.runtimeError ?? translate(locale, "errors.db_not_ready");
             return fail(503, {
                 username,
                 redirectTo,
@@ -118,7 +120,7 @@ export const actions: Actions = {
         const rlKey = `login:${requestMetadata.ipKey}`;
         const rl = await checkRateLimit(db, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
-            const msg = `로그인 시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
+            const msg = translate(locale, "login.err_rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) });
             return fail(429, {
                 username,
                 redirectTo,
@@ -192,7 +194,7 @@ export const actions: Actions = {
                 detail: { username },
             });
 
-            const msg = "아이디 또는 비밀번호가 올바르지 않습니다.";
+            const msg = translate(locale, "login.err_invalid_credentials");
             return fail(400, {
                 username,
                 redirectTo,
@@ -205,7 +207,7 @@ export const actions: Actions = {
             // MFA 단계로 진행
             const config = getRuntimeConfig(event.platform);
             if (!config.signingKeySecret) {
-                const msg = "MFA 설정 오류: IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.";
+                const msg = translate(locale, "login.err_mfa_config");
                 return fail(503, {
                     username,
                     redirectTo,

@@ -76,7 +76,7 @@ function parseConfig(configJson: string | null): LdapProviderConfig {
                             type="text"
                             name="name"
                             required
-                            placeholder="사내 LDAP"
+                            placeholder={t("ldap.name_placeholder")}
                             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                     </div>
                     <div>

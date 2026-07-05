@@ -7,6 +7,7 @@ import { encryptTotpSecret, generateBackupCodes, hashBackupCode, verifyTotp } fr
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { credentials, users } from "$lib/server/db/schema";
 import { type DB, DB_DIALECT } from "$lib/server/db";
+import { isUniqueViolation } from "$lib/server/db/errors";
 
 /**
  * Phase 7.3 — TOTP enrollment confirm.
@@ -101,10 +102,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
                 await buildBackupInsert(tx);
             });
         }
-    } catch {
-        // credentials_totp_owner_uidx UNIQUE 위반(동시 이중 등록) 또는 기타 DB 에러 → 409.
+    } catch (err) {
+        // credentials_totp_owner_uidx UNIQUE 위반(동시 이중 등록)일 때만 409 로 매핑한다.
         // 사전 SELECT 를 통과한 두 동시 요청 중 두 번째가 여기서 안전하게 거부된다.
-        throw error(409, "TOTP already enrolled for this user");
+        // 그 외 DB 에러는 재던져 500 으로 전파 — 관측성을 잃지 않는다.
+        if (isUniqueViolation(err)) {
+            throw error(409, "TOTP already enrolled for this user");
+        }
+        throw err;
     }
 
     return json({ ok: true, backupCodes });

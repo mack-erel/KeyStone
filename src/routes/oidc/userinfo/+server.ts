@@ -4,8 +4,9 @@ import { and, eq } from "drizzle-orm";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { oidcClients, users } from "$lib/server/db/schema";
 import { verifyAccessToken } from "$lib/server/crypto/keys";
-import { getUserMembership } from "$lib/server/org/membership";
+import { getUserMembership, membershipToGroups } from "$lib/server/org/membership";
 import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
+import { buildAddressClaim } from "$lib/server/oidc/claims";
 
 const RESERVED_USERINFO_CLAIMS = new Set(["sub", "iss", "aud", "iat", "exp", "auth_time"]);
 
@@ -89,6 +90,11 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         response.phone_number_verified = Boolean(user.phoneVerifiedAt);
     }
 
+    if (scopes.has("address")) {
+        const address = buildAddressClaim(user);
+        if (address) response.address = address;
+    }
+
     // 서비스 권한 매핑 — role / 추가 attributes 머지 (위에서 검증된 issuingClient 재사용)
     {
         const assignment = await getActiveAssignment(db, {
@@ -110,39 +116,47 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         }
     }
 
-    if (scopes.has("organization")) {
+    if (scopes.has("organization") || scopes.has("groups")) {
         const membership = await getUserMembership(db, user.id);
-        response.department = membership.departments.map((d) => ({
-            id: d.id,
-            name: d.name,
-            code: d.code,
-            is_primary: d.isPrimary,
-            job_title: d.jobTitle,
-            position: d.position
-                ? {
-                      id: d.position.id,
-                      name: d.position.name,
-                      code: d.position.code,
-                      level: d.position.level,
-                  }
-                : null,
-        }));
-        response.team = membership.teams.map((t) => ({
-            id: t.id,
-            name: t.name,
-            code: t.code,
-            department: t.departmentName,
-            is_primary: t.isPrimary,
-            job_title: t.jobTitle,
-        }));
-        response.position = membership.primaryPosition?.name ?? null;
-        response.job_title = membership.primaryJobTitle ?? null;
+
+        if (scopes.has("groups")) {
+            response.groups = membershipToGroups(membership);
+        }
+
+        if (scopes.has("organization")) {
+            response.department = membership.departments.map((d) => ({
+                id: d.id,
+                name: d.name,
+                code: d.code,
+                is_primary: d.isPrimary,
+                job_title: d.jobTitle,
+                position: d.position
+                    ? {
+                          id: d.position.id,
+                          name: d.position.name,
+                          code: d.position.code,
+                          level: d.position.level,
+                      }
+                    : null,
+            }));
+            response.team = membership.teams.map((t) => ({
+                id: t.id,
+                name: t.name,
+                code: t.code,
+                department: t.departmentName,
+                is_primary: t.isPrimary,
+                job_title: t.jobTitle,
+            }));
+            response.position = membership.primaryPosition?.name ?? null;
+            response.job_title = membership.primaryJobTitle ?? null;
+        }
     }
 
     return json(response, {
         headers: {
             "Cache-Control": "no-store, private",
             Pragma: "no-cache",
+            Vary: "Authorization",
         },
     });
 }

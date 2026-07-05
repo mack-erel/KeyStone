@@ -23,7 +23,7 @@ function generateClientSecret(): string {
 const ALLOWED_TOKEN_AUTH_METHODS = ["client_secret_basic", "client_secret_post", "none"] as const;
 type TokenAuthMethod = (typeof ALLOWED_TOKEN_AUTH_METHODS)[number];
 
-const ALLOWED_OIDC_SCOPES = ["openid", "profile", "email", "address", "phone", "offline_access", "groups"] as const;
+const ALLOWED_OIDC_SCOPES = ["openid", "profile", "email", "address", "phone", "offline_access", "organization", "groups"] as const;
 
 /**
  * 단일 redirect URI / post-logout / channel logout URL 검증.

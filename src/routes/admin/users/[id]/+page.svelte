@@ -23,9 +23,9 @@ let selectedService = $state("");
 const filteredRoles = $derived(selectedService ? data.allServiceRoles.filter((r: { serviceType: string; serviceRefId: string }) => `${r.serviceType}:${r.serviceRefId}` === selectedService) : []);
 
 function assignmentStatus(a: { revokedAt: Date | null; expiresAt: Date | null }): { label: string; className: string } {
-    if (a.revokedAt) return { label: "취소됨", className: "bg-gray-100 text-gray-500" };
-    if (a.expiresAt && a.expiresAt.getTime() <= Date.now()) return { label: "만료됨", className: "bg-amber-100 text-amber-700" };
-    return { label: "활성", className: "bg-green-100 text-green-700" };
+    if (a.revokedAt) return { label: t("user_detail.svc_revoked"), className: "bg-gray-100 text-gray-500" };
+    if (a.expiresAt && a.expiresAt.getTime() <= Date.now()) return { label: t("user_detail.svc_expired"), className: "bg-amber-100 text-amber-700" };
+    return { label: t("user_detail.svc_active"), className: "bg-green-100 text-green-700" };
 }
 
 function toLocalDateTimeInputValue(d: Date | null): string {
@@ -134,6 +134,51 @@ const TIMEZONE_OPTIONS = [
                             <option value={opt.value} selected={data.user.zoneinfo === opt.value}>{opt.label}</option>
                         {/each}
                     </select>
+                </div>
+                <div class="sm:col-span-2">
+                    <label for="addressStreet" class="block text-xs font-medium text-gray-700">{t("user_detail.address_street")}</label>
+                    <input
+                        id="addressStreet"
+                        type="text"
+                        name="addressStreet"
+                        value={data.user.addressStreet ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="addressLocality" class="block text-xs font-medium text-gray-700">{t("user_detail.address_locality")}</label>
+                    <input
+                        id="addressLocality"
+                        type="text"
+                        name="addressLocality"
+                        value={data.user.addressLocality ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="addressRegion" class="block text-xs font-medium text-gray-700">{t("user_detail.address_region")}</label>
+                    <input
+                        id="addressRegion"
+                        type="text"
+                        name="addressRegion"
+                        value={data.user.addressRegion ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="addressPostalCode" class="block text-xs font-medium text-gray-700">{t("user_detail.address_postal_code")}</label>
+                    <input
+                        id="addressPostalCode"
+                        type="text"
+                        name="addressPostalCode"
+                        value={data.user.addressPostalCode ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="addressCountry" class="block text-xs font-medium text-gray-700">{t("user_detail.address_country")}</label>
+                    <input
+                        id="addressCountry"
+                        type="text"
+                        name="addressCountry"
+                        value={data.user.addressCountry ?? ""}
+                        class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
                     <label for="role" class="block text-xs font-medium text-gray-700">{t("user_detail.role")}</label>
@@ -305,8 +350,8 @@ const TIMEZONE_OPTIONS = [
     </section>
 
     <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 class="mb-4 text-sm font-semibold text-gray-700">서비스 권한</h2>
-        <p class="mb-3 text-xs text-gray-500">기본 deny — 매핑이 없으면 SSO 가 거부됩니다. 서비스 별로 1 매핑만 허용.</p>
+        <h2 class="mb-4 text-sm font-semibold text-gray-700">{t("user_detail.svc_section")}</h2>
+        <p class="mb-3 text-xs text-gray-500">{t("user_detail.svc_desc")}</p>
 
         {#if data.assignments.length > 0}
             <div class="mb-4 divide-y divide-gray-100 rounded-lg border border-gray-200">
@@ -320,7 +365,7 @@ const TIMEZONE_OPTIONS = [
                                     <code class="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs">{a.roleKey}</code>
                                     <span class="text-xs text-gray-500">{a.roleLabel}</span>
                                 {:else}
-                                    <span class="text-xs text-gray-400">(role 없음)</span>
+                                    <span class="text-xs text-gray-400">{t("user_detail.svc_role_none")}</span>
                                 {/if}
                                 <span class="rounded-full px-1.5 py-0.5 text-xs {status.className}">{status.label}</span>
                                 {#if a.expiresAt}<span class="text-xs text-gray-400">~{dateFormatter.format(a.expiresAt)}</span>{/if}
@@ -331,17 +376,17 @@ const TIMEZONE_OPTIONS = [
                                     type="submit"
                                     class="text-xs text-red-400 hover:text-red-600"
                                     onclick={(e) => {
-                                        if (!confirm("이 매핑을 삭제하시겠습니까?")) e.preventDefault();
-                                    }}>삭제</button>
+                                        if (!confirm(t("user_detail.svc_delete_confirm"))) e.preventDefault();
+                                    }}>{t("common.delete")}</button>
                             </form>
                         </div>
                         <form method="POST" action="?/updateAssignmentExpiry" use:enhance class="mt-2 flex items-center gap-2">
                             <input type="hidden" name="assignmentId" value={a.id} />
                             <label class="text-xs text-gray-500">
-                                만료일
+                                {t("user_detail.svc_expires")}
                                 <input type="datetime-local" name="expiresAt" value={toLocalDateTimeInputValue(a.expiresAt)} class="rounded-md border border-gray-300 px-2 py-1 text-xs" />
                             </label>
-                            <button type="submit" class="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600">갱신</button>
+                            <button type="submit" class="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600">{t("user_detail.svc_renew")}</button>
                             {#if a.attributesJson}
                                 <span class="ml-auto truncate font-mono text-xs text-gray-400" title={a.attributesJson}>{a.attributesJson}</span>
                             {/if}
@@ -350,14 +395,14 @@ const TIMEZONE_OPTIONS = [
                 {/each}
             </div>
         {:else}
-            <p class="mb-4 text-sm text-gray-400">매핑된 서비스가 없습니다.</p>
+            <p class="mb-4 text-sm text-gray-400">{t("user_detail.svc_empty")}</p>
         {/if}
 
         <form method="POST" action="?/addAssignment" use:enhance class="grid grid-cols-1 gap-2 border-t border-gray-100 pt-4 sm:grid-cols-2">
             <div>
-                <label for="svc" class="block text-xs font-medium text-gray-700">서비스</label>
+                <label for="svc" class="block text-xs font-medium text-gray-700">{t("user_detail.svc_service")}</label>
                 <select id="svc" name="service" required bind:value={selectedService} class="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
-                    <option value="">선택...</option>
+                    <option value="">{t("user_detail.svc_select")}</option>
                     {#if data.allOidcClients.length > 0}
                         <optgroup label="OIDC">
                             {#each data.allOidcClients as c (c.id)}
@@ -377,14 +422,14 @@ const TIMEZONE_OPTIONS = [
             <div>
                 <label for="svc-role" class="block text-xs font-medium text-gray-700">Role</label>
                 <select id="svc-role" name="serviceRoleId" class="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" disabled={!selectedService}>
-                    <option value="">(role 없음)</option>
+                    <option value="">{t("user_detail.svc_role_none")}</option>
                     {#each filteredRoles as r (r.id)}
                         <option value={r.id}>{r.label} [{r.key}]{r.isDefault ? " · default" : ""}</option>
                     {/each}
                 </select>
             </div>
             <div>
-                <label for="svc-expires" class="block text-xs font-medium text-gray-700">만료일 (optional)</label>
+                <label for="svc-expires" class="block text-xs font-medium text-gray-700">{t("user_detail.svc_expires_optional")}</label>
                 <input id="svc-expires" type="datetime-local" name="expiresAt" class="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             </div>
             <div>
@@ -392,7 +437,7 @@ const TIMEZONE_OPTIONS = [
                 <textarea id="svc-attrs" name="attributesJson" rows="2" placeholder={'{"region":"kr"}'} class="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5 font-mono text-xs"></textarea>
             </div>
             <div class="flex justify-end sm:col-span-2">
-                <button type="submit" class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">매핑 추가</button>
+                <button type="submit" class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t("user_detail.svc_add")}</button>
             </div>
         </form>
     </section>

@@ -11,6 +11,7 @@ import { AMR_PASSWORD, AMR_TOTP, AMR_BACKUP_CODE, amrToAcr, TOTP_CREDENTIAL_TYPE
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { credentials, users } from "$lib/server/db/schema";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
+import { translate } from "$lib/i18n/server";
 
 export const load: PageServerLoad = async ({ locals, cookies, platform, url }) => {
     const mfaToken = cookies.get(MFA_PENDING_COOKIE);
@@ -85,9 +86,12 @@ export const actions: Actions = {
             throw redirect(303, "/login");
         }
 
+        const locale = event.locals.locale;
+
         const config = getRuntimeConfig(event.platform);
         if (!config.signingKeySecret) {
-            return fail(503, { error: "MFA 설정 오류가 발생했습니다.", skinHtml: await resolveMfaSkinForAction(event, "MFA 설정 오류가 발생했습니다.") });
+            const msg = translate(locale, "mfa_login.err_config");
+            return fail(503, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 
         const claims = await verifyMfaPendingToken(mfaToken, config.signingKeySecret);
@@ -105,7 +109,7 @@ export const actions: Actions = {
         }
 
         if (!event.locals.db) {
-            const msg = "DB가 준비되지 않았습니다.";
+            const msg = translate(locale, "errors.db_not_ready");
             return fail(503, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 
@@ -114,7 +118,7 @@ export const actions: Actions = {
             limit: 10,
         });
         if (!rl.allowed) {
-            const msg = "MFA 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.";
+            const msg = translate(locale, "mfa_login.err_rate_limit");
             return fail(429, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 
@@ -125,7 +129,7 @@ export const actions: Actions = {
         const useBackup = formData.get("use_backup") === "1";
 
         if (!code) {
-            const msg = "인증 코드를 입력해 주세요.";
+            const msg = translate(locale, "mfa_login.err_missing_code");
             return fail(400, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 
@@ -201,7 +205,7 @@ export const actions: Actions = {
                 detail: { method: useBackup ? "backup_code" : "totp" },
             });
 
-            const msg = useBackup ? "백업 코드가 올바르지 않거나 이미 사용되었습니다." : "인증 코드가 올바르지 않습니다. 시간이 맞는지 확인해 주세요.";
+            const msg = useBackup ? translate(locale, "mfa_login.err_invalid_backup") : translate(locale, "mfa_login.err_invalid_totp");
             return fail(400, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 

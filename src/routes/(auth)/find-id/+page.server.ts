@@ -7,6 +7,7 @@ import { users } from "$lib/server/db/schema";
 import { sendFindIdEmail } from "$lib/server/email";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { getRequestMetadata } from "$lib/server/audit";
+import { translate } from "$lib/i18n/server";
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     const skinHint = url.searchParams.get("skinHint");
@@ -66,8 +67,10 @@ export const actions: Actions = {
             .trim()
             .toLowerCase();
 
+        const locale = event.locals.locale;
+
         if (!email) {
-            const msg = "이메일을 입력해 주세요.";
+            const msg = translate(locale, "find_id.err_missing_email");
             return fail(400, { error: msg, skinHtml: await resolveSkinForAction(event, false, null, msg) });
         }
 
@@ -75,7 +78,7 @@ export const actions: Actions = {
         const meta = getRequestMetadata(event);
         const rl = await checkRateLimit(db, `find-id:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
-            const msg = `요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
+            const msg = translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) });
             return fail(429, { error: msg, skinHtml: await resolveSkinForAction(event, false, null, msg) });
         }
 

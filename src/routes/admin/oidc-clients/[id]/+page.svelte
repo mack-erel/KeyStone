@@ -2,6 +2,7 @@
 import { enhance } from "$app/forms";
 import { resolve } from "$app/paths";
 import type { ActionData, PageData } from "./$types";
+import { t } from "$lib/i18n.svelte";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
@@ -12,7 +13,7 @@ let editingId = $state<string | null>(null);
 
 <div class="max-w-3xl space-y-8">
     <div class="flex items-center gap-3">
-        <a href={resolve("/admin/oidc-clients")} class="text-sm text-gray-400 hover:text-gray-600">← OIDC 클라이언트</a>
+        <a href={resolve("/admin/oidc-clients")} class="text-sm text-gray-400 hover:text-gray-600">← {t("oidc.title")}</a>
         <h1 class="text-2xl font-bold text-gray-900">{data.client.name}</h1>
         <span class="font-mono text-xs text-gray-400">{data.client.clientId}</span>
     </div>
@@ -23,8 +24,8 @@ let editingId = $state<string | null>(null);
 
     <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <div class="mb-4 flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-gray-700">Role 목록</h2>
-            <span class="text-xs text-gray-400">{data.roles.length} 개</span>
+            <h2 class="text-sm font-semibold text-gray-700">{t("roles.list_title")}</h2>
+            <span class="text-xs text-gray-400">{t("roles.count", { count: data.roles.length })}</span>
         </div>
 
         {#if data.roles.length > 0}
@@ -63,8 +64,8 @@ let editingId = $state<string | null>(null);
                                         <input type="checkbox" name="isDefault" value="true" checked={r.isDefault} class="rounded" /> default
                                     </label>
                                     <div class="ml-auto flex gap-2">
-                                        <button type="button" onclick={() => (editingId = null)} class="rounded-md border border-gray-300 px-3 py-1 text-xs text-gray-600">취소</button>
-                                        <button type="submit" class="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white">저장</button>
+                                        <button type="button" onclick={() => (editingId = null)} class="rounded-md border border-gray-300 px-3 py-1 text-xs text-gray-600">{t("common.cancel")}</button>
+                                        <button type="submit" class="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white">{t("common.save")}</button>
                                     </div>
                                 </div>
                             </form>
@@ -78,15 +79,15 @@ let editingId = $state<string | null>(null);
                                     <span class="text-xs text-gray-300">order: {r.displayOrder}</span>
                                 </div>
                                 <div class="flex items-center gap-2">
-                                    <button type="button" onclick={() => (editingId = r.id)} class="text-xs text-blue-500">편집</button>
+                                    <button type="button" onclick={() => (editingId = r.id)} class="text-xs text-blue-500">{t("roles.edit")}</button>
                                     <form method="POST" action="?/deleteRole" use:enhance>
                                         <input type="hidden" name="roleId" value={r.id} />
                                         <button
                                             type="submit"
                                             class="text-xs text-red-400"
                                             onclick={(e) => {
-                                                if (!confirm(`role '${r.key}' 을 삭제하시겠습니까? 이 role 이 부여된 사용자 매핑은 role 이 null 로 설정됩니다.`)) e.preventDefault();
-                                            }}>삭제</button>
+                                                if (!confirm(t("roles.delete_confirm", { key: r.key }))) e.preventDefault();
+                                            }}>{t("common.delete")}</button>
                                     </form>
                                 </div>
                             </div>
@@ -95,11 +96,11 @@ let editingId = $state<string | null>(null);
                 {/each}
             </div>
         {:else}
-            <p class="mb-4 text-sm text-gray-400">등록된 role 이 없습니다.</p>
+            <p class="mb-4 text-sm text-gray-400">{t("roles.empty")}</p>
         {/if}
 
         <form method="POST" action="?/addRole" use:enhance class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-4 sm:grid-cols-5">
-            <input type="text" name="key" placeholder="key (예: admin)" required class="rounded-md border border-gray-300 px-2 py-1.5 font-mono text-sm" />
+            <input type="text" name="key" placeholder={t("roles.key_placeholder")} required class="rounded-md border border-gray-300 px-2 py-1.5 font-mono text-sm" />
             <input type="text" name="label" placeholder="label" required class="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
             <input type="text" name="description" placeholder="description (optional)" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm sm:col-span-2" />
             <input type="number" name="displayOrder" value="0" class="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -107,7 +108,7 @@ let editingId = $state<string | null>(null);
                 <label class="flex items-center gap-1 text-xs text-gray-600">
                     <input type="checkbox" name="isDefault" value="true" class="rounded" /> default
                 </label>
-                <button type="submit" class="ml-auto rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white">role 추가</button>
+                <button type="submit" class="ml-auto rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white">{t("roles.add")}</button>
             </div>
         </form>
     </section>

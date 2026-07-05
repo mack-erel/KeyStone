@@ -49,7 +49,7 @@ const STATUS_COLOR: Record<string, string> = {
                         type="text"
                         name="name"
                         required
-                        placeholder="예: 개발본부"
+                        placeholder={t("departments.name_placeholder")}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -58,7 +58,7 @@ const STATUS_COLOR: Record<string, string> = {
                         id="dept-code"
                         type="text"
                         name="code"
-                        placeholder="예: DEV"
+                        placeholder={t("departments.code_placeholder")}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -125,8 +125,19 @@ const STATUS_COLOR: Record<string, string> = {
                                             }}
                                         class="grid grid-cols-2 gap-2 sm:grid-cols-4">
                                         <input type="hidden" name="id" value={dept.id} />
-                                        <input type="text" name="name" value={dept.name} required placeholder="부서명" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
-                                        <input type="text" name="code" value={dept.code ?? ""} placeholder="코드" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
+                                        <input
+                                            type="text"
+                                            name="name"
+                                            value={dept.name}
+                                            required
+                                            placeholder={t("departments.col_name")}
+                                            class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
+                                        <input
+                                            type="text"
+                                            name="code"
+                                            value={dept.code ?? ""}
+                                            placeholder={t("common.code")}
+                                            class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
                                         <select name="parentId" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none">
                                             <option value="">{t("departments.parent_none")}</option>
                                             {#each data.allDepts.filter((d: { id: string; name: string }) => d.id !== dept.id) as d (d.id)}

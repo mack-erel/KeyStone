@@ -4,7 +4,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
 import { clientSkins, oidcClients, samlSps } from "$lib/server/db/schema";
 import { invalidateSkinCache } from "$lib/server/skin/resolver";
-import { isLoopbackHost } from "$lib/server/validation";
+import { isLinkLocalHost, isLoopbackHost } from "$lib/server/validation";
 
 const MAX_SKIN_CACHE_TTL_SECONDS = 86400; // 1일
 
@@ -22,7 +22,7 @@ function validateSkinFetchUrl(raw: string): { ok: true; url: URL } | { ok: false
     if (isLoopbackHost(host)) {
         return { ok: false, reason: "loopback 주소는 사용할 수 없습니다." };
     }
-    if (/^127\./.test(host) || /^169\.254\./.test(host)) {
+    if (/^127\./.test(host) || isLinkLocalHost(host)) {
         return { ok: false, reason: "내부망/메타데이터 주소는 사용할 수 없습니다." };
     }
     return { ok: true, url };

@@ -141,6 +141,13 @@
       "when": 1783222881745,
       "tag": "0019_regular_screwball",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1783246066470,
+      "tag": "0020_cool_firebrand",
+      "breakpoints": true
     }
   ]
 }

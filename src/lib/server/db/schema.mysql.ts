@@ -55,6 +55,13 @@ export const users = mysqlTable(
         zoneinfo: text("zoneinfo").default("Asia/Seoul"),
         bio: text("bio"),
         birthdate: text("birthdate"), // ISO 8601 날짜 문자열 (YYYY-MM-DD)
+        // 주소 (OIDC address 클레임 구성요소). formatted 는 저장하지 않고 발급 시 조합.
+        // text 로 충분 — unique index 를 걸지 않으므로 키 길이 제약 무관. 3방언 parity 유지.
+        addressStreet: text("address_street"),
+        addressLocality: text("address_locality"),
+        addressRegion: text("address_region"),
+        addressPostalCode: text("address_postal_code"),
+        addressCountry: text("address_country"),
         createdAt: datetime("created_at", { mode: "date", fsp: 3 })
             .notNull()
             .default(sql`(CURRENT_TIMESTAMP(3))`),

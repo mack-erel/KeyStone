@@ -13,7 +13,7 @@ async function loginWithPasskey() {
     passkeyLoading = true;
     try {
         const optRes = await fetch("/api/webauthn/authenticate/options", { method: "POST" });
-        if (!optRes.ok) throw new Error((await optRes.text()) || "옵션 요청 실패");
+        if (!optRes.ok) throw new Error((await optRes.text()) || t("admin_login.err_options"));
         const options = await optRes.json();
 
         const { startAuthentication } = await import("@simplewebauthn/browser");
@@ -27,7 +27,7 @@ async function loginWithPasskey() {
             body: JSON.stringify({ ...authResponse, _redirectTo: pendingRedirect }),
         });
 
-        if (!verRes.ok) throw new Error((await verRes.text()) || "인증 실패");
+        if (!verRes.ok) throw new Error((await verRes.text()) || t("admin_login.err_verify"));
 
         const { redirectTo } = (await verRes.json()) as { redirectTo?: string };
         // eslint-disable-next-line svelte/no-navigation-without-resolve
@@ -35,9 +35,9 @@ async function loginWithPasskey() {
     } catch (err: unknown) {
         const e = err as { name?: string; message?: string };
         if (e?.name === "NotAllowedError") {
-            passkeyError = "패스키 인증이 취소되었습니다.";
+            passkeyError = t("login.passkey_cancelled");
         } else {
-            passkeyError = e?.message ?? "패스키 인증에 실패했습니다.";
+            passkeyError = e?.message ?? t("login.passkey_failed");
         }
     } finally {
         passkeyLoading = false;
@@ -49,7 +49,7 @@ async function loginWithPasskey() {
     <div class="w-full max-w-105 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
         <div class="mb-6 space-y-2 text-center">
             <h1 class="text-2xl font-bold text-gray-900">{t("app.title")}</h1>
-            <p class="text-sm leading-6 text-gray-500">관리자 로그인</p>
+            <p class="text-sm leading-6 text-gray-500">{t("admin_login.subtitle")}</p>
         </div>
 
         {#if !data.dbReady && data.runtimeError}
@@ -103,7 +103,7 @@ async function loginWithPasskey() {
 
         <div class="mt-4 flex items-center gap-3">
             <div class="h-px flex-1 bg-gray-200"></div>
-            <span class="text-xs text-gray-400">또는</span>
+            <span class="text-xs text-gray-400">{t("login.or")}</span>
             <div class="h-px flex-1 bg-gray-200"></div>
         </div>
 
@@ -123,7 +123,7 @@ async function loginWithPasskey() {
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
-                인증 중...
+                {t("login.passkey_authenticating")}
             {:else}
                 <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
@@ -132,13 +132,13 @@ async function loginWithPasskey() {
                         stroke-width="2"
                         d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                 </svg>
-                패스키로 로그인
+                {t("login.passkey_login")}
             {/if}
         </button>
 
         <p class="mt-6 text-center text-xs text-gray-400">
             <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-            일반 사용자는 <a href="/login" class="text-blue-600 hover:underline">여기</a>에서 로그인하세요.
+            {t("admin_login.user_login_prefix")}<a href="/login" class="text-blue-600 hover:underline">{t("admin_login.user_login_link")}</a>{t("admin_login.user_login_suffix")}
         </p>
     </div>
 </div>

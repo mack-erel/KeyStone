@@ -49,7 +49,7 @@ const STATUS_COLOR: Record<string, string> = {
                         type="text"
                         name="name"
                         required
-                        placeholder="예: 백엔드팀"
+                        placeholder={t("teams.name_placeholder")}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -58,7 +58,7 @@ const STATUS_COLOR: Record<string, string> = {
                         id="team-code"
                         type="text"
                         name="code"
-                        placeholder="예: BE"
+                        placeholder={t("teams.code_placeholder")}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -116,8 +116,19 @@ const STATUS_COLOR: Record<string, string> = {
                                             }}
                                         class="grid grid-cols-2 gap-2 sm:grid-cols-4">
                                         <input type="hidden" name="id" value={team.id} />
-                                        <input type="text" name="name" value={team.name} required placeholder="팀명" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
-                                        <input type="text" name="code" value={team.code ?? ""} placeholder="코드" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
+                                        <input
+                                            type="text"
+                                            name="name"
+                                            value={team.name}
+                                            required
+                                            placeholder={t("teams.col_name")}
+                                            class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
+                                        <input
+                                            type="text"
+                                            name="code"
+                                            value={team.code ?? ""}
+                                            placeholder={t("common.code")}
+                                            class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
                                         <select name="departmentId" class="rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none">
                                             <option value="">{t("teams.dept_none")}</option>
                                             {#each data.allDepts as d (d.id)}
