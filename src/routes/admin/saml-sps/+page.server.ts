@@ -4,7 +4,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { samlSps } from "$lib/server/db/schema";
-import { isLoopbackHost } from "$lib/server/validation";
+import { validateSamlUrl } from "$lib/server/validation";
 
 export const load: PageServerLoad = async ({ locals }) => {
     const { db, tenant } = requireAdminContext(locals);
@@ -41,23 +41,6 @@ const ALLOWED_NAMEID_FORMATS = [
     "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent",
     "urn:oasis:names:tc:SAML:2.0:nameid-format:transient",
 ] as const;
-
-function validateSamlUrl(value: string, label: string): { ok: true } | { ok: false; reason: string } {
-    if (!value) return { ok: true };
-    let parsed: URL;
-    try {
-        parsed = new URL(value);
-    } catch {
-        return { ok: false, reason: `${label}: URL 형식이 올바르지 않습니다.` };
-    }
-    const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
-    if (scheme === "https") return { ok: true };
-    if (scheme === "http") {
-        if (isLoopbackHost(parsed.hostname)) return { ok: true };
-        return { ok: false, reason: `${label}: http URL 은 localhost/127.0.0.1 만 허용됩니다.` };
-    }
-    return { ok: false, reason: `${label}: https URL 만 허용됩니다.` };
-}
 
 function parseAllowedAttributes(raw: string): string | null {
     const trimmed = raw.trim();

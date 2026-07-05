@@ -4,10 +4,78 @@
  * 공통 판정을 한곳으로 모은다.
  */
 
+/** URL/host 검증 결과 공통 형태. */
+export type ValidationResult = { ok: true } | { ok: false; reason: string };
+
 /**
  * loopback 호스트 판정. http URL 허용(개발/내부) 여부나 SSRF 게이트에서 공통 사용.
  * 대괄호 IPv6 표기([::1])도 포함한다.
  */
 export function isLoopbackHost(hostname: string): boolean {
     return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname === "::1";
+}
+
+/** 명백한 SSRF 표적인 클라우드 메타데이터 호스트 집합. */
+const BLOCKED_METADATA_HOSTS = new Set(["metadata.google.internal", "metadata.azure.com", "metadata.azure.internal", "instance-data", "metadata"]);
+
+/** 클라우드 메타데이터 호스트(GCP/Azure 등) 판정. SSRF 게이트에서 사용. */
+export function isCloudMetadataHost(hostname: string): boolean {
+    return BLOCKED_METADATA_HOSTS.has(hostname.toLowerCase());
+}
+
+/** link-local(169.254.0.0/16, AWS IMDS 169.254.169.254 포함) 판정. */
+export function isLinkLocalHost(hostname: string): boolean {
+    return /^169\.254\./.test(hostname.toLowerCase());
+}
+
+/**
+ * SAML ACS/SLO 등 SP URL 검증. 빈 값은 통과(선택 필드).
+ * https 만 허용하되, http 는 loopback 호스트에 한해 허용(개발/내부).
+ * @param label 에러 메시지 접두사(예: "ACS URL").
+ */
+export function validateSamlUrl(value: string, label: string): ValidationResult {
+    if (!value) return { ok: true };
+    let parsed: URL;
+    try {
+        parsed = new URL(value);
+    } catch {
+        return { ok: false, reason: `${label}: URL 형식이 올바르지 않습니다.` };
+    }
+    const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
+    if (scheme === "https") return { ok: true };
+    if (scheme === "http") {
+        if (isLoopbackHost(parsed.hostname)) return { ok: true };
+        return { ok: false, reason: `${label}: http URL 은 localhost/127.0.0.1 만 허용됩니다.` };
+    }
+    return { ok: false, reason: `${label}: https URL 만 허용됩니다.` };
+}
+
+/**
+ * LDAP 호스트가 메타데이터 / link-local 등 명백한 SSRF 표적인지 검사.
+ * RFC1918 사설망은 사내 LDAP 정상 사용처가 많아 차단하지 않는다.
+ */
+export function validateLdapHost(host: string): ValidationResult {
+    const lower = host.toLowerCase();
+    if (isCloudMetadataHost(lower)) {
+        return { ok: false, reason: "클라우드 메타데이터 호스트는 사용할 수 없습니다." };
+    }
+    // 169.254.0.0/16 link-local (AWS IMDS 169.254.169.254 포함)
+    if (isLinkLocalHost(lower)) {
+        return { ok: false, reason: "link-local(169.254/16) 주소는 사용할 수 없습니다." };
+    }
+    return { ok: true };
+}
+
+/** 허용 LDAP 포트: 389(ldap), 636(ldaps), 3268/3269(GC). */
+const ALLOWED_LDAP_PORTS = new Set([389, 636, 3268, 3269]);
+
+/** LDAP 포트 검증(정수 범위 + 허용 목록). */
+export function validateLdapPort(port: number): ValidationResult {
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        return { ok: false, reason: "포트 번호가 올바르지 않습니다." };
+    }
+    if (!ALLOWED_LDAP_PORTS.has(port)) {
+        return { ok: false, reason: `허용되지 않는 LDAP 포트입니다 (허용: ${[...ALLOWED_LDAP_PORTS].join(", ")}).` };
+    }
+    return { ok: true };
 }
