@@ -26,8 +26,12 @@ export const optionalText = z
 /** status enum (기본 active). */
 export const statusField = z.enum(["active", "inactive"]).default("active");
 
-/** 정수 필드(level): 유효하지 않으면 실패. */
-export const intField = (message: string) => z.coerce.number(message).int(message);
+/**
+ * 정수 필드(level): 유효하지 않으면 실패.
+ * 빈 문자열/공백은 undefined 로 정규화해 누락과 동일하게 거부한다 —
+ * `z.coerce.number("")` 가 0 으로 조용히 통과하던 비일관을 막는다.
+ */
+export const intField = (message: string) => z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.coerce.number(message).int(message));
 
 /** displayOrder: 유효하지 않거나 빈값이면 0 (기존 parseInt isNaN→0 동작 보존). */
 export const displayOrderField = z.coerce.number().int().catch(0);
