@@ -6,6 +6,8 @@ import { findOidcClient, isAllowedRedirectUri, parseGrantedScopes } from "$lib/s
 import { createGrant } from "$lib/server/oidc/grant";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { hasServiceAccess } from "$lib/server/access/service-permissions";
+import { verifyIdToken } from "$lib/server/crypto/keys";
+import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 
 /** redirect_uri 가 확정된 이후에만 사용. 그 전 오류는 throw error() 로 직접 응답. */
 function authRedirectError(redirectUri: string, errorCode: string, description: string, state?: string | null): never {
@@ -21,8 +23,8 @@ export const GET: RequestHandler = async (event) => {
     const { db, tenant } = requireDbContext(locals);
 
     // IP당 60회/분 제한 — grant INSERT DoS 방지
-    const { ip } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `oidc-authorize:${ip ?? "unknown"}`, {
+    const { ip, ipKey } = getRequestMetadata(event);
+    const rl = await checkRateLimit(db, `oidc-authorize:${ipKey}`, {
         windowMs: 60 * 1000,
         limit: 60,
     });
@@ -116,12 +118,76 @@ export const GET: RequestHandler = async (event) => {
     }
     const grantedScope = grantedScopes.join(" ");
 
-    // 로그인 여부 확인
-    if (!locals.user || !locals.session) {
+    // ── prompt / max_age / id_token_hint / login_hint (OIDC Core 3.1.2) ─────────
+    const prompts = new Set((url.searchParams.get("prompt") ?? "").split(/\s+/).filter(Boolean));
+    const promptNone = prompts.has("none");
+    // prompt=none 은 다른 값과 함께 올 수 없다.
+    if (promptNone && prompts.size > 1) {
+        authRedirectError(redirectUri, "invalid_request", "prompt=none 은 다른 prompt 값과 함께 쓸 수 없습니다.", state);
+    }
+
+    const maxAgeRaw = url.searchParams.get("max_age");
+    let maxAge: number | null = null;
+    if (maxAgeRaw !== null) {
+        const n = Number.parseInt(maxAgeRaw, 10);
+        if (!Number.isFinite(n) || n < 0) {
+            authRedirectError(redirectUri, "invalid_request", "max_age 는 음이 아닌 정수여야 합니다.", state);
+        }
+        maxAge = n;
+    }
+
+    const idTokenHint = url.searchParams.get("id_token_hint");
+    const loginHint = url.searchParams.get("login_hint");
+
+    const loggedIn = Boolean(locals.user && locals.session);
+
+    // 재인증 필요 여부 (로그인된 경우에만 의미 있음): prompt=login, max_age 초과,
+    // id_token_hint 의 sub 불일치.
+    let reauthRequired = false;
+    if (loggedIn) {
+        if (prompts.has("login")) reauthRequired = true;
+        if (!reauthRequired && maxAge !== null) {
+            const authTimeSec = Math.floor(locals.session!.createdAt.getTime() / 1000);
+            if (Math.floor(Date.now() / 1000) - authTimeSec > maxAge) reauthRequired = true;
+        }
+        if (!reauthRequired && idTokenHint) {
+            const issuer = resolveIssuerUrl(locals.runtimeConfig, url.origin);
+            // id_token_hint 는 만료돼 있는 것이 정상이므로 exp 검사는 건너뛰되 서명은 검증한다.
+            const hintClaims = await verifyIdToken(db, tenant.id, idTokenHint, { expectedIssuer: issuer, ignoreExpiry: true });
+            if (!hintClaims || hintClaims.sub !== locals.user!.id) reauthRequired = true;
+        }
+    }
+
+    const needsInteraction = !loggedIn || reauthRequired;
+
+    if (promptNone && needsInteraction) {
+        // 무상호작용 요청인데 상호작용이 필요 → 표준 오류를 redirect_uri 로 반환.
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: locals.user?.id,
+            spOrClientId: clientId,
+            kind: "oidc_authorize",
+            outcome: "failure",
+            ip,
+            userAgent: getRequestMetadata(event).userAgent,
+            detail: { error: "login_required", reason: reauthRequired ? "reauth_required" : "not_authenticated" },
+        });
+        authRedirectError(redirectUri, "login_required", "사용자 상호작용 없이 인증을 완료할 수 없습니다.", state);
+    }
+
+    if (needsInteraction) {
+        // 인터랙티브 로그인/재인증으로 리다이렉트.
         const loginUrl = new URL("/login", url);
         loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
         loginUrl.searchParams.set("skinHint", `oidc:${client.id}`);
+        if (reauthRequired) loginUrl.searchParams.set("forceAuthn", "true");
+        if (loginHint) loginUrl.searchParams.set("loginHint", loginHint);
         throw redirect(302, loginUrl.toString());
+    }
+
+    // 여기 도달 시 로그인 상태가 보장된다 (타입 좁히기용 방어 체크).
+    if (!locals.user || !locals.session) {
+        throw error(500, "인증 게이트 이후 세션이 없습니다.");
     }
 
     // 서비스 권한 게이트 (기본 deny). 매핑 없으면 SSO 거부.

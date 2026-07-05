@@ -74,7 +74,7 @@ export const actions: Actions = {
 
         // IP 기반 레이트리밋 — 60분/5회.
         const meta = getRequestMetadata(event);
-        const rl = await checkRateLimit(db, `signup:${meta.ip ?? "unknown"}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        const rl = await checkRateLimit(db, `signup:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
             return failSkin(429, `가입 시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`);
         }

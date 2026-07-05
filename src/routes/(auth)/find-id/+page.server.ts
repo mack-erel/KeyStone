@@ -73,7 +73,7 @@ export const actions: Actions = {
 
         // IP 기반 레이트리밋 — 60분/5회.
         const meta = getRequestMetadata(event);
-        const rl = await checkRateLimit(db, `find-id:${meta.ip ?? "unknown"}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        const rl = await checkRateLimit(db, `find-id:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
             const msg = `요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
             return fail(429, { error: msg, skinHtml: await resolveSkinForAction(event, false, null, msg) });
@@ -86,11 +86,15 @@ export const actions: Actions = {
             .limit(1);
 
         if (user?.username) {
-            try {
-                await sendFindIdEmail(email, user.username);
-            } catch {
+            // ctrls C5: 타이밍 기반 계정 열거 방어. 계정이 존재할 때만 동기적으로 SMTP
+            // 왕복을 돌면 응답 시간 차이로 존재 여부가 새어 나간다. 메일 발송을 응답
+            // 경로에서 분리해 (Workers: waitUntil, Node: fire-and-forget) 존재/비존재
+            // 응답 시간을 균일하게 맞춘다. 메일 발송은 best-effort 이므로 결과를 기다리지 않는다.
+            const sendPromise = sendFindIdEmail(email, user.username).catch(() => {
                 // 메일 발송 실패는 조용히 무시
-            }
+            });
+            const wait = event.platform?.ctx?.waitUntil?.bind(event.platform.ctx);
+            if (wait) wait(sendPromise);
         }
 
         // 계정 존재 여부가 응답 페이로드로 새지 않도록 항상 동일 응답을 반환한다.

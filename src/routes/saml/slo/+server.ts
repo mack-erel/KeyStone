@@ -16,17 +16,19 @@
 import { error, redirect } from "@sveltejs/kit";
 import type { RequestEvent, RequestHandler } from "./$types";
 import { and, eq, gt } from "drizzle-orm";
-import { samlSessions, samlSloStates, samlSps, sessions } from "$lib/server/db/schema";
+import { samlAuthnRequestIds, samlSessions, samlSloStates, samlSps, sessions } from "$lib/server/db/schema";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { SESSION_COOKIE_NAME } from "$lib/server/auth/constants";
 import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
+import { revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
 import { buildSamlLogoutRequest, buildSamlLogoutResponse, buildSamlSloRedirectUrl, collectPendingSpData, parseSamlLogoutRequest, type PendingSpData } from "$lib/server/saml/slo";
 import { verifySamlRedirectSignature } from "$lib/server/saml/parse-authn-request";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 
 const SLO_STATE_TTL_MS = 10 * 60 * 1000; // 10 분
+const SLO_REQUEST_ID_TTL_MS = 10 * 60 * 1000; // LogoutRequest replay 가드 보존 기간
 
 function parsePendingSpData(json: string): PendingSpData[] {
     try {
@@ -140,6 +142,8 @@ async function completeSloChain(event: RequestEvent, state: typeof samlSloStates
             .set({ revokedAt: new Date() })
             .where(and(eq(sessions.id, idpSession.id), eq(sessions.tenantId, tenant.id)));
     }
+    // 이 세션으로 발급된 OIDC refresh token 폐기 (offline_access 무효화).
+    if (idpSession) await revokeRefreshTokensForSession(db, idpSession.id);
 
     // 5. 쿠키 제거
     cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
@@ -259,9 +263,19 @@ export const GET: RequestHandler = async (event) => {
     if (samlRequest) {
         let parsed;
         try {
+            // 파서가 DOCTYPE/ENTITY 차단 + onErrorStopParsing + IssueInstant skew(±5분) 를 강제한다.
             parsed = await parseSamlLogoutRequest(samlRequest);
         } catch {
             throw error(400, "Invalid SAMLRequest");
+        }
+
+        // Destination 검증: SP 가 명시했으면 IdP 의 SLO endpoint 와 정확히 일치해야 한다.
+        const cfgIssuer = locals.runtimeConfig.issuerUrl ?? resolveIssuerUrl(locals.runtimeConfig, url.origin);
+        if (parsed.destination) {
+            const expectedDestination = `${cfgIssuer.replace(/\/+$/, "")}/saml/slo`;
+            if (parsed.destination !== expectedDestination) {
+                throw error(400, "LogoutRequest Destination 이 IdP 의 SLO endpoint 와 일치하지 않습니다.");
+            }
         }
 
         // SP 조회
@@ -288,6 +302,32 @@ export const GET: RequestHandler = async (event) => {
         const valid = await verifySamlRedirectSignature(rawQuery, sp.cert);
         if (!valid) {
             throw error(400, "Invalid SAMLRequest signature");
+        }
+
+        // Replay 가드: 서명 검증 성공 후 LogoutRequest ID 를 1회용으로 소비한다.
+        // (서명 검증 뒤에 소비하므로, 미인증 요청으로 replay 테이블을 오염시키는 것을 막는다.)
+        // AuthnRequest 와 동일한 saml_authn_request_ids 테이블을 공유 nonce 저장소로 사용.
+        if (parsed.id) {
+            const now = new Date();
+            const [seen] = await db
+                .select({ requestId: samlAuthnRequestIds.requestId })
+                .from(samlAuthnRequestIds)
+                .where(and(eq(samlAuthnRequestIds.tenantId, tenant.id), eq(samlAuthnRequestIds.requestId, parsed.id), gt(samlAuthnRequestIds.expiresAt, now)))
+                .limit(1);
+            if (seen) {
+                throw error(400, "LogoutRequest ID 가 이미 사용되었습니다 (replay)");
+            }
+            try {
+                await db.insert(samlAuthnRequestIds).values({
+                    tenantId: tenant.id,
+                    requestId: parsed.id,
+                    spEntityId: parsed.issuer,
+                    expiresAt: new Date(Date.now() + SLO_REQUEST_ID_TTL_MS),
+                });
+            } catch {
+                // unique 충돌 → replay 와 동일 처리
+                throw error(400, "LogoutRequest ID 가 이미 사용되었습니다 (replay)");
+            }
         }
 
         // SessionIndex → SAML 세션 및 IdP 세션 식별
@@ -345,6 +385,8 @@ export const GET: RequestHandler = async (event) => {
                         .set({ revokedAt: new Date() })
                         .where(and(eq(sessions.id, idpSession.id), eq(sessions.tenantId, tenant.id)));
                 }
+                // 이 세션으로 발급된 OIDC refresh token 폐기 (offline_access 무효화).
+                await revokeRefreshTokensForSession(db, idpSession.id);
             }
             cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
 

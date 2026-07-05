@@ -51,10 +51,11 @@ export const POST: RequestHandler = async (event) => {
     const body = (await request.json()) as AuthenticationResponseJSON & { _redirectTo?: string };
 
     const { db, tenant } = requireDbContext(locals);
-    const ip = (request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+    // cf-connecting-ip 전용(H-ADMIN-3) + IPv6 /64 정규화(C6). 위조 가능한 x-forwarded-for 는 쓰지 않는다.
+    const { ipKey } = getRequestMetadata(event);
 
     // 레이트 리밋: tenant + ip 기반 (body.id 는 클라이언트가 임의 변조 가능하므로 키로 부적합).
-    const rlKey = `webauthn-verify:${tenant.id}:${ip}`;
+    const rlKey = `webauthn-verify:${tenant.id}:${ipKey}`;
     const rl = await checkRateLimit(db, rlKey, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
         throw error(429, "인증 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");

@@ -3,6 +3,7 @@ import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
 import { t } from "$lib/i18n.svelte";
+import LocaleToggle from "$lib/components/LocaleToggle.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
@@ -43,7 +44,7 @@ async function loginWithPasskey() {
     try {
         // 1. 인증 옵션 요청
         const optRes = await fetch("/api/webauthn/authenticate/options", { method: "POST" });
-        if (!optRes.ok) throw new Error((await optRes.text()) || "옵션 요청 실패");
+        if (!optRes.ok) throw new Error((await optRes.text()) || t("login.passkey_options_failed"));
         const options = await optRes.json();
 
         // 2. 브라우저 패스키 인증 (클라이언트 전용)
@@ -59,7 +60,7 @@ async function loginWithPasskey() {
             body: JSON.stringify({ ...authResponse, _redirectTo: pendingRedirect }),
         });
 
-        if (!verRes.ok) throw new Error((await verRes.text()) || "인증 실패");
+        if (!verRes.ok) throw new Error((await verRes.text()) || t("login.passkey_verify_failed"));
 
         const { redirectTo } = (await verRes.json()) as { redirectTo?: string };
         // eslint-disable-next-line svelte/no-navigation-without-resolve
@@ -67,9 +68,9 @@ async function loginWithPasskey() {
     } catch (err: unknown) {
         const e = err as { name?: string; message?: string };
         if (e?.name === "NotAllowedError") {
-            passkeyError = "패스키 인증이 취소되었습니다.";
+            passkeyError = t("login.passkey_cancelled");
         } else {
-            passkeyError = e?.message ?? "패스키 인증에 실패했습니다.";
+            passkeyError = e?.message ?? t("login.passkey_failed");
         }
     } finally {
         passkeyLoading = false;
@@ -93,11 +94,12 @@ async function loginWithPasskey() {
     {@html skinHtmlEffective}
 {:else}
     <!-- 기본 스킨 -->
+    <div class="fixed top-4 right-4 z-40"><LocaleToggle /></div>
     <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
         <div class="w-full max-w-105 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
             <div class="mb-6 space-y-2 text-center">
                 <h1 class="text-2xl font-bold text-gray-900">{t("app.title")}</h1>
-                <p class="text-sm leading-6 text-gray-500">M0 관리자 진입용 로컬 계정 로그인입니다.</p>
+                <p class="text-sm leading-6 text-gray-500">{t("login.subtitle")}</p>
             </div>
 
             {#if !data.dbReady && data.runtimeError}
@@ -143,7 +145,7 @@ async function loginWithPasskey() {
                         id="username"
                         required
                         autocomplete="username"
-                        value={form?.username ?? ""}
+                        value={form?.username ?? data.loginHint ?? ""}
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
                 </div>
 
@@ -169,7 +171,7 @@ async function loginWithPasskey() {
 
             <div class="mt-4 flex items-center gap-3">
                 <div class="h-px flex-1 bg-gray-200"></div>
-                <span class="text-xs text-gray-400">또는</span>
+                <span class="text-xs text-gray-400">{t("login.or")}</span>
                 <div class="h-px flex-1 bg-gray-200"></div>
             </div>
 
@@ -183,7 +185,7 @@ async function loginWithPasskey() {
                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                     </svg>
-                    인증 중...
+                    {t("login.passkey_authenticating")}
                 {:else}
                     <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
@@ -192,7 +194,7 @@ async function loginWithPasskey() {
                             stroke-width="2"
                             d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                     </svg>
-                    패스키로 로그인
+                    {t("login.passkey_login")}
                 {/if}
             </button>
 

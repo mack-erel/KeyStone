@@ -8,6 +8,20 @@
       "when": 1782957816372,
       "tag": "0000_friendly_fabian_cortez",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1783128615897,
+      "tag": "0001_great_freak",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1783222882349,
+      "tag": "0002_mysterious_gravity",
+      "breakpoints": true
     }
   ]
 }

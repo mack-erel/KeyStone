@@ -8,6 +8,20 @@
       "when": 1782957815981,
       "tag": "0000_lively_apocalypse",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783128615280,
+      "tag": "0001_purple_shocker",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783222882043,
+      "tag": "0002_damp_network",
+      "breakpoints": true
     }
   ]
 }

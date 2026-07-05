@@ -1,7 +1,7 @@
 import { json } from "@sveltejs/kit";
 import { eq } from "drizzle-orm";
 import type { RequestHandler } from "./$types";
-import { oidcClients } from "$lib/server/db/schema";
+import { oidcClients, sessions } from "$lib/server/db/schema";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { findActiveUserById } from "$lib/server/auth/users";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
@@ -9,9 +9,12 @@ import { checkRateLimit } from "$lib/server/ratelimit";
 import { findOidcClient, isValidClientSecret, parseBasicAuth } from "$lib/server/oidc/client";
 import { findAndConsumeGrant } from "$lib/server/oidc/grant";
 import { verifyPkce } from "$lib/server/oidc/pkce";
+import { issueRefreshToken, rotateRefreshToken, revokeRefreshTokenFamily } from "$lib/server/oidc/refresh";
 import { generateAccessToken, getActiveSigningKey, signJwt } from "$lib/server/crypto/keys";
 import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
+import type { DB } from "$lib/server/db";
+import type { OidcClientRecord } from "$lib/server/oidc/client";
 
 // ID Token 표준 클레임 — assignment.attributesJson 의 키와 충돌 시 표준 클레임이 우선한다.
 const RESERVED_ID_TOKEN_CLAIMS = new Set(["iss", "sub", "aud", "azp", "iat", "exp", "auth_time", "jti", "nonce", "sid", "acr", "amr", "at_hash", "c_hash"]);
@@ -30,14 +33,126 @@ function tokenError(code: string, description: string, status = 400): Response {
     });
 }
 
+function clientAllowsGrant(client: OidcClientRecord, grantType: string): boolean {
+    return client.grantTypes
+        .split(",")
+        .map((g) => g.trim())
+        .includes(grantType);
+}
+
+interface BuildTokenParams {
+    db: DB;
+    tenantId: string;
+    issuer: string;
+    signingKeySecret: string;
+    signingKey: Awaited<ReturnType<typeof getActiveSigningKey>>;
+    user: NonNullable<Awaited<ReturnType<typeof findActiveUserById>>>;
+    clientId: string; // 공개 client_id (aud/azp/access token 용)
+    clientDbId: string; // oidcClients.id PK (서비스 권한 조회용)
+    scope: string;
+    sessionId: string | null;
+    nonce: string | null;
+    acr: string | null;
+    amr: string | null;
+    authTimeSec: number;
+}
+
+/**
+ * ID Token(RS256 JWT) + opaque access token 을 생성한다.
+ * authorization_code / refresh_token 두 grant 에서 공통으로 사용한다.
+ */
+async function buildTokens(params: BuildTokenParams): Promise<{ idToken: string; accessToken: string }> {
+    const { db, tenantId, issuer, signingKeySecret, signingKey, user, clientId, scope } = params;
+    if (!signingKey) throw new Error("signingKey required");
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const scopes = new Set(scope.split(" "));
+
+    const idTokenPayload: Record<string, unknown> = {
+        iss: issuer,
+        sub: user.id,
+        aud: clientId,
+        azp: clientId,
+        iat: nowSec,
+        exp: nowSec + ID_TOKEN_TTL_S,
+        auth_time: params.authTimeSec,
+        jti: crypto.randomUUID(),
+    };
+
+    if (scopes.has("email")) {
+        idTokenPayload.email = user.email;
+        idTokenPayload.email_verified = Boolean(user.emailVerifiedAt);
+    }
+    if (scopes.has("profile")) {
+        idTokenPayload.name = user.displayName;
+        idTokenPayload.given_name = user.givenName;
+        idTokenPayload.family_name = user.familyName;
+        idTokenPayload.preferred_username = user.username ?? user.email.split("@")[0];
+        idTokenPayload.picture = user.avatarUrl;
+        idTokenPayload.locale = user.locale;
+        idTokenPayload.zoneinfo = user.zoneinfo;
+        idTokenPayload.birthdate = user.birthdate;
+    }
+    if (scopes.has("phone")) {
+        idTokenPayload.phone_number = user.phoneNumber;
+        idTokenPayload.phone_number_verified = Boolean(user.phoneVerifiedAt);
+    }
+
+    if (params.nonce) idTokenPayload.nonce = params.nonce;
+    if (params.sessionId) idTokenPayload.sid = params.sessionId;
+    if (params.acr) idTokenPayload.acr = params.acr;
+    if (params.amr) idTokenPayload.amr = params.amr.split(" ").filter(Boolean);
+
+    // 서비스 권한 매핑 — role / 추가 attributes 를 ID Token 에 머지한다.
+    const assignment = await getActiveAssignment(db, { tenantId, userId: user.id, serviceType: "oidc", serviceRefId: params.clientDbId });
+    if (assignment?.role) {
+        idTokenPayload.roles = [assignment.role.key];
+        idTokenPayload.roles_label = assignment.role.label;
+    }
+    if (assignment) {
+        const extra = parseAssignmentAttributes(assignment.attributesJson);
+        for (const [k, v] of Object.entries(extra)) {
+            if (RESERVED_ID_TOKEN_CLAIMS.has(k)) continue;
+            idTokenPayload[k] = v;
+        }
+    }
+
+    const idToken = await signJwt(idTokenPayload, signingKey.privateKey, signingKey.kid);
+
+    const accessToken = await generateAccessToken(
+        {
+            sub: user.id,
+            tenantId,
+            clientId,
+            scope,
+            iat: nowSec,
+            exp: nowSec + ACCESS_TOKEN_TTL_S,
+            jti: crypto.randomUUID(),
+            aud: clientId,
+            iss: issuer,
+        },
+        signingKeySecret,
+    );
+
+    return { idToken, accessToken };
+}
+
+function tokenResponse(body: Record<string, unknown>): Response {
+    return json(body, {
+        headers: {
+            "Cache-Control": "no-store, private",
+            Pragma: "no-cache",
+        },
+    });
+}
+
 export const POST: RequestHandler = async (event) => {
     const { locals, request, url } = event;
     const { db, tenant } = requireDbContext(locals);
     const { signingKeySecret } = locals.runtimeConfig;
 
     // 레이트 리밋: IP당 30회/분
-    const { ip, userAgent } = getRequestMetadata(event);
-    const ipKey = ip ?? "unknown";
+    const { ip, ipKey, userAgent } = getRequestMetadata(event);
     const rl = await checkRateLimit(db, `token:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
     if (!rl.allowed) {
         return new Response(
@@ -78,12 +193,13 @@ export const POST: RequestHandler = async (event) => {
         }
     };
 
-    if (body.get("grant_type") !== "authorization_code") {
-        await recordTokenFailure(null, "unsupported_grant_type", "authorization_code 외 grant_type");
-        return tokenError("unsupported_grant_type", "authorization_code 만 지원합니다.");
+    const grantType = String(body.get("grant_type") ?? "");
+    if (grantType !== "authorization_code" && grantType !== "refresh_token") {
+        await recordTokenFailure(null, "unsupported_grant_type", `지원하지 않는 grant_type: ${grantType}`);
+        return tokenError("unsupported_grant_type", "authorization_code, refresh_token 만 지원합니다.");
     }
 
-    // 클라이언트 인증 (Basic 헤더 또는 body params)
+    // ── 클라이언트 인증 (Basic 헤더 또는 body params) — 두 grant 공통 ────────────
     let clientId: string;
     let clientSecret: string;
 
@@ -122,12 +238,114 @@ export const POST: RequestHandler = async (event) => {
         try {
             await db.update(oidcClients).set({ clientSecretHash: secretCheck.rehash, updatedAt: new Date() }).where(eq(oidcClients.id, client.id));
         } catch (error) {
-            // 실패해도 토큰 발급은 계속하되, 반복 실패(스키마/권한 문제)가 보이도록 로깅.
-            // 업그레이드 전까지 이 클라이언트는 매 요청 레거시 KDF(느린 경로)를 탄다.
             console.error("client_secret 해시 업그레이드 실패", { clientId }, error);
         }
     }
 
+    if (!clientAllowsGrant(client, grantType)) {
+        await recordTokenFailure(clientId, "unauthorized_client", `클라이언트에 허용되지 않은 grant_type: ${grantType}`);
+        return tokenError("unauthorized_client", "이 클라이언트에 허용되지 않은 grant_type 입니다.");
+    }
+
+    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+    if (!signingKey) {
+        return tokenError("server_error", "활성 서명 키를 찾을 수 없습니다.", 503);
+    }
+
+    // ── refresh_token grant ─────────────────────────────────────────────────────
+    if (grantType === "refresh_token") {
+        const presented = String(body.get("refresh_token") ?? "");
+        if (!presented) {
+            await recordTokenFailure(clientId, "invalid_request", "refresh_token 누락");
+            return tokenError("invalid_request", "refresh_token 이 필요합니다.");
+        }
+
+        const rotation = await rotateRefreshToken(db, tenant.id, clientId, presented);
+        if (!rotation.ok) {
+            const desc = rotation.reason === "reuse" ? "refresh_token 재사용이 감지되어 관련 토큰을 모두 폐기했습니다." : "유효하지 않거나 만료된 refresh_token 입니다.";
+            await recordTokenFailure(clientId, "invalid_grant", `${rotation.reason}`);
+            return tokenError("invalid_grant", desc);
+        }
+
+        const record = rotation.record;
+
+        // 연결된 IdP 세션이 명시적으로 폐기(로그아웃)됐으면 거부한다.
+        // 세션의 자연 만료/정리는 거부하지 않는다 — offline_access refresh token 은
+        // 브라우저 세션보다 오래 살아야 하기 때문. (로그아웃 시 refresh token 은 별도 폐기됨.)
+        let sessionRow: typeof sessions.$inferSelect | null = null;
+        if (record.sessionId) {
+            const [s] = await db.select().from(sessions).where(eq(sessions.id, record.sessionId)).limit(1);
+            sessionRow = s ?? null;
+            if (sessionRow?.revokedAt) {
+                // 방금 회전된 토큰을 포함해 family 를 폐기하고 거부.
+                await revokeRefreshTokenFamily(db, tenant.id, record.userId, clientId);
+                await recordTokenFailure(clientId, "invalid_grant", "연결된 세션이 로그아웃됨");
+                return tokenError("invalid_grant", "로그아웃된 세션입니다. 다시 로그인해 주세요.");
+            }
+        }
+
+        // scope 축소 요청 지원 (RFC 6749 §6): 요청 scope 는 원 scope 의 부분집합이어야 한다.
+        const originalScopes = new Set(record.scope.split(" ").filter(Boolean));
+        const requestedScopeRaw = String(body.get("scope") ?? "").trim();
+        let effectiveScope = record.scope;
+        if (requestedScopeRaw) {
+            const requested = requestedScopeRaw.split(/\s+/).filter(Boolean);
+            for (const s of requested) {
+                if (!originalScopes.has(s)) {
+                    await recordTokenFailure(clientId, "invalid_scope", `요청 scope 가 원 scope 를 벗어남: ${s}`);
+                    return tokenError("invalid_scope", "요청한 scope 는 원 refresh_token 의 scope 를 벗어날 수 없습니다.");
+                }
+            }
+            effectiveScope = requested.join(" ");
+        }
+
+        const user = await findActiveUserById(db, record.userId);
+        if (!user) {
+            await recordTokenFailure(clientId, "invalid_grant", "사용자 조회 실패");
+            return tokenError("invalid_grant", "사용자를 찾을 수 없습니다.");
+        }
+
+        const authTimeSec = sessionRow ? Math.floor(sessionRow.createdAt.getTime() / 1000) : Math.floor(record.createdAt.getTime() / 1000);
+        const { idToken, accessToken } = await buildTokens({
+            db,
+            tenantId: tenant.id,
+            issuer,
+            signingKeySecret,
+            signingKey,
+            user,
+            clientId,
+            clientDbId: client.id,
+            scope: effectiveScope,
+            sessionId: record.sessionId,
+            nonce: null, // refresh 로 재발급되는 id_token 에는 nonce 를 넣지 않는다 (원 요청 전용)
+            acr: sessionRow?.acr ?? null,
+            amr: sessionRow?.amr ?? null,
+            authTimeSec,
+        });
+
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: user.id,
+            actorId: user.id,
+            spOrClientId: clientId,
+            kind: "oidc_token",
+            outcome: "success",
+            ip,
+            userAgent,
+            detail: { clientId, scope: effectiveScope, grant: "refresh_token" },
+        });
+
+        return tokenResponse({
+            access_token: accessToken,
+            token_type: "Bearer",
+            expires_in: ACCESS_TOKEN_TTL_S,
+            scope: effectiveScope,
+            id_token: idToken,
+            refresh_token: rotation.newToken,
+        });
+    }
+
+    // ── authorization_code grant ────────────────────────────────────────────────
     const code = String(body.get("code") ?? "");
     const redirectUri = String(body.get("redirect_uri") ?? "");
     const codeVerifier = String(body.get("code_verifier") ?? "");
@@ -162,102 +380,42 @@ export const POST: RequestHandler = async (event) => {
         }
     }
 
-    // 서로 독립인 조회 3개를 병렬 실행 (Workers 요청당 PG 연결은 max 5 라 여유 있음).
-    // 서비스 권한 매핑은 grant 발급 후 revoke 됐을 수 있으므로 token 시점에서 다시 조회한다.
-    const [user, signingKey, assignment] = await Promise.all([
-        findActiveUserById(db, grant.userId),
-        getActiveSigningKey(db, tenant.id, signingKeySecret),
-        getActiveAssignment(db, {
-            tenantId: tenant.id,
-            userId: grant.userId,
-            serviceType: "oidc",
-            serviceRefId: client.id,
-        }),
-    ]);
-
+    const user = await findActiveUserById(db, grant.userId);
     if (!user) {
         await recordTokenFailure(clientId, "invalid_grant", "사용자 조회 실패");
         return tokenError("invalid_grant", "사용자를 찾을 수 없습니다.");
     }
 
-    if (!signingKey) {
-        return tokenError("server_error", "활성 서명 키를 찾을 수 없습니다.", 503);
-    }
+    const authTimeSec = Math.floor(grant.createdAt.getTime() / 1000);
+    const { idToken, accessToken } = await buildTokens({
+        db,
+        tenantId: tenant.id,
+        issuer,
+        signingKeySecret,
+        signingKey,
+        user,
+        clientId,
+        clientDbId: client.id,
+        scope: grant.scope,
+        sessionId: grant.sessionId,
+        nonce: grant.nonce,
+        acr: grant.acr ?? null,
+        amr: null,
+        authTimeSec,
+    });
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const scopes = new Set(grant.scope.split(" "));
-
-    // ID Token (RS256 JWT)
-    const idTokenPayload: Record<string, unknown> = {
-        iss: issuer,
-        sub: user.id,
-        aud: clientId,
-        azp: clientId,
-        iat: nowSec,
-        exp: nowSec + ID_TOKEN_TTL_S,
-        auth_time: Math.floor(grant.createdAt.getTime() / 1000),
-        jti: crypto.randomUUID(),
-    };
-
-    // email scope
-    if (scopes.has("email")) {
-        idTokenPayload.email = user.email;
-        idTokenPayload.email_verified = Boolean(user.emailVerifiedAt);
-    }
-
-    // profile scope
-    if (scopes.has("profile")) {
-        idTokenPayload.name = user.displayName;
-        idTokenPayload.given_name = user.givenName;
-        idTokenPayload.family_name = user.familyName;
-        idTokenPayload.preferred_username = user.username ?? user.email.split("@")[0];
-        idTokenPayload.picture = user.avatarUrl;
-        idTokenPayload.locale = user.locale;
-        idTokenPayload.zoneinfo = user.zoneinfo;
-        idTokenPayload.birthdate = user.birthdate;
-    }
-
-    // phone scope
-    if (scopes.has("phone")) {
-        idTokenPayload.phone_number = user.phoneNumber;
-        idTokenPayload.phone_number_verified = Boolean(user.phoneVerifiedAt);
-    }
-
-    if (grant.nonce) idTokenPayload.nonce = grant.nonce;
-    if (grant.sessionId) idTokenPayload.sid = grant.sessionId;
-    if (grant.acr) idTokenPayload.acr = grant.acr;
-
-    // 서비스 권한 매핑 — role / 추가 attributes 를 ID Token 에 머지한다.
-    if (assignment?.role) {
-        idTokenPayload.roles = [assignment.role.key];
-        idTokenPayload.roles_label = assignment.role.label;
-    }
-    if (assignment) {
-        const extra = parseAssignmentAttributes(assignment.attributesJson);
-        for (const [k, v] of Object.entries(extra)) {
-            // 표준 클레임 우선 — 충돌 키는 무시
-            if (RESERVED_ID_TOKEN_CLAIMS.has(k)) continue;
-            idTokenPayload[k] = v;
-        }
-    }
-
-    const idToken = await signJwt(idTokenPayload, signingKey.privateKey, signingKey.kid);
-
-    // Opaque access token (HMAC-SHA256)
-    const accessToken = await generateAccessToken(
-        {
-            sub: user.id,
+    // offline_access scope + 클라이언트가 refresh_token grant 허용 시 refresh token 발급.
+    const grantScopes = new Set(grant.scope.split(" ").filter(Boolean));
+    let refreshToken: string | null = null;
+    if (grantScopes.has("offline_access") && clientAllowsGrant(client, "refresh_token")) {
+        refreshToken = await issueRefreshToken(db, {
             tenantId: tenant.id,
             clientId,
+            userId: user.id,
+            sessionId: grant.sessionId,
             scope: grant.scope,
-            iat: nowSec,
-            exp: nowSec + ACCESS_TOKEN_TTL_S,
-            jti: crypto.randomUUID(),
-            aud: clientId,
-            iss: issuer,
-        },
-        signingKeySecret,
-    );
+        });
+    }
 
     await recordAuditEvent(db, {
         tenantId: tenant.id,
@@ -268,22 +426,17 @@ export const POST: RequestHandler = async (event) => {
         outcome: "success",
         ip,
         userAgent,
-        detail: { clientId, scope: grant.scope },
+        detail: { clientId, scope: grant.scope, grant: "authorization_code", refresh: Boolean(refreshToken) },
     });
 
-    return json(
-        {
-            access_token: accessToken,
-            token_type: "Bearer",
-            expires_in: ACCESS_TOKEN_TTL_S,
-            scope: grant.scope,
-            id_token: idToken,
-        },
-        {
-            headers: {
-                "Cache-Control": "no-store, private",
-                Pragma: "no-cache",
-            },
-        },
-    );
+    const responseBody: Record<string, unknown> = {
+        access_token: accessToken,
+        token_type: "Bearer",
+        expires_in: ACCESS_TOKEN_TTL_S,
+        scope: grant.scope,
+        id_token: idToken,
+    };
+    if (refreshToken) responseBody.refresh_token = refreshToken;
+
+    return tokenResponse(responseBody);
 };

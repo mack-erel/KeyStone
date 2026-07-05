@@ -1,9 +1,8 @@
-import { fail } from "@sveltejs/kit";
-import { asc, and, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { requireAdminContext } from "$lib/server/auth/guards";
-import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { departments } from "$lib/server/db/schema";
+import { createAdminCrudRoute, type CrudContext } from "$lib/server/admin/crud-factory";
+import { departmentCreateSchema, departmentUpdateSchema } from "$lib/server/admin/schemas";
 
 // ctrls C-11: 부서 트리는 최대 깊이 제한 + 순환 참조 차단.
 // 간접 순환(A→B→A, A→B→C→A 등)을 막지 않으면 traversal 코드가 무한루프
@@ -11,7 +10,7 @@ import { departments } from "$lib/server/db/schema";
 const MAX_DEPARTMENT_DEPTH = 8;
 
 type ValidateOpts = {
-    db: ReturnType<typeof requireAdminContext>["db"];
+    db: CrudContext["db"];
     tenantId: string;
     /** 업데이트 대상 부서 id (create 시 null) */
     selfId: string | null;
@@ -52,122 +51,32 @@ async function validateParentHierarchy({ db, tenantId, selfId, newParentId }: Va
     return `상위 부서 깊이는 최대 ${MAX_DEPARTMENT_DEPTH} 단계까지 허용됩니다.`;
 }
 
-export const load: PageServerLoad = async ({ locals }) => {
-    const { db, tenant } = requireAdminContext(locals);
+// ctrls H-ADMIN-1: 부서 트리 변경은 권한 상속에 직결되므로 모든 변경을 audit 기록.
+const route = createAdminCrudRoute({
+    table: departments,
+    auditPrefix: "department",
+    createSchema: departmentCreateSchema,
+    updateSchema: departmentUpdateSchema,
+    load: async ({ db, tenant }) => {
+        const rows = await db.select().from(departments).where(eq(departments.tenantId, tenant.id)).orderBy(asc(departments.displayOrder), asc(departments.name));
 
-    const rows = await db.select().from(departments).where(eq(departments.tenantId, tenant.id)).orderBy(asc(departments.displayOrder), asc(departments.name));
+        // 부모 이름을 서버에서 매핑
+        const nameById = new Map(rows.map((r) => [r.id, r.name]));
+        const depts = rows.map((r) => ({
+            ...r,
+            parentName: r.parentId ? (nameById.get(r.parentId) ?? null) : null,
+        }));
 
-    // 부모 이름을 서버에서 매핑
-    const nameById = new Map(rows.map((r) => [r.id, r.name]));
-    const depts = rows.map((r) => ({
-        ...r,
-        parentName: r.parentId ? (nameById.get(r.parentId) ?? null) : null,
-    }));
+        // 상위 부서 선택용 목록 (활성 부서만)
+        const allDepts = rows.filter((r) => r.status === "active").map((r) => ({ id: r.id, name: r.name }));
 
-    // 상위 부서 선택용 목록 (활성 부서만)
-    const allDepts = rows.filter((r) => r.status === "active").map((r) => ({ id: r.id, name: r.name }));
-
-    return { departments: depts, allDepts };
-};
-
-export const actions: Actions = {
-    // ctrls H-ADMIN-1: 부서 트리 변경은 권한 상속에 직결되므로 모든 변경을 audit 기록.
-    create: async (event) => {
-        const { locals, request } = event;
-        const { db, tenant } = requireAdminContext(locals);
-        const fd = await request.formData();
-        const name = String(fd.get("name") ?? "").trim();
-        const code = String(fd.get("code") ?? "").trim() || null;
-        const parentId = String(fd.get("parentId") ?? "").trim() || null;
-        const description = String(fd.get("description") ?? "").trim() || null;
-        const displayOrder = parseInt(String(fd.get("displayOrder") ?? "0"), 10);
-
-        if (!name) return fail(400, { create: true, error: "부서명을 입력해 주세요." });
-
-        const hierarchyError = await validateParentHierarchy({ db, tenantId: tenant.id, selfId: null, newParentId: parentId });
-        if (hierarchyError) return fail(400, { create: true, error: hierarchyError });
-
-        await db.insert(departments).values({
-            tenantId: tenant.id,
-            name,
-            code,
-            parentId,
-            description,
-            displayOrder: isNaN(displayOrder) ? 0 : displayOrder,
-        });
-        const meta = getRequestMetadata(event);
-        await recordAuditEvent(db, {
-            tenantId: tenant.id,
-            actorId: locals.user!.id,
-            kind: "department_created",
-            outcome: "success",
-            ip: meta.ip,
-            userAgent: meta.userAgent,
-            detail: { name, code, parentId },
-        });
-        return { created: true };
+        return { departments: depts, allDepts };
     },
+    beforeCreate: (ctx, values) => validateParentHierarchy({ db: ctx.db, tenantId: ctx.tenant.id, selfId: null, newParentId: values.parentId }),
+    beforeUpdate: (ctx, values) => validateParentHierarchy({ db: ctx.db, tenantId: ctx.tenant.id, selfId: values.id, newParentId: values.parentId }),
+    buildCreateDetail: (v) => ({ name: v.name, code: v.code, parentId: v.parentId }),
+    buildUpdateDetail: (id, v) => ({ id, name: v.name, code: v.code, parentId: v.parentId, status: v.status }),
+});
 
-    update: async (event) => {
-        const { locals, request } = event;
-        const { db, tenant } = requireAdminContext(locals);
-        const fd = await request.formData();
-        const id = String(fd.get("id") ?? "");
-        const name = String(fd.get("name") ?? "").trim();
-        const code = String(fd.get("code") ?? "").trim() || null;
-        const parentId = String(fd.get("parentId") ?? "").trim() || null;
-        const description = String(fd.get("description") ?? "").trim() || null;
-        const displayOrder = parseInt(String(fd.get("displayOrder") ?? "0"), 10);
-        const status = String(fd.get("status") ?? "active") as "active" | "inactive";
-
-        if (!id || !name) return fail(400, { error: "잘못된 요청입니다." });
-
-        const hierarchyError = await validateParentHierarchy({ db, tenantId: tenant.id, selfId: id, newParentId: parentId });
-        if (hierarchyError) return fail(400, { error: hierarchyError });
-
-        await db
-            .update(departments)
-            .set({
-                name,
-                code,
-                parentId,
-                description,
-                displayOrder: isNaN(displayOrder) ? 0 : displayOrder,
-                status,
-                updatedAt: new Date(),
-            })
-            .where(and(eq(departments.id, id), eq(departments.tenantId, tenant.id)));
-        const meta = getRequestMetadata(event);
-        await recordAuditEvent(db, {
-            tenantId: tenant.id,
-            actorId: locals.user!.id,
-            kind: "department_updated",
-            outcome: "success",
-            ip: meta.ip,
-            userAgent: meta.userAgent,
-            detail: { id, name, code, parentId, status },
-        });
-        return { updated: true };
-    },
-
-    delete: async (event) => {
-        const { locals, request } = event;
-        const { db, tenant } = requireAdminContext(locals);
-        const fd = await request.formData();
-        const id = String(fd.get("id") ?? "");
-        if (!id) return fail(400, { error: "잘못된 요청입니다." });
-
-        await db.delete(departments).where(and(eq(departments.id, id), eq(departments.tenantId, tenant.id)));
-        const meta = getRequestMetadata(event);
-        await recordAuditEvent(db, {
-            tenantId: tenant.id,
-            actorId: locals.user!.id,
-            kind: "department_deleted",
-            outcome: "success",
-            ip: meta.ip,
-            userAgent: meta.userAgent,
-            detail: { id },
-        });
-        return { deleted: true };
-    },
-};
+export const load: PageServerLoad = route.load;
+export const actions: Actions = route.actions;

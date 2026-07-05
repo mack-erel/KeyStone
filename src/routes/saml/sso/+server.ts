@@ -29,8 +29,8 @@ export const GET: RequestHandler = async (event) => {
     const config = getRuntimeConfig(platform);
 
     // IP당 30회/분 — AuthnRequest 파싱·서명 검증 연산 DoS 방지
-    const { ip } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `saml-sso:${ip ?? "unknown"}`, { windowMs: 60 * 1000, limit: 30 });
+    const { ipKey } = getRequestMetadata(event);
+    const rl = await checkRateLimit(db, `saml-sso:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
     if (!rl.allowed) {
         throw error(429, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
     }
@@ -324,6 +324,8 @@ export const GET: RequestHandler = async (event) => {
         certPem: signingKey.certPem,
         privateKey: signingKey.privateKey,
         signResponse: sp.signResponse,
+        encryptAssertion: sp.encryptAssertion,
+        spCertPem: sp.cert,
     });
 
     const requestMetadata = getRequestMetadata(event);

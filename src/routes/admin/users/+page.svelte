@@ -106,6 +106,16 @@ const STATUS_NEXT: Record<string, StatusNext> = {
         </div>
     {/if}
 
+    <form method="GET" class="mb-4 flex items-center gap-2">
+        <input
+            type="search"
+            name="q"
+            value={data.search ?? ""}
+            placeholder={t("users.search_placeholder")}
+            class="w-full max-w-sm rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+        <button type="submit" class="rounded-md bg-gray-800 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-900">{t("common.search")}</button>
+    </form>
+
     <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
         <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50">
@@ -224,4 +234,14 @@ const STATUS_NEXT: Record<string, StatusNext> = {
             </tbody>
         </table>
     </div>
+
+    {#if data.nextCursor}
+        <div class="mt-4 flex justify-center">
+            <a
+                href="{resolve('/admin/users')}?{new URLSearchParams({ ...(data.search ? { q: data.search } : {}), cursor: String(data.nextCursor) }).toString()}"
+                class="rounded-md border border-gray-300 bg-white px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                {t("common.next_page")}
+            </a>
+        </div>
+    {/if}
 </div>

@@ -15,7 +15,11 @@
 // Workers 네이티브이고 bun 에서도 동작.
 
 // 제거할 태그 (자식 내용도 함께 사라짐: script/style 처럼 children 이 텍스트인 경우)
-const FORBIDDEN_TAGS = ["script", "iframe", "object", "embed", "base", "meta", "link"];
+//
+// <style> 은 CSP style-src 'unsafe-inline' 하에서 통과되므로, 침해된 skin 호스트가
+// 인라인 <style> 로 로그인 폼을 리드레싱/은닉해 자격증명 피싱을 시도할 수 있다.
+// 정상 skin 은 <link>/외부 CSS 가 아니라 CSP 로 허용된 경로를 쓰므로 영향 없음.
+const FORBIDDEN_TAGS = ["script", "style", "iframe", "object", "embed", "base", "meta", "link"];
 
 // 제거할 속성 (모든 태그 공통)
 const FORBIDDEN_ATTRIBUTES = new Set([

@@ -134,6 +134,8 @@ export interface VerifyIdTokenOptions {
     expectedAud?: string;
     /** 검증해야 할 issuer (claims.iss 와 정확히 일치해야 함) */
     expectedIssuer?: string;
+    /** exp 만료 검사를 건너뛴다. id_token_hint 는 만료된 토큰이 정상이므로 이 경우에만 사용. */
+    ignoreExpiry?: boolean;
 }
 
 export async function verifyIdToken(db: DB, tenantId: string, token: string, options?: VerifyIdTokenOptions): Promise<Record<string, unknown> | null> {
@@ -172,7 +174,7 @@ export async function verifyIdToken(db: DB, tenantId: string, token: string, opt
         // 재사용되는 시나리오 차단. logout_token 은 events claim 필수, ID token 은
         // events claim 을 가지지 않는다.
         if (claims.events !== undefined) return null;
-        if (typeof claims.exp === "number" && claims.exp < nowSec) return null;
+        if (!options?.ignoreExpiry && typeof claims.exp === "number" && claims.exp < nowSec) return null;
         if (typeof claims.nbf === "number" && claims.nbf > nowSec + 60) return null;
         if (options?.expectedIssuer && claims.iss !== options.expectedIssuer) return null;
         if (options?.expectedAud) {

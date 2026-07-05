@@ -4,6 +4,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { samlSps } from "$lib/server/db/schema";
+import { isLoopbackHost } from "$lib/server/validation";
 
 export const load: PageServerLoad = async ({ locals }) => {
     const { db, tenant } = requireAdminContext(locals);
@@ -52,8 +53,7 @@ function validateSamlUrl(value: string, label: string): { ok: true } | { ok: fal
     const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
     if (scheme === "https") return { ok: true };
     if (scheme === "http") {
-        const host = parsed.hostname;
-        if (host === "localhost" || host === "127.0.0.1" || host === "[::1]" || host === "::1") return { ok: true };
+        if (isLoopbackHost(parsed.hostname)) return { ok: true };
         return { ok: false, reason: `${label}: http URL 은 localhost/127.0.0.1 만 허용됩니다.` };
     }
     return { ok: false, reason: `${label}: https URL 만 허용됩니다.` };
@@ -89,11 +89,14 @@ export const actions: Actions = {
         // 않도록 IDP 가 항상 Response 자체를 서명한다. admin UI 가 false 를 보내도 무시.
         const signResponse = true;
         const wantAuthnRequestsSigned = fd.get("wantAuthnRequestsSigned") === "true";
+        const encryptAssertion = fd.get("encryptAssertion") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
 
         if (!name) return fail(400, { create: true, error: "이름은 필수입니다." });
         if (!entityId) return fail(400, { create: true, error: "Entity ID 는 필수입니다." });
         if (!acsUrl) return fail(400, { create: true, error: "ACS URL 은 필수입니다." });
+        // Assertion 암호화는 SP 공개키가 있어야 가능하다.
+        if (encryptAssertion && !cert) return fail(400, { create: true, error: "Assertion 암호화를 사용하려면 SP 인증서가 필요합니다." });
 
         const acsV = validateSamlUrl(acsUrl, "ACS URL");
         if (!acsV.ok) return fail(400, { create: true, error: acsV.reason });
@@ -124,6 +127,7 @@ export const actions: Actions = {
             signAssertion,
             signResponse,
             wantAuthnRequestsSigned,
+            encryptAssertion,
             allowedAttributes,
             enabled: true,
         });
@@ -159,10 +163,13 @@ export const actions: Actions = {
         // 않도록 IDP 가 항상 Response 자체를 서명한다. admin UI 가 false 를 보내도 무시.
         const signResponse = true;
         const wantAuthnRequestsSigned = fd.get("wantAuthnRequestsSigned") === "true";
+        const encryptAssertion = fd.get("encryptAssertion") === "true";
         const enabled = fd.get("enabled") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
 
         if (!id || !name || !acsUrl) return fail(400, { error: "필수 항목이 누락되었습니다." });
+        // Assertion 암호화는 SP 공개키가 있어야 가능하다.
+        if (encryptAssertion && !cert) return fail(400, { error: "Assertion 암호화를 사용하려면 SP 인증서가 필요합니다." });
 
         const acsV = validateSamlUrl(acsUrl, "ACS URL");
         if (!acsV.ok) return fail(400, { error: acsV.reason });
@@ -194,6 +201,7 @@ export const actions: Actions = {
                 signAssertion,
                 signResponse,
                 wantAuthnRequestsSigned,
+                encryptAssertion,
                 allowedAttributes,
                 enabled,
                 updatedAt: new Date(),

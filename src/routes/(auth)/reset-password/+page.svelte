@@ -2,6 +2,7 @@
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
 import { t } from "$lib/i18n.svelte";
+import LocaleToggle from "$lib/components/LocaleToggle.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
@@ -38,6 +39,7 @@ const findPasswordHref = $derived(
     <!-- eslint-disable-next-line svelte/no-at-html-tags -->
     {@html skinHtmlEffective}
 {:else}
+    <div class="fixed top-4 right-4 z-40"><LocaleToggle /></div>
     <div class="flex min-h-screen items-center justify-center bg-gray-50 p-4">
         <div class="w-full max-w-md space-y-6 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
             <div>
@@ -69,7 +71,7 @@ const findPasswordHref = $derived(
                             type="password"
                             required
                             autocomplete="new-password"
-                            placeholder="8자 이상"
+                            placeholder={t("reset_password.password_placeholder")}
                             class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
                     </div>
                     <div>

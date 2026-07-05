@@ -86,6 +86,7 @@ function urisToText(json: string | null): string {
                         if (result.type === "success") showCreate = false;
                     }}
                 class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <input type="hidden" name="csrf" value={data.csrfToken} />
                 <div>
                     <label for="c-name" class="block text-xs font-medium text-gray-700">{t("oidc.name_label")}</label>
                     <input id="c-name" type="text" name="name" required class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
@@ -207,6 +208,7 @@ function urisToText(json: string | null): string {
                                         {editingId === client.id ? t("common.collapse") : t("common.expand")}
                                     </button>
                                     <form method="POST" action="?/regenerateSecret" use:enhance>
+                                        <input type="hidden" name="csrf" value={data.csrfToken} />
                                         <input type="hidden" name="id" value={client.id} />
                                         <button
                                             type="submit"
@@ -218,6 +220,7 @@ function urisToText(json: string | null): string {
                                         </button>
                                     </form>
                                     <form method="POST" action="?/delete" use:enhance>
+                                        <input type="hidden" name="csrf" value={data.csrfToken} />
                                         <input type="hidden" name="id" value={client.id} />
                                         <button
                                             type="submit"
@@ -244,6 +247,7 @@ function urisToText(json: string | null): string {
                                                 if (result.type === "success") editingId = null;
                                             }}
                                         class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        <input type="hidden" name="csrf" value={data.csrfToken} />
                                         <input type="hidden" name="id" value={client.id} />
                                         <div>
                                             <label for="e-name-{client.id}" class="block text-xs font-medium text-gray-700">{t("oidc.name_label")}</label>

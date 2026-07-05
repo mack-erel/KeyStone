@@ -43,14 +43,15 @@
         "db:seed:sqlite": "DB_DIALECT=sqlite bun scripts/seed.ts",
         "db:push:sqlite": "DB_DIALECT=sqlite drizzle-kit push",
         "db:studio:sqlite": "DB_DIALECT=sqlite drizzle-kit studio",
-        "setup": "bun run scripts/setup.ts"
+        "setup": "bun run scripts/setup.ts",
+        "verify:saml-encryption": "bun scripts/verify-saml-encryption.ts",
+        "test": "vitest run",
+        "test:watch": "vitest"
     },
     "devDependencies": {
         "@eslint/compat": "^2.1.0",
         "@eslint/js": "^10.0.1",
-        "@peculiar/x509": "^2.0.0",
         "@simplewebauthn/browser": "^13.3.0",
-        "@simplewebauthn/server": "^13.3.0",
         "@sveltejs/adapter-cloudflare": "^7.2.8",
         "@sveltejs/adapter-node": "^5.5.7",
         "@sveltejs/kit": "^2.60.1",
@@ -59,8 +60,6 @@
         "@types/node": "^26.1.0",
         "@types/nodemailer": "^8.0.0",
         "@types/qrcode": "^1.5.6",
-        "@xmldom/xmldom": "^0.9.10",
-        "@yrneh_jang/ldapjs": "^3.1.1",
         "drizzle-kit": "^0.31.10",
         "drizzle-orm": "^0.45.2",
         "eslint": "^10.3.0",
@@ -72,25 +71,31 @@
         "prettier-plugin-svelte": "^4.1.1",
         "prettier-plugin-tailwindcss": "^0.8.0",
         "qrcode": "^1.5.4",
-        "reflect-metadata": "^0.2.2",
         "svelte": "^5.55.7",
         "svelte-check": "^4.4.8",
         "tailwindcss": "^4.3.0",
         "typescript": "^6.0.3",
         "typescript-eslint": "^8.59.3",
         "vite": "^8.1.2",
-        "wrangler": "^4.106.0",
-        "xmldsigjs": "^2.8.7",
-        "xpath": "^0.0.34"
+        "vitest": "^4.1.9",
+        "wrangler": "^4.106.0"
     },
     "dependencies": {
         "@hicaru/argon2-pure.js": "^0.0.4",
         "@libsql/client": "^0.17.4",
+        "@peculiar/x509": "^2.0.0",
+        "@simplewebauthn/server": "^13.3.0",
+        "@xmldom/xmldom": "^0.9.10",
+        "@yrneh_jang/ldapjs": "^3.1.1",
         "aws4fetch": "^1.0.20",
         "mysql2": "^3.22.5",
         "nodemailer": "^9.0.3",
         "postgres": "^3.4.9",
-        "xml-core": "^1.2.5"
+        "reflect-metadata": "^0.2.2",
+        "xml-core": "^1.2.5",
+        "xmldsigjs": "^2.8.7",
+        "xpath": "^0.0.34",
+        "zod": "^4.4.3"
     },
     "overrides": {
         "ws": "^8.21.0"

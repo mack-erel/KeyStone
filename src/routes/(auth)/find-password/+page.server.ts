@@ -79,7 +79,7 @@ export const actions: Actions = {
 
         // IP 기반 레이트리밋 — 60분/5회.
         const meta = getRequestMetadata(event);
-        const rl = await checkRateLimit(db, `find-password:${meta.ip ?? "unknown"}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        const rl = await checkRateLimit(db, `find-password:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
             const msg = `요청이 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.`;
             return fail(429, { error: msg, skinHtml: await resolveSkinForAction(event, false, undefined, msg) });
@@ -115,7 +115,13 @@ export const actions: Actions = {
                 if (redirectTo) resetParams.set("redirectTo", redirectTo);
                 if (skinHint) resetParams.set("skinHint", skinHint);
                 const resetUrl = `${issuer}/reset-password?${resetParams.toString()}`;
-                await sendPasswordResetEmail(user.email, resetUrl);
+                // ctrls C5(후속): SMTP 왕복을 응답 경로에서 분리해 타이밍 계정 열거를 차단한다.
+                // (find-id 와 동일 패턴 — Workers: waitUntil, Node: fire-and-forget.)
+                const sendPromise = sendPasswordResetEmail(user.email, resetUrl).catch(() => {
+                    // 메일 발송 실패는 조용히 무시
+                });
+                const wait = event.platform?.ctx?.waitUntil?.bind(event.platform.ctx);
+                if (wait) wait(sendPromise);
             } catch {
                 // 조용히 무시
             }
