@@ -36,7 +36,7 @@ function parseSpMetadata() {
         const doc = parser.parseFromString(xml, "text/xml");
 
         const parseErr = doc.querySelector("parsererror");
-        if (parseErr) throw new Error("XML 파싱 오류");
+        if (parseErr) throw new Error(t("saml.parse_error_xml"));
 
         const entityId = doc.documentElement.getAttribute("entityID") ?? "";
         if (entityId) createEntityId = entityId;
@@ -73,7 +73,7 @@ function parseSpMetadata() {
             }
         }
     } catch (e) {
-        metaParseError = e instanceof Error ? e.message : "파싱 실패";
+        metaParseError = e instanceof Error ? e.message : t("saml.parse_error_generic");
     }
 }
 

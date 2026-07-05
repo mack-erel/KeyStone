@@ -58,6 +58,8 @@
     },
     "admin": {
         "title": "관리자 대시보드",
+        "dashboard_subtitle": "기본 tenant 의 현재 운영 현황을 빠르게 확인할 수 있습니다.",
+        "auth_protocols": "인증 프로토콜",
         "dashboard": "대시보드",
         "users": "사용자",
         "oidc_clients": "OIDC 클라이언트",
@@ -72,6 +74,14 @@
         "parts": "파트",
         "ldap_providers": "LDAP 프로바이더",
         "skins": "로그인 스킨"
+    },
+    "admin_login": {
+        "subtitle": "관리자 로그인",
+        "err_options": "옵션 요청 실패",
+        "err_verify": "인증 실패",
+        "user_login_prefix": "일반 사용자는 ",
+        "user_login_link": "여기",
+        "user_login_suffix": "에서 로그인하세요."
     },
     "account": {
         "profile": "내 프로필",
@@ -169,6 +179,8 @@
         "add_btn": "+ 부서 추가",
         "create_title": "새 부서 추가",
         "name_label": "부서명 *",
+        "name_placeholder": "예: 개발본부",
+        "code_placeholder": "예: DEV",
         "parent_label": "상위 부서",
         "parent_none": "없음 (최상위)",
         "display_order": "표시 순서",
@@ -182,6 +194,8 @@
         "add_btn": "+ 직급 추가",
         "create_title": "새 직급 추가",
         "name_label": "직급명 *",
+        "name_placeholder": "예: 과장",
+        "code_placeholder": "예: MGR",
         "level_label": "레벨 (높을수록 고위)",
         "col_name": "직급명",
         "col_level": "레벨",
@@ -192,6 +206,8 @@
         "add_btn": "+ 팀 추가",
         "create_title": "새 팀 추가",
         "name_label": "팀명 *",
+        "name_placeholder": "예: 백엔드팀",
+        "code_placeholder": "예: BE",
         "dept_label": "소속 부서",
         "dept_none": "없음 (독립 팀)",
         "col_name": "팀명",
@@ -203,6 +219,8 @@
         "add_btn": "+ 파트 추가",
         "create_title": "새 파트 추가",
         "name_label": "파트명 *",
+        "name_placeholder": "예: iOS파트",
+        "code_placeholder": "예: IOS",
         "team_label": "소속 팀",
         "team_none": "없음 (독립 파트)",
         "col_name": "파트명",
@@ -290,7 +308,21 @@
         "part_section": "파트 소속",
         "part_empty": "소속된 파트가 없습니다.",
         "part_select": "파트 선택",
-        "part_job_title_placeholder": "직책 (예: 파트장)"
+        "part_job_title_placeholder": "직책 (예: 파트장)",
+        "svc_section": "서비스 권한",
+        "svc_desc": "기본 deny — 매핑이 없으면 SSO 가 거부됩니다. 서비스 별로 1 매핑만 허용.",
+        "svc_revoked": "취소됨",
+        "svc_expired": "만료됨",
+        "svc_active": "활성",
+        "svc_role_none": "(role 없음)",
+        "svc_delete_confirm": "이 매핑을 삭제하시겠습니까?",
+        "svc_expires": "만료일",
+        "svc_renew": "갱신",
+        "svc_empty": "매핑된 서비스가 없습니다.",
+        "svc_service": "서비스",
+        "svc_select": "선택...",
+        "svc_expires_optional": "만료일 (optional)",
+        "svc_add": "매핑 추가"
     },
     "ldap": {
         "title": "LDAP 프로바이더",
@@ -299,6 +331,7 @@
         "added_success": "LDAP 프로바이더가 추가되었습니다. 테스트 후 활성화하세요.",
         "saved": "저장되었습니다.",
         "name_label": "이름 *",
+        "name_placeholder": "사내 LDAP",
         "tls_label": "TLS 모드",
         "tls_none": "없음 (ldap://)",
         "tls_tls": "TLS (ldaps://)",
@@ -376,7 +409,18 @@
         "col_created": "생성",
         "enabled": "활성",
         "empty": "등록된 SAML SP 가 없습니다.",
-        "delete_confirm": "SP를 삭제하시겠습니까?"
+        "delete_confirm": "SP를 삭제하시겠습니까?",
+        "parse_error_xml": "XML 파싱 오류",
+        "parse_error_generic": "파싱 실패"
+    },
+    "roles": {
+        "list_title": "Role 목록",
+        "count": "{{count}}개",
+        "empty": "등록된 role 이 없습니다.",
+        "edit": "편집",
+        "key_placeholder": "key (예: admin)",
+        "add": "role 추가",
+        "delete_confirm": "role '{{key}}' 을 삭제하시겠습니까? 이 role 이 부여된 사용자 매핑은 role 이 null 로 설정됩니다."
     },
     "poc": {
         "title": "Workers 환경 PoC",
@@ -428,6 +472,7 @@
         "add_btn": "+ 스킨 추가",
         "create_title": "새 로그인 스킨",
         "created_success": "스킨이 추가되었습니다.",
+        "updated_success": "스킨이 수정되었습니다. (캐시도 자동으로 초기화되었습니다.)",
         "cache_invalidated": "캐시가 삭제되었습니다.",
         "client_type_label": "클라이언트 타입",
         "client_label": "클라이언트",
@@ -484,6 +529,10 @@
         "guide_setup_1": "스킨 HTML을 호스팅할 서버(또는 CDN)를 준비하고 공개 URL을 확보합니다.",
         "guide_setup_2": "인증이 필요한 경우 시크릿 값을 정하고 X-IDP-Token 헤더를 검증하는 로직을 서버에 추가합니다.",
         "guide_setup_3": "로그인 스킨 관리 페이지에서 대상 클라이언트, 스킨 타입, URL, 시크릿, TTL을 입력하고 추가합니다.",
-        "guide_setup_4": "추가 후 토글로 활성화하면 해당 클라이언트의 로그인 흐름에서 커스텀 스킨이 적용됩니다."
+        "guide_setup_4": "추가 후 토글로 활성화하면 해당 클라이언트의 로그인 흐름에서 커스텀 스킨이 적용됩니다.",
+        "guide_code_comment": "// 스킨 서버에서 요청 검증 예시 (Node.js)",
+        "guide_example_login": "로그인",
+        "guide_example_username": "아이디",
+        "guide_example_password": "비밀번호"
     }
 }

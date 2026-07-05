@@ -56,7 +56,7 @@ function clientLabel(clientType: string, clientRefId: string): string {
     {/if}
 
     {#if (form as { updated?: boolean } | null)?.updated}
-        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">스킨이 수정되었습니다. (캐시도 자동으로 초기화되었습니다.)</div>
+        <div class="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{t("skins.updated_success")}</div>
     {/if}
 
     {#if showCreate}

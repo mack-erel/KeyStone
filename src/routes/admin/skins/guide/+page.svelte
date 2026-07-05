@@ -68,7 +68,7 @@ import { t } from "$lib/i18n.svelte";
         <h2 class="text-base font-semibold text-gray-900">{t("skins.guide_auth_title")}</h2>
         <p class="text-sm leading-relaxed text-gray-600">{t("skins.guide_auth_desc")}</p>
         <div class="rounded-lg bg-gray-900 p-4">
-            <pre class="overflow-x-auto text-xs text-green-400">{`// 스킨 서버에서 요청 검증 예시 (Node.js)
+            <pre class="overflow-x-auto text-xs text-green-400">{`${t("skins.guide_code_comment")}
 app.get('/login-skin.html', (req, res) => {
   const token = req.headers['x-idp-token'];
   if (token !== process.env.SKIN_SECRET) {
@@ -89,7 +89,7 @@ app.get('/login-skin.html', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>로그인</title>
+  <title>${t("skins.guide_example_login")}</title>
   <style>
     body { display: flex; align-items: center; justify-content: center;
            min-height: 100vh; margin: 0; background: #f9fafb; }
@@ -103,19 +103,19 @@ app.get('/login-skin.html', (req, res) => {
 </head>
 <body>
   <div class="card">
-    <h1 style="font-size:20px;font-weight:700;margin:0 0 24px">로그인</h1>
+    <h1 style="font-size:20px;font-weight:700;margin:0 0 24px">${t("skins.guide_example_login")}</h1>
     <form method="POST" action="{{IDP_FORM_ACTION}}">
       <input type="hidden" name="redirectTo" value="{{IDP_REDIRECT_TO}}">
       <input type="hidden" name="skinHint" value="{{IDP_SKIN_HINT}}">
       <div>
-        <label style="font-size:12px;font-weight:500;color:#374151">아이디</label>
+        <label style="font-size:12px;font-weight:500;color:#374151">${t("skins.guide_example_username")}</label>
         <input type="text" name="username" autocomplete="username" required>
       </div>
       <div style="margin-top:12px">
-        <label style="font-size:12px;font-weight:500;color:#374151">비밀번호</label>
+        <label style="font-size:12px;font-weight:500;color:#374151">${t("skins.guide_example_password")}</label>
         <input type="password" name="password" autocomplete="current-password" required>
       </div>
-      <button type="submit">로그인</button>
+      <button type="submit">${t("skins.guide_example_login")}</button>
     </form>
   </div>
 </body>

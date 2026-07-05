@@ -44,7 +44,7 @@ const createErr = $derived((form as { create?: boolean; error?: string } | null)
                         type="text"
                         name="name"
                         required
-                        placeholder="예: 과장"
+                        placeholder={t("positions.name_placeholder")}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -53,7 +53,7 @@ const createErr = $derived((form as { create?: boolean; error?: string } | null)
                         id="pos-code"
                         type="text"
                         name="code"
-                        placeholder="예: MGR"
+                        placeholder={t("positions.code_placeholder")}
                         class="mt-1 w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
                 </div>
                 <div>
@@ -96,7 +96,12 @@ const createErr = $derived((form as { create?: boolean; error?: string } | null)
                                         class="flex flex-wrap items-center gap-2">
                                         <input type="hidden" name="id" value={pos.id} />
                                         <input type="text" name="name" value={pos.name} required class="w-32 rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
-                                        <input type="text" name="code" value={pos.code ?? ""} placeholder="코드" class="w-24 rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
+                                        <input
+                                            type="text"
+                                            name="code"
+                                            value={pos.code ?? ""}
+                                            placeholder={t("common.code")}
+                                            class="w-24 rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
                                         <input type="number" name="level" value={pos.level} class="w-20 rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none" />
                                         <button type="submit" class="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700">{t("common.save")}</button>
                                         <button type="button" onclick={() => (editId = null)} class="text-xs text-gray-400 hover:text-gray-600">{t("common.cancel")}</button>
