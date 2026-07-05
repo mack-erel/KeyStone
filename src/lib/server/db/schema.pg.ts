@@ -80,11 +80,20 @@ export const credentials = pgTable(
         credentialId: text("credential_id"),
         counter: integer("counter").notNull().default(0),
         transports: text("transports"),
+        // 섀도 컬럼. TOTP 크레덴셜에만 userId 를 채워, 사용자당 TOTP 1개를 DB unique
+        // index 로 강제(TOCTOU 동시 이중 등록 차단). webauthn/backup_code/password 행은
+        // NULL 로 두면 unique 검사에서 제외되어 무영향(NULL 다중 허용).
+        totpOwnerId: text("totp_owner_id"),
         lastUsedAt: timestamp("last_used_at", { mode: "date", withTimezone: true, precision: 3 }),
         usedAt: timestamp("used_at", { mode: "date", withTimezone: true, precision: 3 }),
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
     },
-    (t) => [index("credentials_user_idx").on(t.userId), index("credentials_user_type_idx").on(t.userId, t.type), uniqueIndex("credentials_webauthn_credential_id_uidx").on(t.credentialId)],
+    (t) => [
+        index("credentials_user_idx").on(t.userId),
+        index("credentials_user_type_idx").on(t.userId, t.type),
+        uniqueIndex("credentials_webauthn_credential_id_uidx").on(t.credentialId),
+        uniqueIndex("credentials_totp_owner_uidx").on(t.totpOwnerId),
+    ],
 );
 
 /**

@@ -134,6 +134,13 @@
       "when": 1783130522671,
       "tag": "0018_fancy_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1783222881745,
+      "tag": "0019_regular_screwball",
+      "breakpoints": true
     }
   ]
 }

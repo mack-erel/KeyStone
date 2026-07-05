@@ -6,6 +6,7 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { encryptTotpSecret, generateBackupCodes, hashBackupCode, verifyTotp } from "$lib/server/auth/totp";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { credentials, users } from "$lib/server/db/schema";
+import { type DB, DB_DIALECT } from "$lib/server/db";
 
 /**
  * Phase 7.3 — TOTP enrollment confirm.
@@ -53,26 +54,57 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     }
 
     const encryptedSecret = await encryptTotpSecret(secret, config.signingKeySecret, userId);
-    await db.insert(credentials).values({
-        id: crypto.randomUUID(),
-        userId,
-        type: TOTP_CREDENTIAL_TYPE,
-        secret: encryptedSecret,
-        label,
-        // ctrls C3: 등록에 사용한 스텝을 last-used 로 기록 — 동일 코드를 곧바로 /verify 로 재사용 불가.
-        counter: verifiedStep,
-    });
 
+    // 백업 코드 해싱(CPU 집약적, argon2id)은 원자적 write 밖에서 미리 수행 —
+    // signing-keys rotate 패턴과 동일하게 트랜잭션/배치 창을 짧게 유지한다.
     const backupCodes = generateBackupCodes();
-    for (const c of backupCodes) {
-        const hashed = await hashBackupCode(c);
-        await db.insert(credentials).values({
+    const backupCodeRows: (typeof credentials.$inferInsert)[] = await Promise.all(
+        backupCodes.map(async (c) => ({
             id: crypto.randomUUID(),
             userId,
             type: BACKUP_CODE_CREDENTIAL_TYPE,
-            secret: hashed,
+            secret: await hashBackupCode(c),
             label: "백업 코드 (dispatcher)",
+        })),
+    );
+
+    // TOTP INSERT + 백업코드 10개 INSERT 를 원자적으로 실행해 부분 실패로 인한
+    // 백업코드 고아를 방지한다.
+    // - totpOwnerId 에 userId 를 채워 credentials_totp_owner_uidx (unique) 가
+    //   사용자당 TOTP 1개를 DB 레벨에서 강제 → 동시 confirm 두 건 중 하나만 성공.
+    // - 백업코드 등 다른 INSERT 는 totpOwnerId 미설정(NULL) 이므로 unique 검사 제외.
+    // - d1/sqlite: db.batch (interactive transaction 미지원).
+    // - postgres/mysql: interactive transaction.
+    const buildTotpInsert = (h: Pick<DB, "insert">) =>
+        h.insert(credentials).values({
+            id: crypto.randomUUID(),
+            userId,
+            type: TOTP_CREDENTIAL_TYPE,
+            secret: encryptedSecret,
+            label,
+            // ctrls C3: 등록에 사용한 스텝을 last-used 로 기록 — 동일 코드를 곧바로 /verify 로 재사용 불가.
+            counter: verifiedStep,
+            totpOwnerId: userId,
         });
+    const buildBackupInsert = (h: Pick<DB, "insert">) => h.insert(credentials).values(backupCodeRows);
+
+    try {
+        if (DB_DIALECT === "d1" || DB_DIALECT === "sqlite") {
+            // d1 / libSQL 은 원자적 batch 지원 (정규 DB 타입이 활성 방언일 때만 노출되므로 캐스팅).
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (db as any).batch([buildTotpInsert(db), buildBackupInsert(db)]);
+        } else {
+            // postgres / mysql: interactive transaction.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await (db as any).transaction(async (tx: Pick<DB, "insert">) => {
+                await buildTotpInsert(tx);
+                await buildBackupInsert(tx);
+            });
+        }
+    } catch {
+        // credentials_totp_owner_uidx UNIQUE 위반(동시 이중 등록) 또는 기타 DB 에러 → 409.
+        // 사전 SELECT 를 통과한 두 동시 요청 중 두 번째가 여기서 안전하게 거부된다.
+        throw error(409, "TOTP already enrolled for this user");
     }
 
     return json({ ok: true, backupCodes });
