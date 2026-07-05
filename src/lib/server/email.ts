@@ -58,22 +58,6 @@ function getSmtpConfig() {
     };
 }
 
-// 일부 메일 클라이언트는 text/plain 만 렌더링하고, 본문에 text 파트가 있으면
-// 스팸 점수에도 유리하다(스킬 deliverability 권장). HTML 을 최소한으로 정제해
-// text 대체본을 만든다 — 정확한 렌더링이 아니라 fallback 용도.
-function htmlToText(html: string): string {
-    return html
-        .replace(/<style[\s\S]*?<\/style>/gi, "")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/\s+/g, " ")
-        .trim();
-}
-
 async function sendViaNodemailer(to: string, subject: string, html: string, text: string): Promise<void> {
     const smtp = getSmtpConfig();
     if (!smtp) throw new Error("이메일 발송 설정이 없습니다. (SMTP_* 미설정)");
@@ -95,9 +79,9 @@ async function sendViaNodemailer(to: string, subject: string, html: string, text
     }
 }
 
-async function send(to: string, subject: string, html: string, platform: App.Platform | undefined): Promise<void> {
-    const text = htmlToText(html);
-
+// text 파트는 각 발송 함수가 명시적으로 작성해 넘긴다(HTML 을 정규식으로 역파싱하지 않는다 —
+// 불완전 sanitization/이중 언이스케이프를 피하고, text/plain 렌더링 정확도를 높인다).
+async function send(to: string, subject: string, html: string, text: string, platform: App.Platform | undefined): Promise<void> {
     // 1) Cloudflare Workers 경로 — send_email 바인딩이 있으면 최우선.
     const emailBinding = getEmailBinding(platform);
     if (emailBinding) {
@@ -154,7 +138,8 @@ export async function sendFindIdEmail(to: string, username: string, platform?: A
         `<p>요청하신 아이디 정보입니다.</p>
 <p style="font-size:20px;font-weight:700;margin:24px 0;">${escapeHtml(username)}</p>`,
     );
-    await send(to, "아이디 안내", html, platform);
+    const text = `요청하신 아이디 정보입니다.\n\n${username}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
+    await send(to, "아이디 안내", html, text, platform);
 }
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string, platform?: App.Platform): Promise<void> {
@@ -171,7 +156,8 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string, platf
   <a href="${escapeHtml(safeUrl)}" style="background:#2563eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">비밀번호 재설정</a>
 </p>`,
     );
-    await send(to, "비밀번호 재설정 안내", html, platform);
+    const text = `아래 링크에서 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다.\n\n${safeUrl}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
+    await send(to, "비밀번호 재설정 안내", html, text, platform);
 }
 
 export async function generateToken(): Promise<{ token: string; tokenHash: string }> {
