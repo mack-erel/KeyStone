@@ -141,6 +141,12 @@ export interface ParsedAuthnRequest {
     issueInstant: Date;
     /** SP 가 요구하는 인증 수준 (없으면 null) */
     requestedAuthnContext: RequestedAuthnContext | null;
+    /**
+     * AuthnRequest 에 enveloped XML 서명(ds:Signature)이 포함되어 있는지 여부.
+     * HTTP-POST 바인딩에서 서명 유무를 판별해 (검증기 부재 시) 거부 판단에 사용한다.
+     * HTTP-Redirect 바인딩은 서명이 URL 쿼리에 실리므로 이 값은 통상 false 다.
+     */
+    hasSignature: boolean;
 }
 
 const ISSUE_INSTANT_SKEW_MS = 5 * 60 * 1000; // ±5분
@@ -149,13 +155,75 @@ function parseBoolAttr(val: string | null): boolean {
     return val === "true" || val === "1";
 }
 
+/**
+ * HTTP-Redirect 바인딩 AuthnRequest 파싱.
+ * SAMLRequest = base64(deflate-raw(XML)) → inflate 후 공통 파서로 위임.
+ */
 export async function parseAuthnRequest(samlRequestB64: string, relayState: string | null): Promise<ParsedAuthnRequest> {
     // HTTP-Redirect 바인딩은 표준 base64 (base64url 이 아님)
     const raw = atob(samlRequestB64);
     const binary = new Uint8Array(raw.length) as Uint8Array<ArrayBuffer>;
     for (let i = 0; i < raw.length; i++) binary[i] = raw.charCodeAt(i);
     const xml = await inflateRaw(binary);
+    return parseAuthnRequestXml(xml, relayState);
+}
 
+/**
+ * HTTP-POST 바인딩 AuthnRequest 파싱.
+ * SAMLRequest = base64(XML) — deflate 없음. base64 디코드 후 곧바로 공통 파서로 위임한다.
+ * 디코드된 XML 크기는 Redirect 바인딩의 inflate 상한과 동일하게 제한해 파싱 DoS 를 막는다.
+ */
+export async function parseAuthnRequestPost(samlRequestB64: string, relayState: string | null): Promise<ParsedAuthnRequest> {
+    // HTTP-POST 바인딩도 표준 base64 (base64url 이 아님). deflate 는 적용하지 않는다.
+    const raw = atob(samlRequestB64);
+    if (raw.length > MAX_DECOMPRESSED_BYTES) {
+        throw new Error(`SAMLRequest XML 이 너무 큽니다 (${raw.length} > ${MAX_DECOMPRESSED_BYTES})`);
+    }
+    const binary = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) binary[i] = raw.charCodeAt(i);
+    const xml = new TextDecoder().decode(binary);
+    return parseAuthnRequestXml(xml, relayState);
+}
+
+/**
+ * HTTP-Redirect 바인딩 SAMLRequest 인코딩 (deflate-raw + base64).
+ * HTTP-POST 요청을 로그인 후 재개(resume)할 때, 파싱된 AuthnRequest XML 을 Redirect 바인딩
+ * URL 로 재인코딩해 기존 GET 경로를 그대로 재사용하기 위해 사용한다.
+ */
+export async function encodeRedirectBindingSamlRequest(xml: string): Promise<string> {
+    const cs = new CompressionStream("deflate-raw");
+    const writer = cs.writable.getWriter();
+    const reader = cs.readable.getReader();
+    writer.write(new TextEncoder().encode(xml));
+    await writer.close();
+
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let done = false;
+    while (!done) {
+        const { value, done: d } = await reader.read();
+        if (value) {
+            total += value.length;
+            chunks.push(value);
+        }
+        done = d;
+    }
+    const buf = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        buf.set(chunk, offset);
+        offset += chunk.length;
+    }
+    // HTTP-Redirect 바인딩은 표준 base64 (base64url 이 아님)
+    const b64 = btoa(Array.from(buf, (b) => String.fromCharCode(b)).join(""));
+    return b64;
+}
+
+/**
+ * 바인딩 무관 공통 AuthnRequest XML 파서.
+ * DOCTYPE/ENTITY 차단, onErrorStopParsing, 필드 추출, IssueInstant skew 검증을 수행한다.
+ */
+async function parseAuthnRequestXml(xml: string, relayState: string | null): Promise<ParsedAuthnRequest> {
     // XXE / DTD 인젝션 방어: SAML 표준상 AuthnRequest 는 DOCTYPE/ENTITY 를 가질 수 없다.
     // @xmldom/xmldom 은 외부 entity 를 fetch 하지 않지만, 문서적으로 명시 차단해 두면
     // 추후 라이브러리 교체에도 안전하다.
@@ -211,6 +279,10 @@ export async function parseAuthnRequest(samlRequestB64: string, relayState: stri
         }
     }
 
+    // enveloped XML 서명(ds:Signature) 존재 여부. POST 바인딩에서 서명 유무 판별에 사용.
+    const sigEls = doc.getElementsByTagNameNS("http://www.w3.org/2000/09/xmldsig#", "Signature");
+    const hasSignature = sigEls.length > 0;
+
     return {
         id,
         issuer,
@@ -221,5 +293,6 @@ export async function parseAuthnRequest(samlRequestB64: string, relayState: stri
         isPassive,
         issueInstant,
         requestedAuthnContext,
+        hasSignature,
     };
 }
