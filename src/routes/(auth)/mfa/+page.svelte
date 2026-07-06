@@ -1,11 +1,23 @@
 <script lang="ts">
 import type { ActionData, PageData } from "./$types";
+import { enhance } from "$app/forms";
 import { onMount } from "svelte";
+import type { SubmitFunction } from "@sveltejs/kit";
 import { t } from "$lib/i18n.svelte";
+import FormError from "$lib/components/FormError.svelte";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
 let useBackup = $state(false);
+
+let submitting = $state(false);
+const enhanceSubmit: SubmitFunction = () => {
+    submitting = true;
+    return async ({ update }) => {
+        await update({ reset: false });
+        submitting = false;
+    };
+};
 
 const skinHtmlEffective = $derived((form as { skinHtml?: string | null } | null)?.skinHtml ?? data.skinHtml);
 
@@ -55,13 +67,9 @@ const loginHref = $derived(
                 </p>
             </div>
 
-            {#if form?.error}
-                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {form.error}
-                </div>
-            {/if}
+            <FormError message={form?.error} class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" />
 
-            <form method="POST" class="space-y-4">
+            <form method="POST" use:enhance={enhanceSubmit} class="space-y-4">
                 <input type="hidden" name="use_backup" value={useBackup ? "1" : "0"} />
 
                 <div>
@@ -82,8 +90,17 @@ const loginHref = $derived(
 
                 <button
                     type="submit"
-                    class="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none">
-                    {t("mfa_login.confirm")}
+                    disabled={submitting}
+                    class="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:opacity-60">
+                    {#if submitting}
+                        <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        {t("common.processing")}
+                    {:else}
+                        {t("mfa_login.confirm")}
+                    {/if}
                 </button>
             </form>
 

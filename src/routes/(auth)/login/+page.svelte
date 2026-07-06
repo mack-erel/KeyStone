@@ -1,12 +1,24 @@
 <script lang="ts">
+import { enhance } from "$app/forms";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
+import type { SubmitFunction } from "@sveltejs/kit";
 import { t } from "$lib/i18n.svelte";
+import FormError from "$lib/components/FormError.svelte";
 import LocaleToggle from "$lib/components/LocaleToggle.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
+
+let submitting = $state(false);
+const enhanceSubmit: SubmitFunction = () => {
+    submitting = true;
+    return async ({ update }) => {
+        await update({ reset: false });
+        submitting = false;
+    };
+};
 
 const skinHtmlEffective = $derived((form as { skinHtml?: string | null } | null)?.skinHtml ?? data.skinHtml);
 
@@ -78,8 +90,10 @@ async function loginWithPasskey() {
 }
 </script>
 
-{#if skinHtmlEffective}
-    <!-- 커스텀 스킨 — 에러/성공 메시지는 스킨 내부 #flash 로 표시됨 -->
+{#if skinHtmlEffective && !form?.recovery}
+    <!-- 커스텀 스킨 — 에러/성공 메시지는 스킨 내부 #flash 로 표시됨.
+         단, soft-delete 복구(form.recovery) 케이스는 스킨에 복구 UI 가 없으므로
+         기본 스킨의 복구 패널로 강제 폴백한다. -->
     {#if !data.dbReady && data.runtimeError}
         <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
             {data.runtimeError}
@@ -126,17 +140,9 @@ async function loginWithPasskey() {
                 </div>
             {/if}
 
-            {#if form?.error}
-                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {form.error}
-                </div>
-            {/if}
+            <FormError message={form?.error} class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" />
 
-            {#if passkeyError}
-                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {passkeyError}
-                </div>
-            {/if}
+            <FormError message={passkeyError} class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" />
 
             {#if form?.recovery}
                 <!-- 탈퇴 예정 계정 복구 확인. 본인 확인을 위해 비밀번호를 다시 입력한다. -->
@@ -144,7 +150,7 @@ async function loginWithPasskey() {
                     {t("login.recovery_desc")}
                 </div>
 
-                <form method="POST" class="space-y-4">
+                <form method="POST" use:enhance={enhanceSubmit} class="space-y-4">
                     <input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ""} />
                     <input type="hidden" name="username" value={form?.username ?? ""} />
                     <input type="hidden" name="recover" value="1" />
@@ -164,8 +170,17 @@ async function loginWithPasskey() {
 
                     <button
                         type="submit"
-                        class="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none">
-                        {t("login.recovery_confirm")}
+                        disabled={submitting}
+                        class="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:opacity-60">
+                        {#if submitting}
+                            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            {t("common.processing")}
+                        {:else}
+                            {t("login.recovery_confirm")}
+                        {/if}
                     </button>
                 </form>
 
@@ -174,7 +189,7 @@ async function loginWithPasskey() {
                     <a href={resolve("/login") + authLinkSuffix} class="hover:text-blue-600">{t("login.recovery_cancel")}</a>
                 </div>
             {:else}
-                <form method="POST" class="space-y-4">
+                <form method="POST" use:enhance={enhanceSubmit} class="space-y-4">
                     <input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ""} />
 
                     <div>
@@ -206,8 +221,17 @@ async function loginWithPasskey() {
 
                     <button
                         type="submit"
-                        class="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none">
-                        {t("login.submit")}
+                        disabled={submitting}
+                        class="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:opacity-60">
+                        {#if submitting}
+                            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            {t("common.processing")}
+                        {:else}
+                            {t("login.submit")}
+                        {/if}
                     </button>
                 </form>
 
