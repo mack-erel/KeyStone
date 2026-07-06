@@ -35,7 +35,8 @@
         "change": "Change",
         "saving": "Saved.",
         "search": "Search",
-        "next_page": "Next page →"
+        "next_page": "Next page →",
+        "processing": "Processing..."
     },
     "login": {
         "username": "Username",
@@ -202,7 +203,9 @@
             "revoke_others_confirm": "Sign out every session except this device?",
             "empty": "No active sessions.",
             "revoked_notice": "The selected session was signed out.",
-            "revoked_others_notice": "Signed out of all other devices."
+            "revoked_others_notice": "Signed out of all other devices.",
+            "err_select_session": "Please select a session.",
+            "err_not_found": "Session not found."
         },
         "danger_zone": {
             "title": "Delete account",
@@ -297,7 +300,30 @@
         "email_unverified_title": "Your email is not verified yet.",
         "email_unverified_desc": "We sent a verification email to {{email}}. Please check your inbox.",
         "email_resend": "Resend verification email",
-        "email_resend_sent": "Verification email resent. Please check your inbox shortly."
+        "email_resend_sent": "Verification email resent. Please check your inbox shortly.",
+        "err_birthdate_format": "The date of birth format is invalid. (YYYY-MM-DD)",
+        "email_change_title": "Change Email Address",
+        "email_change_desc": "We will send a confirmation email to the new address. The change completes only after you click the confirmation link.",
+        "email_change_new_label": "New Email Address",
+        "email_change_password_label": "Current Password",
+        "email_change_submit": "Send confirmation email",
+        "email_change_sent": "A confirmation email was sent to {{email}}. Click the link to complete the change.",
+        "email_change_pending": "A change to {{email}} is pending confirmation. Please check your inbox.",
+        "err_email_change_password": "Your current password is incorrect.",
+        "err_email_change_format": "The email address format is invalid.",
+        "err_email_change_same": "That is the same as your current email address.",
+        "err_email_change_taken": "That email address is already in use.",
+        "err_email_change_no_password": "This account has no password set, so the email address cannot be changed."
+    },
+    "confirm_email_change": {
+        "title": "Confirm Email Change",
+        "subtitle": "Please complete the change to your new email address.",
+        "confirm_prompt": "Click the button below to complete the change to your email address.",
+        "submit": "Confirm email change",
+        "success": "Your email address has been changed.",
+        "invalid_link": "This link has expired or is invalid.",
+        "go_login": "Go to login",
+        "go_profile": "Go to profile"
     },
     "audit": {
         "title": "Audit Log",
@@ -533,6 +559,20 @@
         "regenerate_secret": "Regenerate Secret",
         "regenerate_confirm": "Regenerate the secret? The existing secret will be invalidated immediately.",
         "delete_confirm": "Delete this client?",
+        "org_claims": {
+            "title": "Organization claim exposure",
+            "desc": "Choose which fields the organization scope exposes for this client. Applied identically to both the id_token and the userinfo response.",
+            "saved": "Organization claim settings saved.",
+            "all_note": "If every field is enabled, the setting is stored as unconfigured (all fields exposed).",
+            "field_department": "Department (department)",
+            "field_department_desc": "The list of departments the user belongs to, including each department's code, primary flag, job title, and position.",
+            "field_team": "Team (team)",
+            "field_team_desc": "The list of teams the user belongs to, including each team's code, parent department, primary flag, and job title.",
+            "field_position": "Position (position)",
+            "field_position_desc": "The position name of the user's primary department.",
+            "field_jobTitle": "Job title (job_title)",
+            "field_jobTitle_desc": "The job title of the user's primary department."
+        },
         "errors": {
             "rate_limited": "Too many requests. Please try again shortly.",
             "rate_limited_short": "Too many requests.",
@@ -696,11 +736,48 @@
         "invalid_link": "This link has expired or is invalid.",
         "go_login": "Go to login",
         "err_password_short": "Password must be at least 8 characters.",
-        "err_password_mismatch": "Passwords do not match."
+        "err_password_mismatch": "Passwords do not match.",
+        "credential_label": "Password"
     },
     "errors": {
         "rate_limit": "Too many requests. Please try again in {{minutes}} minute(s).",
         "db_not_ready": "The D1 binding \"DB\" is not ready. Please run in a Wrangler preview/dev environment."
+    },
+    "email": {
+        "footer": "If you did not request this, please ignore this email.",
+        "find_id": {
+            "subject": "Your username",
+            "title": "Username lookup",
+            "intro": "Here is the username you requested."
+        },
+        "password_reset": {
+            "subject": "Reset your password",
+            "title": "Reset password",
+            "body": "Click the button below to reset your password. The link is valid for 1 hour.",
+            "button": "Reset password",
+            "text": "Use the link below to reset your password. The link is valid for 1 hour."
+        },
+        "verify": {
+            "subject": "Verify your email",
+            "title": "Email verification",
+            "body": "Click the button below to verify your email address. The link is valid for 24 hours.",
+            "button": "Verify email",
+            "text": "Use the link below to verify your email address. The link is valid for 24 hours."
+        },
+        "email_change": {
+            "subject": "Confirm your email change",
+            "title": "Confirm email change",
+            "body": "Click the button below to confirm the change to your new email address. The link is valid for 24 hours.",
+            "button": "Confirm email change",
+            "text": "Use the link below to confirm the change to your new email address. The link is valid for 24 hours."
+        },
+        "invite": {
+            "subject": "You have been invited",
+            "title": "Account invitation",
+            "body": "You have been invited to an account. Click the button below to set your password and finish signing up. The link is valid for 72 hours.",
+            "button": "Accept invitation",
+            "text": "You have been invited to an account. Use the link below to set your password and finish signing up. The link is valid for 72 hours."
+        }
     },
     "security_alert": {
         "when": "Occurred at: {{time}}",
@@ -740,6 +817,16 @@
             "heading": "Backup codes were regenerated",
             "body": "New two-factor backup codes were generated for your account. Your previous backup codes no longer work."
         },
+        "backup_codes_low": {
+            "subject": "[Security Alert] Your backup codes are running low",
+            "heading": "Your backup codes are running low",
+            "body": "A backup code was just used to sign in, and only a few unused backup codes remain. Please regenerate your backup codes soon so you don't get locked out."
+        },
+        "backup_codes_depleted": {
+            "subject": "[Security Alert] Your backup codes are used up",
+            "heading": "Your backup codes are used up",
+            "body": "The last backup code on your account was just used to sign in. You have no unused backup codes left. Please regenerate your backup codes now to keep a recovery option available."
+        },
         "passkey_added": {
             "subject": "[Security Alert] A new passkey was registered",
             "heading": "A new passkey was registered",
@@ -754,6 +841,21 @@
             "subject": "[Security Alert] Account deletion requested",
             "heading": "Account deletion requested",
             "body": "Your account deletion was received and moved to a pending-deletion state. You can recover it by signing in again within the 30-day grace period. If you did not request this, sign in immediately to recover and change your password."
+        },
+        "email_change_requested": {
+            "subject": "[Security Alert] An email address change was requested",
+            "heading": "An email address change was requested",
+            "body": "A request to change your account's email address was received. The change completes only after the confirmation link sent to the new address is clicked. If you did not request this, change your password immediately and contact your administrator."
+        },
+        "session_revoked": {
+            "subject": "[Security Alert] A session was signed out",
+            "heading": "A session was signed out",
+            "body": "One of your account's active sessions was just signed out (revoked)."
+        },
+        "sessions_revoked_all": {
+            "subject": "[Security Alert] All other sessions were signed out",
+            "heading": "All other sessions were signed out",
+            "body": "All active sessions on your account except the current one were just signed out (revoked)."
         }
     },
     "skins": {
@@ -789,6 +891,9 @@
         "placeholder_form_action": "Form action (POSTs to the current URL if empty)",
         "placeholder_redirect_to": "Redirect target URL after login",
         "placeholder_skin_hint": "Skin hint value (used in a hidden input)",
+        "placeholder_registered": "\"1\" right after signup completes, empty otherwise (used to show a post-signup notice on the login skin)",
+        "placeholder_password_reset": "\"1\" right after a password reset completes, empty otherwise (used to show a reset-complete notice on the login skin)",
+        "placeholder_flash_msg": "Server-filled flash message (e.g. an error). Already HTML-escaped; empty when there is nothing to show",
         "guide_title": "Custom Skin Development Guide",
         "guide_subtitle": "Fetch HTML from an external URL to fully customize the login and sign-up screens.",
         "guide_overview_title": "Overview",

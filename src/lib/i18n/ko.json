@@ -35,7 +35,8 @@
         "change": "변경",
         "saving": "저장되었습니다.",
         "search": "검색",
-        "next_page": "다음 페이지 →"
+        "next_page": "다음 페이지 →",
+        "processing": "처리 중..."
     },
     "login": {
         "username": "아이디",
@@ -202,7 +203,9 @@
             "revoke_others_confirm": "현재 기기를 제외한 모든 세션을 로그아웃할까요?",
             "empty": "활성 세션이 없습니다.",
             "revoked_notice": "선택한 세션을 로그아웃했습니다.",
-            "revoked_others_notice": "다른 모든 기기에서 로그아웃했습니다."
+            "revoked_others_notice": "다른 모든 기기에서 로그아웃했습니다.",
+            "err_select_session": "세션을 지정해 주세요.",
+            "err_not_found": "세션을 찾을 수 없습니다."
         },
         "danger_zone": {
             "title": "계정 탈퇴",
@@ -297,7 +300,30 @@
         "email_unverified_title": "이메일이 아직 인증되지 않았습니다.",
         "email_unverified_desc": "{{email}} 주소로 인증 메일을 보냈습니다. 받은 편지함을 확인해 주세요.",
         "email_resend": "인증 메일 재발송",
-        "email_resend_sent": "인증 메일을 다시 보냈습니다. 잠시 후 받은 편지함을 확인해 주세요."
+        "email_resend_sent": "인증 메일을 다시 보냈습니다. 잠시 후 받은 편지함을 확인해 주세요.",
+        "err_birthdate_format": "생년월일 형식이 올바르지 않습니다. (YYYY-MM-DD)",
+        "email_change_title": "이메일 주소 변경",
+        "email_change_desc": "새 이메일 주소로 확인 메일을 보냅니다. 확인 링크를 클릭해야 변경이 완료됩니다.",
+        "email_change_new_label": "새 이메일 주소",
+        "email_change_password_label": "현재 비밀번호",
+        "email_change_submit": "확인 메일 보내기",
+        "email_change_sent": "{{email}} 주소로 확인 메일을 보냈습니다. 링크를 클릭하면 변경이 완료됩니다.",
+        "email_change_pending": "{{email}} 주소로의 변경 확인 대기 중입니다. 받은 편지함을 확인해 주세요.",
+        "err_email_change_password": "현재 비밀번호가 올바르지 않습니다.",
+        "err_email_change_format": "이메일 형식이 올바르지 않습니다.",
+        "err_email_change_same": "현재 이메일과 동일한 주소입니다.",
+        "err_email_change_taken": "이미 사용 중인 이메일 주소입니다.",
+        "err_email_change_no_password": "이 계정은 비밀번호가 설정되어 있지 않아 이메일을 변경할 수 없습니다."
+    },
+    "confirm_email_change": {
+        "title": "이메일 주소 변경 확인",
+        "subtitle": "새 이메일 주소로의 변경을 완료해 주세요.",
+        "confirm_prompt": "아래 버튼을 클릭하면 이메일 주소 변경이 완료됩니다.",
+        "submit": "이메일 변경 확인",
+        "success": "이메일 주소가 변경되었습니다.",
+        "invalid_link": "링크가 만료되었거나 유효하지 않습니다.",
+        "go_login": "로그인하러 가기",
+        "go_profile": "프로필로 가기"
     },
     "audit": {
         "title": "감사 로그",
@@ -533,6 +559,20 @@
         "regenerate_secret": "시크릿 재생성",
         "regenerate_confirm": "시크릿을 재생성하시겠습니까? 기존 시크릿은 즉시 무효화됩니다.",
         "delete_confirm": "클라이언트를 삭제하시겠습니까?",
+        "org_claims": {
+            "title": "조직 클레임 노출 설정",
+            "desc": "이 클라이언트의 organization scope 가 노출하는 필드를 선택합니다. id_token 과 userinfo 응답에 동일하게 적용됩니다.",
+            "saved": "조직 클레임 설정을 저장했습니다.",
+            "all_note": "모든 필드를 켜면 미설정(전량 노출) 상태로 저장됩니다.",
+            "field_department": "부서 (department)",
+            "field_department_desc": "사용자가 소속된 부서 목록. 각 부서의 코드·주소속 여부·직책·직급을 포함합니다.",
+            "field_team": "팀 (team)",
+            "field_team_desc": "사용자가 소속된 팀 목록. 각 팀의 코드·상위 부서·주소속 여부·직책을 포함합니다.",
+            "field_position": "직급 (position)",
+            "field_position_desc": "사용자 주소속 부서의 직급명.",
+            "field_jobTitle": "직책 (job_title)",
+            "field_jobTitle_desc": "사용자 주소속 부서의 직책."
+        },
         "errors": {
             "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
             "rate_limited_short": "요청이 너무 많습니다.",
@@ -696,11 +736,48 @@
         "invalid_link": "링크가 만료되었거나 유효하지 않습니다.",
         "go_login": "로그인하러 가기",
         "err_password_short": "비밀번호는 8자 이상이어야 합니다.",
-        "err_password_mismatch": "비밀번호가 일치하지 않습니다."
+        "err_password_mismatch": "비밀번호가 일치하지 않습니다.",
+        "credential_label": "비밀번호"
     },
     "errors": {
         "rate_limit": "요청이 너무 많습니다. {{minutes}}분 후 다시 시도해 주세요.",
         "db_not_ready": "D1 binding \"DB\" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요."
+    },
+    "email": {
+        "footer": "본인이 요청하지 않았다면 이 이메일을 무시해 주세요.",
+        "find_id": {
+            "subject": "아이디 안내",
+            "title": "아이디 확인",
+            "intro": "요청하신 아이디 정보입니다."
+        },
+        "password_reset": {
+            "subject": "비밀번호 재설정 안내",
+            "title": "비밀번호 재설정",
+            "body": "아래 버튼을 클릭하여 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다.",
+            "button": "비밀번호 재설정",
+            "text": "아래 링크에서 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다."
+        },
+        "verify": {
+            "subject": "이메일 인증 안내",
+            "title": "이메일 인증",
+            "body": "아래 버튼을 클릭하여 이메일 주소를 인증하세요. 링크는 24시간 동안 유효합니다.",
+            "button": "이메일 인증",
+            "text": "아래 링크에서 이메일 주소를 인증하세요. 링크는 24시간 동안 유효합니다."
+        },
+        "email_change": {
+            "subject": "이메일 주소 변경 확인",
+            "title": "이메일 주소 변경 확인",
+            "body": "아래 버튼을 클릭하여 새 이메일 주소로의 변경을 확인하세요. 링크는 24시간 동안 유효합니다.",
+            "button": "이메일 변경 확인",
+            "text": "아래 링크에서 새 이메일 주소로의 변경을 확인하세요. 링크는 24시간 동안 유효합니다."
+        },
+        "invite": {
+            "subject": "계정 초대 안내",
+            "title": "계정 초대",
+            "body": "계정에 초대되었습니다. 아래 버튼을 클릭하여 비밀번호를 설정하고 가입을 완료하세요. 링크는 72시간 동안 유효합니다.",
+            "button": "초대 수락하기",
+            "text": "계정에 초대되었습니다. 아래 링크에서 비밀번호를 설정하고 가입을 완료하세요. 링크는 72시간 동안 유효합니다."
+        }
     },
     "security_alert": {
         "when": "발생 시각: {{time}}",
@@ -740,6 +817,16 @@
             "heading": "백업 코드가 재생성되었습니다",
             "body": "계정의 2단계 인증 백업 코드가 새로 생성되었습니다. 기존 백업 코드는 더 이상 사용할 수 없습니다."
         },
+        "backup_codes_low": {
+            "subject": "[보안 알림] 백업 코드가 얼마 남지 않았습니다",
+            "heading": "백업 코드가 얼마 남지 않았습니다",
+            "body": "방금 백업 코드로 로그인했으며, 사용하지 않은 백업 코드가 몇 개 남지 않았습니다. 로그인이 불가능해지지 않도록 곧 백업 코드를 재생성해 주세요."
+        },
+        "backup_codes_depleted": {
+            "subject": "[보안 알림] 백업 코드를 모두 사용했습니다",
+            "heading": "백업 코드를 모두 사용했습니다",
+            "body": "방금 계정의 마지막 백업 코드로 로그인했습니다. 사용할 수 있는 백업 코드가 더 이상 없습니다. 복구 수단을 유지하려면 지금 백업 코드를 재생성해 주세요."
+        },
         "passkey_added": {
             "subject": "[보안 알림] 새 패스키가 등록되었습니다",
             "heading": "새 패스키가 등록되었습니다",
@@ -754,6 +841,21 @@
             "subject": "[보안 알림] 계정 탈퇴가 접수되었습니다",
             "heading": "계정 탈퇴가 접수되었습니다",
             "body": "계정 탈퇴가 접수되어 삭제 예정 상태로 전환되었습니다. 유예기간(30일) 내에 다시 로그인하면 계정을 복구할 수 있습니다. 본인이 요청하지 않았다면 즉시 로그인해 복구하고 비밀번호를 변경해 주세요."
+        },
+        "email_change_requested": {
+            "subject": "[보안 알림] 이메일 주소 변경이 요청되었습니다",
+            "heading": "이메일 주소 변경이 요청되었습니다",
+            "body": "계정의 이메일 주소를 변경하려는 요청이 접수되었습니다. 새 주소로 보낸 확인 링크를 클릭해야 변경이 완료됩니다. 본인이 요청하지 않았다면 즉시 비밀번호를 변경하고 관리자에게 문의해 주세요."
+        },
+        "session_revoked": {
+            "subject": "[보안 알림] 세션이 로그아웃되었습니다",
+            "heading": "세션이 로그아웃되었습니다",
+            "body": "계정의 활성 세션 하나가 방금 로그아웃(철회)되었습니다."
+        },
+        "sessions_revoked_all": {
+            "subject": "[보안 알림] 다른 모든 세션이 로그아웃되었습니다",
+            "heading": "다른 모든 세션이 로그아웃되었습니다",
+            "body": "현재 세션을 제외한 계정의 모든 활성 세션이 방금 로그아웃(철회)되었습니다."
         }
     },
     "skins": {
@@ -789,6 +891,9 @@
         "placeholder_form_action": "폼 action (비어 있으면 현재 URL로 POST)",
         "placeholder_redirect_to": "로그인 후 리다이렉트 대상 URL",
         "placeholder_skin_hint": "스킨 힌트 값 (hidden input에 활용)",
+        "placeholder_registered": "회원가입 완료 직후 \"1\", 그 외에는 빈 값 (로그인 스킨에서 가입 완료 안내 노출에 활용)",
+        "placeholder_password_reset": "비밀번호 재설정 완료 직후 \"1\", 그 외에는 빈 값 (로그인 스킨에서 재설정 완료 안내 노출에 활용)",
+        "placeholder_flash_msg": "서버가 채우는 플래시 메시지(예: 오류). 이미 HTML 이스케이프됨. 표시할 내용이 없으면 빈 값",
         "guide_title": "커스텀 스킨 개발 가이드",
         "guide_subtitle": "외부 URL에서 HTML을 가져와 로그인·회원가입 화면을 완전히 커스터마이즈할 수 있습니다.",
         "guide_overview_title": "개요",
