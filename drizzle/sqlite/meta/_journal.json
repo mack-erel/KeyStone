@@ -43,6 +43,20 @@
       "when": 1783299188782,
       "tag": "0005_early_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783309241281,
+      "tag": "0006_third_lucky_pierre",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783310297361,
+      "tag": "0007_calm_proudstar",
+      "breakpoints": true
     }
   ]
 }

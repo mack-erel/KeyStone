@@ -42,9 +42,12 @@ export const users = mysqlTable(
         role: varchar("role", { length: 64, enum: ["admin", "user"] })
             .notNull()
             .default("user"),
-        status: varchar("status", { length: 64, enum: ["active", "disabled", "locked"] })
+        status: varchar("status", { length: 64, enum: ["active", "disabled", "locked", "deletion_pending"] })
             .notNull()
             .default("active"),
+        // 셀프서비스 계정 삭제(소프트 삭제) 예정 시각. status='deletion_pending' 일 때만 값이 있으며,
+        // 이 시각이 지나면 GC 가 하드 삭제한다. 복구(로그인) 시 status='active' 환원 + 이 값 NULL.
+        deletionScheduledAt: datetime("deletion_scheduled_at", { mode: "date", fsp: 3 }),
         // 프로필
         givenName: text("given_name"),
         familyName: text("family_name"),
@@ -911,6 +914,31 @@ export const emailVerificationTokens = mysqlTable(
 );
 
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
+
+// ---------- Invite ----------
+// email_verification_tokens 와 동일 패턴(SHA-256 해시 저장, TTL, 1회용). TTL 72시간.
+// 초대는 관리자가 비밀번호 없이 계정을 선생성하고, 이 토큰 링크로 최초 비밀번호를 설정한다.
+
+export const inviteTokens = mysqlTable(
+    "invite_tokens",
+    {
+        id: varchar("id", { length: 64 })
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: varchar("user_id", { length: 64 })
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: varchar("token_hash", { length: 255 }).notNull(),
+        expiresAt: datetime("expires_at", { mode: "date", fsp: 3 }).notNull(),
+        usedAt: datetime("used_at", { mode: "date", fsp: 3 }),
+        createdAt: datetime("created_at", { mode: "date", fsp: 3 })
+            .notNull()
+            .default(sql`(CURRENT_TIMESTAMP(3))`),
+    },
+    (t) => [index("invite_tokens_user_idx").on(t.userId), uniqueIndex("invite_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type InviteToken = typeof inviteTokens.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;

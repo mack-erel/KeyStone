@@ -42,9 +42,12 @@ export const users = sqliteTable(
         role: text("role", { enum: ["admin", "user"] })
             .notNull()
             .default("user"),
-        status: text("status", { enum: ["active", "disabled", "locked"] })
+        status: text("status", { enum: ["active", "disabled", "locked", "deletion_pending"] })
             .notNull()
             .default("active"),
+        // 셀프서비스 계정 삭제(소프트 삭제) 예정 시각. status='deletion_pending' 일 때만 값이 있으며,
+        // 이 시각이 지나면 GC 가 하드 삭제한다. 복구(로그인) 시 status='active' 환원 + 이 값 NULL.
+        deletionScheduledAt: integer("deletion_scheduled_at", { mode: "timestamp_ms" }),
         // 프로필
         givenName: text("given_name"),
         familyName: text("family_name"),
@@ -911,6 +914,31 @@ export const emailVerificationTokens = sqliteTable(
 );
 
 export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
+
+// ---------- Invite ----------
+// email_verification_tokens 와 동일 패턴(SHA-256 해시 저장, TTL, 1회용). TTL 72시간.
+// 초대는 관리자가 비밀번호 없이 계정을 선생성하고, 이 토큰 링크로 최초 비밀번호를 설정한다.
+
+export const inviteTokens = sqliteTable(
+    "invite_tokens",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: text("token_hash").notNull(),
+        expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+        usedAt: integer("used_at", { mode: "timestamp_ms" }),
+        createdAt: integer("created_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+    },
+    (t) => [index("invite_tokens_user_idx").on(t.userId), uniqueIndex("invite_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type InviteToken = typeof inviteTokens.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;

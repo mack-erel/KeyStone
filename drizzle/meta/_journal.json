@@ -162,6 +162,20 @@
       "when": 1783299187869,
       "tag": "0022_chemical_thena",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1783309240321,
+      "tag": "0023_high_goblin_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1783310296391,
+      "tag": "0024_robust_arclight",
+      "breakpoints": true
     }
   ]
 }

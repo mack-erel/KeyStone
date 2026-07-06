@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `deletion_scheduled_at` datetime(3);
