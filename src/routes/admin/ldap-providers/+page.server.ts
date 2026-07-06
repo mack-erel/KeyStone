@@ -102,11 +102,11 @@ export const actions: Actions = {
             });
 
         const hostV = validateLdapHost(host);
-        if (!hostV.ok) return fail(400, { create: true, error: hostV.reason });
+        if (!hostV.ok) return fail(400, { create: true, error: adminError(locale, hostV.reason.key, hostV.reason.params) });
 
         const port = parseInt(String(fd.get("port") ?? "389"), 10);
         const portV = validateLdapPort(isNaN(port) ? 389 : port);
-        if (!portV.ok) return fail(400, { create: true, error: portV.reason });
+        if (!portV.ok) return fail(400, { create: true, error: adminError(locale, portV.reason.key, portV.reason.params) });
 
         const { signingKeySecret } = getRuntimeConfig(event.platform);
         let config: LdapProviderConfig;
@@ -152,11 +152,11 @@ export const actions: Actions = {
         const host = String(fd.get("host") ?? "").trim();
         if (host) {
             const hostV = validateLdapHost(host);
-            if (!hostV.ok) return fail(400, { error: hostV.reason });
+            if (!hostV.ok) return fail(400, { error: adminError(locale, hostV.reason.key, hostV.reason.params) });
         }
         const port = parseInt(String(fd.get("port") ?? "389"), 10);
         const portV = validateLdapPort(isNaN(port) ? 389 : port);
-        if (!portV.ok) return fail(400, { error: portV.reason });
+        if (!portV.ok) return fail(400, { error: adminError(locale, portV.reason.key, portV.reason.params) });
 
         const { signingKeySecret } = getRuntimeConfig(event.platform);
         let config: LdapProviderConfig;

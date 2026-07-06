@@ -14,6 +14,7 @@ import { getRequestMetadata } from "$lib/server/audit";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { authenticateOidcClient } from "$lib/server/oidc/client";
 import { revokeRefreshTokenByValue } from "$lib/server/oidc/refresh";
+import { translate } from "$lib/i18n/server";
 
 function errorResponse(code: string, description: string, status: number): Response {
     return new Response(JSON.stringify({ error: code, error_description: description }), {
@@ -29,7 +30,7 @@ export const POST: RequestHandler = async (event) => {
     const { ipKey } = getRequestMetadata(event);
     const rl = await checkRateLimit(db, `oidc-revoke:${ipKey}`, { windowMs: 60 * 1000, limit: 60 });
     if (!rl.allowed) {
-        return new Response(JSON.stringify({ error: "rate_limit_exceeded", error_description: "요청이 너무 많습니다." }), {
+        return new Response(JSON.stringify({ error: "rate_limit_exceeded", error_description: translate(locals.locale, "oidc.errors.rate_limited_short") }), {
             status: 429,
             headers: { "Content-Type": "application/json", "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) },
         });
@@ -41,7 +42,7 @@ export const POST: RequestHandler = async (event) => {
 
     const token = String(body.get("token") ?? "");
     // RFC 7009 §2.1: token 이 없으면 invalid_request. 그 외(무효/타 클라이언트 토큰)는 200.
-    if (!token) return errorResponse("invalid_request", "token 파라미터가 필요합니다.", 400);
+    if (!token) return errorResponse("invalid_request", translate(locals.locale, "oidc.errors.token_param_required"), 400);
 
     const hint = String(body.get("token_type_hint") ?? "");
     // access_token 힌트가 명시된 경우 refresh 폐기를 건너뛴다(무의미한 조회 회피).

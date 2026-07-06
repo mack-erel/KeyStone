@@ -1,6 +1,11 @@
 import type { RequestHandler } from "@sveltejs/kit";
+import { translate } from "$lib/i18n/server";
+import type { Locale } from "$lib/i18n/core";
 
-const script = `
+// 클라이언트로 내려가는 스크립트는 서버에서 locale 별 사용자 문구를 주입해 생성한다.
+// 사용자 대면 문자열(취소/실패)은 translate 로 해석한 뒤 JSON.stringify 로 안전하게 임베드한다.
+function buildScript(cancelledMsg: string, failedMsg: string): string {
+    return `
 (function(){
   function b64uToBuf(b64u){
     var b64=b64u.replace(/-/g,'+').replace(/_/g,'/');
@@ -42,7 +47,7 @@ const script = `
       opts.challenge=b64uToBuf(opts.challenge);
       if(opts.allowCredentials)opts.allowCredentials=opts.allowCredentials.map(function(c){return Object.assign({},c,{id:b64uToBuf(c.id)});});
       var assertion=await navigator.credentials.get({publicKey:opts});
-      if(!assertion)throw new Error('패스키 인증이 취소되었습니다.');
+      if(!assertion)throw new Error(${JSON.stringify(cancelledMsg)});
       var body={
         id:assertion.id,rawId:bufToB64u(assertion.rawId),type:assertion.type,
         response:{
@@ -66,7 +71,7 @@ const script = `
       window.location.href=dest;
     }catch(e){
       btn.disabled=false;btn.textContent=orig;
-      showError(e&&e.message?e.message:'패스키 인증에 실패했습니다.');
+      showError(e&&e.message?e.message:${JSON.stringify(failedMsg)});
     }
   }
   // ctrls H-FRONT-2: redirectTo 를 더 이상 DOM input 에서 읽지 않는다.
@@ -102,11 +107,17 @@ const script = `
   }
 })();
 `;
+}
 
-export const GET: RequestHandler = () =>
-    new Response(script, {
+export const GET: RequestHandler = ({ locals }) => {
+    const locale: Locale = locals.locale;
+    const script = buildScript(translate(locale, "webauthn.errors.auth_cancelled"), translate(locale, "webauthn.errors.auth_failed"));
+    return new Response(script, {
         headers: {
             "Content-Type": "application/javascript; charset=utf-8",
             "Cache-Control": "public, max-age=3600",
+            // locale 별로 사용자 문구가 달라지므로 캐시 키를 locale 결정 입력(쿠키/Accept-Language)으로 분리.
+            Vary: "Cookie, Accept-Language",
         },
     });
+};

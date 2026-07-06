@@ -55,7 +55,13 @@
         "err_rate_limit": "Too many login attempts. Please try again in {{minutes}} minutes.",
         "err_account_locked": "Too many login attempts. Please try again in {{minutes}} minutes.",
         "err_invalid_credentials": "The username or password is incorrect.",
-        "err_mfa_config": "There is a problem with the two-factor authentication configuration. Please contact your administrator."
+        "err_mfa_config": "There is a problem with the two-factor authentication configuration. Please contact your administrator.",
+        "err_account_deleting": "This account is being deleted and can no longer be used to sign in.",
+        "deletion_requested_notice": "Your account deletion has been received. You can recover your account by signing in again within the 30-day grace period.",
+        "recovery_desc": "This account is scheduled for deletion. To keep using it, re-enter your password to recover the account.",
+        "recovery_password_label": "Re-enter your password to recover",
+        "recovery_confirm": "Recover account and sign in",
+        "recovery_cancel": "← Back to login"
     },
     "admin": {
         "title": "Admin Dashboard",
@@ -85,6 +91,7 @@
             "required_field_missing": "Required fields are missing.",
             "signing_key_secret_missing": "IDP_SIGNING_KEY_SECRET is not configured.",
             "email_password_required": "Email and password are required.",
+            "email_required": "Email is required.",
             "invalid_role": "Invalid role.",
             "email_taken": "This email is already in use.",
             "username_taken": "This username is already in use.",
@@ -156,7 +163,14 @@
             "http_localhost_only": "http URLs are only allowed for localhost/127.0.0.1: {{value}}",
             "custom_scheme_invalid": "Invalid custom scheme format: {{value}}",
             "scheme_not_allowed": "Scheme is not allowed ({{scheme}}): {{value}}",
-            "scope_not_allowed": "Scope is not allowed: {{scope}}"
+            "scope_not_allowed": "Scope is not allowed: {{scope}}",
+            "saml_url_invalid_format": "{{label}}: The URL format is invalid.",
+            "saml_url_http_loopback_only": "{{label}}: http URLs are only allowed for localhost/127.0.0.1.",
+            "saml_url_https_only": "{{label}}: Only https URLs are allowed.",
+            "ldap_metadata_host_forbidden": "Cloud metadata hosts are not allowed.",
+            "ldap_linklocal_forbidden": "link-local (169.254/16) addresses are not allowed.",
+            "ldap_port_invalid": "The port number is invalid.",
+            "ldap_port_not_allowed": "This LDAP port is not allowed (allowed: {{allowed}})."
         }
     },
     "admin_login": {
@@ -170,7 +184,40 @@
     "account": {
         "profile": "My Profile",
         "mfa": "Two-Factor Authentication",
-        "passkeys": "Passkeys"
+        "passkeys": "Passkeys",
+        "sessions": {
+            "title": "Active sessions",
+            "subtitle": "Review the devices and sessions currently signed in, and sign out any you don't recognize.",
+            "current_badge": "Current session",
+            "ip_label": "IP",
+            "device_label": "Device",
+            "last_seen_label": "Last active",
+            "created_label": "Signed in",
+            "unknown": "Unknown",
+            "revoke": "Sign out",
+            "revoke_current": "Sign out this device",
+            "revoke_confirm": "Sign out this session?",
+            "revoke_current_confirm": "This is the device you're currently using. Signing out will log you out here too. Continue?",
+            "revoke_others": "Sign out all other devices",
+            "revoke_others_confirm": "Sign out every session except this device?",
+            "empty": "No active sessions.",
+            "revoked_notice": "The selected session was signed out.",
+            "revoked_others_notice": "Signed out of all other devices."
+        },
+        "danger_zone": {
+            "title": "Delete account",
+            "subtitle": "Move your account into a pending-deletion state. During the grace period you can recover it by signing in again.",
+            "warning_title": "Requesting deletion will do the following.",
+            "warning_grace": "If you request deletion now, your account will be permanently deleted in {{days}} days. Until then you can recover it by signing in.",
+            "warning_recovery": "You will be signed out of all devices immediately, and once the grace period passes your account and related data are permanently deleted.",
+            "password_label": "Password for identity verification",
+            "totp_label": "Authenticator code (TOTP)",
+            "confirm_label": "I understand the above and want to delete my account.",
+            "confirm_dialog": "Are you sure you want to request deletion? You will be signed out immediately and permanently deleted after the grace period.",
+            "submit": "Request account deletion",
+            "err_reauth": "Identity verification failed. Please check your password or authentication code.",
+            "err_last_admin": "The last active administrator cannot delete their account. Please assign another administrator first."
+        }
     },
     "logout": {
         "in_progress": "Logging out..."
@@ -184,7 +231,12 @@
         "confirm": "Confirm",
         "use_backup": "Sign in with a backup code",
         "use_totp": "Sign in with an authenticator code",
-        "back_to_login": "← Back to login"
+        "back_to_login": "← Back to login",
+        "err_config": "There is a problem with your MFA configuration. Please try again later.",
+        "err_rate_limit": "Too many verification attempts. Please try again later.",
+        "err_missing_code": "Please enter your code.",
+        "err_invalid_totp": "Invalid authentication code.",
+        "err_invalid_backup": "Invalid backup code."
     },
     "mfa_manage": {
         "title": "Two-Factor Authentication Settings",
@@ -335,6 +387,11 @@
     "users": {
         "title": "User Management",
         "add_btn": "+ Add User",
+        "invite_btn": "Invite User",
+        "invite_title": "Invite User",
+        "invite_hint": "Creates an account without a password and sends an invitation email. The invited user sets their own password from the link.",
+        "invite_submit": "Send Invite",
+        "badge_pending_invite": "Pending Invite",
         "search_placeholder": "Search by email, username, or name",
         "search_empty": "No results found.",
         "create_title": "Add New User",
@@ -475,7 +532,35 @@
         "empty": "No clients have been registered.",
         "regenerate_secret": "Regenerate Secret",
         "regenerate_confirm": "Regenerate the secret? The existing secret will be invalidated immediately.",
-        "delete_confirm": "Delete this client?"
+        "delete_confirm": "Delete this client?",
+        "errors": {
+            "rate_limited": "Too many requests. Please try again shortly.",
+            "rate_limited_short": "Too many requests.",
+            "client_id_redirect_uri_required": "client_id and redirect_uri are required.",
+            "response_type_unsupported": "Only response_type=code is supported.",
+            "unknown_client": "Unknown client_id.",
+            "redirect_uri_mismatch": "redirect_uri does not match a registered value.",
+            "pkce_required": "A PKCE code_challenge is required.",
+            "empty_code_challenge": "code_challenge is empty.",
+            "code_challenge_method_unsupported": "Only code_challenge_method=S256 is supported.",
+            "openid_scope_required": "The openid scope is required.",
+            "prompt_none_conflict": "prompt=none cannot be combined with other prompt values.",
+            "max_age_invalid": "max_age must be a non-negative integer.",
+            "login_required": "Cannot complete authentication without user interaction.",
+            "session_missing_after_gate": "No session found after the authentication gate.",
+            "service_access_denied": "You do not have access to this service.",
+            "token_param_required": "The token parameter is required.",
+            "id_token_hint_required": "id_token_hint is required.",
+            "aud_mismatch": "aud mismatch",
+            "cross_origin_post_blocked": "Cross-origin POST blocked.",
+            "logging_out": "Logging out...",
+            "signing_key_not_set": "IDP_SIGNING_KEY_SECRET is not configured.",
+            "bearer_token_required": "A Bearer token is required.",
+            "access_token_invalid": "Invalid or expired access token.",
+            "token_aud_mismatch": "The token's aud does not match the client.",
+            "issuing_client_invalid": "The issuing client is no longer valid.",
+            "user_not_found": "User not found."
+        }
     },
     "saml": {
         "title": "SAML SP Management",
@@ -504,7 +589,38 @@
         "empty": "No SAML SPs have been registered.",
         "delete_confirm": "Delete this SP?",
         "parse_error_xml": "XML parse error",
-        "parse_error_generic": "Parse failed"
+        "parse_error_generic": "Parse failed",
+        "errors": {
+            "rate_limited": "Too many requests. Please try again shortly.",
+            "issuer_not_set": "IDP_ISSUER_URL is not configured.",
+            "signing_key_not_set": "IDP_SIGNING_KEY_SECRET is not configured.",
+            "signing_key_missing": "No signing key available. Restart the server to generate one.",
+            "access_denied": "You do not have access to this SP.",
+            "authn_request_replay": "This AuthnRequest ID has already been used (replay).",
+            "unknown_sp": "Unregistered SP: {{entityId}}",
+            "destination_mismatch": "AuthnRequest Destination does not match the IdP SSO endpoint.",
+            "acs_url_mismatch": "The AuthnRequest ACS URL does not match the registered SP ACS URL.",
+            "saml_request_missing": "Missing SAMLRequest parameter.",
+            "saml_request_parse_failed": "Failed to parse SAMLRequest.",
+            "sp_cert_missing_for_authn_sig": "Cannot verify the AuthnRequest signature because no SP certificate is registered.",
+            "authn_signature_invalid": "AuthnRequest signature verification failed.",
+            "sso_redirecting": "Redirecting for SSO...",
+            "slo_no_remaining_sp": "No SPs remaining in the chain.",
+            "slo_signing_key_not_configured": "Cannot continue the SLO chain because no signing key is configured.",
+            "slo_active_signing_key_missing": "No active signing key available.",
+            "slo_state_invalid": "Invalid or expired SLO state.",
+            "slo_initiating_sp_cert_missing": "Cannot verify the LogoutResponse because the initiating SP certificate is not registered.",
+            "slo_logout_response_must_be_signed": "The LogoutResponse must be signed.",
+            "slo_logout_response_sig_invalid": "LogoutResponse signature verification failed.",
+            "slo_invalid_saml_request": "Invalid SAMLRequest.",
+            "slo_destination_mismatch": "LogoutRequest Destination does not match the IdP SLO endpoint.",
+            "slo_unknown_sp": "Unknown SAML SP.",
+            "slo_sp_cert_missing": "Cannot verify the SLO request because no SP certificate is registered.",
+            "slo_logout_request_must_be_signed": "The LogoutRequest must be signed.",
+            "slo_saml_request_sig_invalid": "Invalid SAMLRequest signature.",
+            "slo_logout_request_replay": "This LogoutRequest ID has already been used (replay).",
+            "slo_chain_init_failed": "Failed to initialize the SLO chain."
+        }
     },
     "roles": {
         "list_title": "Roles",
@@ -569,6 +685,19 @@
         "invalid_link": "This link has expired or is invalid.",
         "go_login": "Go to login"
     },
+    "accept_invite": {
+        "title": "Accept Invitation",
+        "subtitle": "Set a password to complete your registration.",
+        "password_label": "Password",
+        "password_placeholder": "At least 8 characters",
+        "confirm_label": "Confirm Password",
+        "submit": "Complete Registration",
+        "success": "Registration complete. You can now sign in.",
+        "invalid_link": "This link has expired or is invalid.",
+        "go_login": "Go to login",
+        "err_password_short": "Password must be at least 8 characters.",
+        "err_password_mismatch": "Passwords do not match."
+    },
     "errors": {
         "rate_limit": "Too many requests. Please try again in {{minutes}} minute(s).",
         "db_not_ready": "The D1 binding \"DB\" is not ready. Please run in a Wrangler preview/dev environment."
@@ -620,6 +749,11 @@
             "subject": "[Security Alert] A passkey was removed",
             "heading": "A passkey was removed",
             "body": "A passkey was removed from your account."
+        },
+        "account_deletion_requested": {
+            "subject": "[Security Alert] Account deletion requested",
+            "heading": "Account deletion requested",
+            "body": "Your account deletion was received and moved to a pending-deletion state. You can recover it by signing in again within the 30-day grace period. If you did not request this, sign in immediately to recover and change your password."
         }
     },
     "skins": {
@@ -689,5 +823,33 @@
         "guide_example_login": "Log in",
         "guide_example_username": "Username",
         "guide_example_password": "Password"
+    },
+    "webauthn": {
+        "errors": {
+            "login_required": "Sign-in required.",
+            "signing_key_not_configured": "IDP_SIGNING_KEY_SECRET is not configured.",
+            "invalid_origin": "Invalid origin.",
+            "register_session_expired": "The registration session has expired. Please try again.",
+            "register_session_invalid": "The registration session is invalid. Please try again.",
+            "register_rate_limited": "Too many registration attempts. Please try again shortly.",
+            "register_verify_failed": "Passkey registration verification failed.",
+            "rate_limited_retry": "Too many requests. Please try again in {{seconds}} seconds.",
+            "auth_rate_limited": "Too many authentication attempts. Please try again shortly.",
+            "auth_session_invalid": "The authentication session is invalid.",
+            "auth_session_expired": "The authentication session has expired or was already used.",
+            "auth_failed": "Passkey authentication failed.",
+            "account_disabled": "This account is disabled.",
+            "access_denied": "Access denied.",
+            "auth_cancelled": "Passkey authentication was cancelled."
+        }
+    },
+    "totp": {
+        "errors": {
+            "signing_key_not_set": "IDP_SIGNING_KEY_SECRET is not configured.",
+            "verify_rate_limited": "Too many TOTP attempts. Please try again shortly.",
+            "enroll_rate_limited": "Too many TOTP enrollment attempts. Please try again shortly."
+        },
+        "default_authenticator_label": "TOTP authenticator (dispatcher)",
+        "default_backup_code_label": "Backup code (dispatcher)"
     }
 }

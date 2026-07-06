@@ -8,6 +8,7 @@ import { checkRateLimit } from "$lib/server/ratelimit";
 import { hasServiceAccess } from "$lib/server/access/service-permissions";
 import { verifyIdToken } from "$lib/server/crypto/keys";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
+import { translate } from "$lib/i18n/server";
 
 /** redirect_uri 가 확정된 이후에만 사용. 그 전 오류는 throw error() 로 직접 응답. */
 function authRedirectError(redirectUri: string, errorCode: string, description: string, state?: string | null): never {
@@ -29,7 +30,7 @@ export const GET: RequestHandler = async (event) => {
         limit: 60,
     });
     if (!rl.allowed) {
-        throw error(429, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+        throw error(429, translate(locals.locale, "oidc.errors.rate_limited"));
     }
 
     const clientId = url.searchParams.get("client_id");
@@ -43,19 +44,19 @@ export const GET: RequestHandler = async (event) => {
 
     // client_id / redirect_uri 가 없으면 redirect 불가 → 직접 오류 응답
     if (!clientId || !redirectUri) {
-        throw error(400, "client_id 와 redirect_uri 는 필수입니다.");
+        throw error(400, translate(locals.locale, "oidc.errors.client_id_redirect_uri_required"));
     }
     if (responseType !== "code") {
-        throw error(400, "response_type=code 만 지원합니다.");
+        throw error(400, translate(locals.locale, "oidc.errors.response_type_unsupported"));
     }
 
     const client = await findOidcClient(db, tenant.id, clientId);
     if (!client) {
-        throw error(401, "등록되지 않은 client_id 입니다.");
+        throw error(401, translate(locals.locale, "oidc.errors.unknown_client"));
     }
 
     if (!isAllowedRedirectUri(client, redirectUri)) {
-        throw error(400, "redirect_uri 가 등록된 값과 일치하지 않습니다.");
+        throw error(400, translate(locals.locale, "oidc.errors.redirect_uri_mismatch"));
     }
 
     // PKCE 검증
@@ -75,7 +76,7 @@ export const GET: RequestHandler = async (event) => {
             userAgent: getRequestMetadata(event).userAgent,
             detail: { error: "invalid_request", reason: "pkce_required" },
         });
-        authRedirectError(redirectUri, "invalid_request", "PKCE code_challenge 가 필요합니다.", state);
+        authRedirectError(redirectUri, "invalid_request", translate(locals.locale, "oidc.errors.pkce_required"), state);
     }
     if (codeChallenge !== null && !hasChallenge) {
         await recordAuditEvent(db, {
@@ -87,7 +88,7 @@ export const GET: RequestHandler = async (event) => {
             userAgent: getRequestMetadata(event).userAgent,
             detail: { error: "invalid_request", reason: "empty_code_challenge" },
         });
-        authRedirectError(redirectUri, "invalid_request", "code_challenge 가 비어 있습니다.", state);
+        authRedirectError(redirectUri, "invalid_request", translate(locals.locale, "oidc.errors.empty_code_challenge"), state);
     }
     if (hasChallenge && codeChallengeMethod !== "S256") {
         await recordAuditEvent(db, {
@@ -99,7 +100,7 @@ export const GET: RequestHandler = async (event) => {
             userAgent: getRequestMetadata(event).userAgent,
             detail: { error: "invalid_request", reason: "invalid_code_challenge_method", method: codeChallengeMethod },
         });
-        authRedirectError(redirectUri, "invalid_request", "code_challenge_method=S256 만 지원합니다.", state);
+        authRedirectError(redirectUri, "invalid_request", translate(locals.locale, "oidc.errors.code_challenge_method_unsupported"), state);
     }
 
     // scope 검증
@@ -114,7 +115,7 @@ export const GET: RequestHandler = async (event) => {
             userAgent: getRequestMetadata(event).userAgent,
             detail: { error: "invalid_scope", requestedScope: scope },
         });
-        authRedirectError(redirectUri, "invalid_scope", "openid scope 가 필요합니다.", state);
+        authRedirectError(redirectUri, "invalid_scope", translate(locals.locale, "oidc.errors.openid_scope_required"), state);
     }
     const grantedScope = grantedScopes.join(" ");
 
@@ -123,7 +124,7 @@ export const GET: RequestHandler = async (event) => {
     const promptNone = prompts.has("none");
     // prompt=none 은 다른 값과 함께 올 수 없다.
     if (promptNone && prompts.size > 1) {
-        authRedirectError(redirectUri, "invalid_request", "prompt=none 은 다른 prompt 값과 함께 쓸 수 없습니다.", state);
+        authRedirectError(redirectUri, "invalid_request", translate(locals.locale, "oidc.errors.prompt_none_conflict"), state);
     }
 
     const maxAgeRaw = url.searchParams.get("max_age");
@@ -131,7 +132,7 @@ export const GET: RequestHandler = async (event) => {
     if (maxAgeRaw !== null) {
         const n = Number.parseInt(maxAgeRaw, 10);
         if (!Number.isFinite(n) || n < 0) {
-            authRedirectError(redirectUri, "invalid_request", "max_age 는 음이 아닌 정수여야 합니다.", state);
+            authRedirectError(redirectUri, "invalid_request", translate(locals.locale, "oidc.errors.max_age_invalid"), state);
         }
         maxAge = n;
     }
@@ -172,7 +173,7 @@ export const GET: RequestHandler = async (event) => {
             userAgent: getRequestMetadata(event).userAgent,
             detail: { error: "login_required", reason: reauthRequired ? "reauth_required" : "not_authenticated" },
         });
-        authRedirectError(redirectUri, "login_required", "사용자 상호작용 없이 인증을 완료할 수 없습니다.", state);
+        authRedirectError(redirectUri, "login_required", translate(locals.locale, "oidc.errors.login_required"), state);
     }
 
     if (needsInteraction) {
@@ -187,7 +188,7 @@ export const GET: RequestHandler = async (event) => {
 
     // 여기 도달 시 로그인 상태가 보장된다 (타입 좁히기용 방어 체크).
     if (!locals.user || !locals.session) {
-        throw error(500, "인증 게이트 이후 세션이 없습니다.");
+        throw error(500, translate(locals.locale, "oidc.errors.session_missing_after_gate"));
     }
 
     // 서비스 권한 게이트 (기본 deny). 매핑 없으면 SSO 거부.
@@ -209,7 +210,7 @@ export const GET: RequestHandler = async (event) => {
             userAgent: getRequestMetadata(event).userAgent,
             detail: { error: "access_denied", reason: "no_service_assignment" },
         });
-        authRedirectError(redirectUri, "access_denied", "이 서비스에 대한 권한이 없습니다.", state);
+        authRedirectError(redirectUri, "access_denied", translate(locals.locale, "oidc.errors.service_access_denied"), state);
     }
 
     // authorization code 발급

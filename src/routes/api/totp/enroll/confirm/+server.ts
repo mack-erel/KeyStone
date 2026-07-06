@@ -9,6 +9,7 @@ import { credentials, users } from "$lib/server/db/schema";
 import type { DB } from "$lib/server/db";
 import { runAtomic } from "$lib/server/db/atomic";
 import { isUniqueViolation } from "$lib/server/db/errors";
+import { translate } from "$lib/i18n/server";
 
 /**
  * Phase 7.3 — TOTP enrollment confirm.
@@ -21,14 +22,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
     const config = locals.runtimeConfig;
     if (!config.signingKeySecret) {
-        throw error(503, "IDP_SIGNING_KEY_SECRET 미설정");
+        throw error(503, translate(locals.locale, "totp.errors.signing_key_not_set"));
     }
 
     const body = (await request.json().catch(() => null)) as { userId?: string; secret?: string; code?: string; label?: string } | null;
     const userId = body?.userId?.trim();
     const secret = body?.secret?.trim();
     const code = body?.code?.replace(/\s/g, "");
-    const label = body?.label?.trim() || "TOTP 인증기 (dispatcher)";
+    const label = body?.label?.trim() || translate(locals.locale, "totp.default_authenticator_label");
 
     if (!userId || !secret || !code) {
         throw error(400, "userId, secret, code required");
@@ -37,7 +38,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     // ctrls C3: enrollment 코드 브루트포스 방어 (사용자당 5분 창 10회).
     const rl = await checkRateLimit(db, `totp-enroll-confirm:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
-        throw error(429, "TOTP 등록 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+        throw error(429, translate(locals.locale, "totp.errors.enroll_rate_limited"));
     }
 
     const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
@@ -66,7 +67,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             userId,
             type: BACKUP_CODE_CREDENTIAL_TYPE,
             secret: await hashBackupCode(c),
-            label: "백업 코드 (dispatcher)",
+            label: translate(locals.locale, "totp.default_backup_code_label"),
         })),
     );
 

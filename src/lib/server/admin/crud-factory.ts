@@ -18,6 +18,7 @@ import type { Column } from "drizzle-orm";
 import type { z } from "zod";
 import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
+import { translate } from "$lib/i18n/server";
 import type { DB } from "$lib/server/db";
 
 type AdminContext = ReturnType<typeof requireAdminContext>;
@@ -74,9 +75,13 @@ function formDataToRecord(fd: FormData): Record<string, unknown> {
     return obj;
 }
 
-/** zod 검증 실패 시 첫 이슈 메시지. */
-function firstIssue(error: z.ZodError): string {
-    return error.issues[0]?.message ?? "잘못된 요청입니다.";
+/**
+ * zod 검증 실패 시 첫 이슈 메시지를 현재 로케일로 해석한다.
+ * 스키마 메시지는 i18n 키(admin.errors.*)로 담겨 있으므로 translate 로 표시 문자열을 만든다.
+ * 키가 아닌 zod 기본 메시지(enum 등)는 translate 폴백이 원문을 그대로 반환한다.
+ */
+function firstIssue(error: z.ZodError, locale: App.Locals["locale"]): string {
+    return translate(locale, error.issues[0]?.message ?? "admin.errors.invalid_request");
 }
 
 /**
@@ -96,7 +101,7 @@ export function createAdminCrudRoute<TCreateSchema extends z.ZodTypeAny, TUpdate
 
         const parsed = config.createSchema.safeParse(formDataToRecord(fd));
         if (!parsed.success) {
-            return fail(400, { create: true, error: firstIssue(parsed.error) });
+            return fail(400, { create: true, error: firstIssue(parsed.error, event.locals.locale) });
         }
         const values = parsed.data as z.infer<TCreateSchema>;
 
@@ -126,7 +131,7 @@ export function createAdminCrudRoute<TCreateSchema extends z.ZodTypeAny, TUpdate
 
         const parsed = config.updateSchema.safeParse(formDataToRecord(fd));
         if (!parsed.success) {
-            return fail(400, { error: firstIssue(parsed.error) });
+            return fail(400, { error: firstIssue(parsed.error, event.locals.locale) });
         }
         const data = parsed.data as z.infer<TUpdateSchema>;
 
@@ -159,7 +164,7 @@ export function createAdminCrudRoute<TCreateSchema extends z.ZodTypeAny, TUpdate
         const { db, tenant, user } = requireAdminContext(event.locals);
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
-        if (!id) return fail(400, { error: "잘못된 요청입니다." });
+        if (!id) return fail(400, { error: translate(event.locals.locale, "admin.errors.invalid_request") });
 
         await db.delete(config.table).where(and(eq(config.table.id, id), eq(config.table.tenantId, tenant.id)));
 

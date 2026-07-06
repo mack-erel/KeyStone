@@ -3,16 +3,17 @@ import type { RequestHandler } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { buildRegistrationOptions, createChallengeCookie, getWebAuthnConfig, WEBAUTHN_CHALLENGE_COOKIE } from "$lib/server/auth/webauthn";
+import { translate } from "$lib/i18n/server";
 
 export const POST: RequestHandler = async (event) => {
     const { locals, cookies, url, platform } = event;
     if (!locals.user) {
-        throw error(401, "로그인이 필요합니다.");
+        throw error(401, translate(locals.locale, "webauthn.errors.login_required"));
     }
 
     const config = getRuntimeConfig(platform);
     if (!config.signingKeySecret) {
-        throw error(503, "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.");
+        throw error(503, translate(locals.locale, "webauthn.errors.signing_key_not_configured"));
     }
 
     const { db } = requireDbContext(locals);

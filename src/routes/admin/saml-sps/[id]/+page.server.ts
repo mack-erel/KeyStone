@@ -2,6 +2,7 @@ import { error, fail } from "@sveltejs/kit";
 import { and, asc, eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
+import { adminError } from "$lib/server/admin/errors";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import type { DB } from "$lib/server/db";
 import { samlSps, serviceRoles } from "$lib/server/db/schema";
@@ -16,7 +17,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         .from(samlSps)
         .where(and(eq(samlSps.id, params.id), eq(samlSps.tenantId, tenant.id)))
         .limit(1);
-    if (!sp) error(404, "SP 를 찾을 수 없습니다.");
+    if (!sp) error(404, adminError(locals.locale, "saml_sp_not_found"));
 
     const roles = await db
         .select()
@@ -48,11 +49,11 @@ export const actions: Actions = {
         const isDefault = fd.get("isDefault") === "true";
         const displayOrder = Number(fd.get("displayOrder") ?? "0") | 0;
 
-        if (!ROLE_KEY_RE.test(key)) return fail(400, { error: "key 는 영숫자/._- 만 허용 (1~64자)." });
-        if (!label) return fail(400, { error: "label 은 필수입니다." });
+        if (!ROLE_KEY_RE.test(key)) return fail(400, { error: adminError(locals.locale, "invalid_role_key") });
+        if (!label) return fail(400, { error: adminError(locals.locale, "label_required") });
 
         const s = await spForTenant(db, tenant.id, params.id);
-        if (!s) return fail(404, { error: "SP 를 찾을 수 없습니다." });
+        if (!s) return fail(404, { error: adminError(locals.locale, "saml_sp_not_found") });
 
         try {
             await db.insert(serviceRoles).values({
@@ -67,7 +68,7 @@ export const actions: Actions = {
                 displayOrder,
             });
         } catch {
-            return fail(409, { error: "이미 존재하는 role key 입니다." });
+            return fail(409, { error: adminError(locals.locale, "role_key_exists") });
         }
 
         const meta = getRequestMetadata(event);
@@ -96,7 +97,7 @@ export const actions: Actions = {
         const isDefault = fd.get("isDefault") === "true";
         const displayOrder = Number(fd.get("displayOrder") ?? "0") | 0;
 
-        if (!id || !label) return fail(400, { error: "필수 항목 누락." });
+        if (!id || !label) return fail(400, { error: adminError(locals.locale, "required_field_missing") });
 
         await db
             .update(serviceRoles)
@@ -111,7 +112,7 @@ export const actions: Actions = {
         const { db, tenant } = requireAdminContext(locals);
         const fd = await event.request.formData();
         const id = String(fd.get("roleId") ?? "");
-        if (!id) return fail(400, { error: "잘못된 요청." });
+        if (!id) return fail(400, { error: adminError(locals.locale, "invalid_request") });
 
         await db.delete(serviceRoles).where(and(eq(serviceRoles.id, id), eq(serviceRoles.tenantId, tenant.id), eq(serviceRoles.serviceType, "saml"), eq(serviceRoles.serviceRefId, params.id)));
 

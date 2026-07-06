@@ -84,9 +84,9 @@ export const actions: Actions = {
         if (encryptAssertion && !cert) return fail(400, { create: true, error: adminError(locale, "sp_cert_required_for_encryption") });
 
         const acsV = validateSamlUrl(acsUrl, "ACS URL");
-        if (!acsV.ok) return fail(400, { create: true, error: acsV.reason });
+        if (!acsV.ok) return fail(400, { create: true, error: adminError(locale, acsV.reason.key, acsV.reason.params) });
         const sloV = validateSamlUrl(sloUrl, "SLO URL");
-        if (!sloV.ok) return fail(400, { create: true, error: sloV.reason });
+        if (!sloV.ok) return fail(400, { create: true, error: adminError(locale, sloV.reason.key, sloV.reason.params) });
 
         if (!(ALLOWED_NAMEID_FORMATS as readonly string[]).includes(nameIdFormat)) {
             return fail(400, { create: true, error: adminError(locale, "nameid_format_forbidden") });
@@ -158,9 +158,9 @@ export const actions: Actions = {
         if (encryptAssertion && !cert) return fail(400, { error: adminError(locale, "sp_cert_required_for_encryption") });
 
         const acsV = validateSamlUrl(acsUrl, "ACS URL");
-        if (!acsV.ok) return fail(400, { error: acsV.reason });
+        if (!acsV.ok) return fail(400, { error: adminError(locale, acsV.reason.key, acsV.reason.params) });
         const sloV = validateSamlUrl(sloUrl, "SLO URL");
-        if (!sloV.ok) return fail(400, { error: sloV.reason });
+        if (!sloV.ok) return fail(400, { error: adminError(locale, sloV.reason.key, sloV.reason.params) });
 
         if (nameIdFormat && !(ALLOWED_NAMEID_FORMATS as readonly string[]).includes(nameIdFormat)) {
             return fail(400, { error: adminError(locale, "nameid_format_forbidden") });

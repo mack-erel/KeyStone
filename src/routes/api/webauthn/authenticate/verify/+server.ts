@@ -10,6 +10,7 @@ import { checkRateLimit } from "$lib/server/ratelimit";
 import { verifyPasskeyAuthentication, consumeChallenge, getWebAuthnConfig } from "$lib/server/auth/webauthn";
 import type { AuthenticationResponseJSON } from "$lib/server/auth/webauthn";
 import { users } from "$lib/server/db/schema";
+import { translate } from "$lib/i18n/server";
 
 function extractChallengeFromClientData(clientDataJSONb64u: string): string | null {
     try {
@@ -42,10 +43,10 @@ export const POST: RequestHandler = async (event) => {
           })()
         : null;
     if (reqOrigin && reqOrigin !== origin) {
-        throw error(403, "유효하지 않은 출처입니다.");
+        throw error(403, translate(locals.locale, "webauthn.errors.invalid_origin"));
     }
     if (!reqOrigin && refOrigin && refOrigin !== origin) {
-        throw error(403, "유효하지 않은 출처입니다.");
+        throw error(403, translate(locals.locale, "webauthn.errors.invalid_origin"));
     }
 
     const body = (await request.json()) as AuthenticationResponseJSON & { _redirectTo?: string };
@@ -58,17 +59,17 @@ export const POST: RequestHandler = async (event) => {
     const rlKey = `webauthn-verify:${tenant.id}:${ipKey}`;
     const rl = await checkRateLimit(db, rlKey, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
-        throw error(429, "인증 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+        throw error(429, translate(locals.locale, "webauthn.errors.auth_rate_limited"));
     }
 
     // 1회용 challenge 소진 (DB 기반)
     const clientChallenge = body.response?.clientDataJSON ? extractChallengeFromClientData(body.response.clientDataJSON) : null;
     if (!clientChallenge) {
-        throw error(400, "인증 세션이 유효하지 않습니다.");
+        throw error(400, translate(locals.locale, "webauthn.errors.auth_session_invalid"));
     }
     const challengeOk = await consumeChallenge(db, tenant.id, clientChallenge);
     if (!challengeOk) {
-        throw error(400, "인증 세션이 만료되었거나 이미 사용되었습니다.");
+        throw error(400, translate(locals.locale, "webauthn.errors.auth_session_expired"));
     }
 
     const result = await verifyPasskeyAuthentication(db, body, clientChallenge, rpID, origin, tenant.id);
@@ -83,18 +84,18 @@ export const POST: RequestHandler = async (event) => {
             userAgent: requestMetadata.userAgent,
             detail: { method: "webauthn" },
         });
-        throw error(400, "패스키 인증에 실패했습니다.");
+        throw error(400, translate(locals.locale, "webauthn.errors.auth_failed"));
     }
 
     // 사용자 조회
     const [user] = await db.select().from(users).where(eq(users.id, result.userId)).limit(1);
 
     if (!user || user.status !== "active") {
-        throw error(403, "비활성화된 계정입니다.");
+        throw error(403, translate(locals.locale, "webauthn.errors.account_disabled"));
     }
 
     if (user.tenantId !== tenant.id) {
-        throw error(403, "접근 권한이 없습니다.");
+        throw error(403, translate(locals.locale, "webauthn.errors.access_denied"));
     }
 
     const requestMetadata = getRequestMetadata(event);

@@ -4,8 +4,14 @@
  * 공통 판정을 한곳으로 모은다.
  */
 
+/**
+ * 검증 실패 사유. 로케일 비의존 — i18n 키(admin.errors.<key>)와 치환 파라미터만 담는다.
+ * 호출부에서 `adminError(locale, reason.key, reason.params)` 로 표시 문자열을 만든다.
+ */
+export type ValidationReason = { key: string; params?: Record<string, string | number> };
+
 /** URL/host 검증 결과 공통 형태. */
-export type ValidationResult = { ok: true } | { ok: false; reason: string };
+export type ValidationResult = { ok: true } | { ok: false; reason: ValidationReason };
 
 /**
  * loopback 호스트 판정. http URL 허용(개발/내부) 여부나 SSRF 게이트에서 공통 사용.
@@ -39,15 +45,15 @@ export function validateSamlUrl(value: string, label: string): ValidationResult 
     try {
         parsed = new URL(value);
     } catch {
-        return { ok: false, reason: `${label}: URL 형식이 올바르지 않습니다.` };
+        return { ok: false, reason: { key: "saml_url_invalid_format", params: { label } } };
     }
     const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
     if (scheme === "https") return { ok: true };
     if (scheme === "http") {
         if (isLoopbackHost(parsed.hostname)) return { ok: true };
-        return { ok: false, reason: `${label}: http URL 은 localhost/127.0.0.1 만 허용됩니다.` };
+        return { ok: false, reason: { key: "saml_url_http_loopback_only", params: { label } } };
     }
-    return { ok: false, reason: `${label}: https URL 만 허용됩니다.` };
+    return { ok: false, reason: { key: "saml_url_https_only", params: { label } } };
 }
 
 /**
@@ -57,11 +63,11 @@ export function validateSamlUrl(value: string, label: string): ValidationResult 
 export function validateLdapHost(host: string): ValidationResult {
     const lower = host.toLowerCase();
     if (isCloudMetadataHost(lower)) {
-        return { ok: false, reason: "클라우드 메타데이터 호스트는 사용할 수 없습니다." };
+        return { ok: false, reason: { key: "ldap_metadata_host_forbidden" } };
     }
     // 169.254.0.0/16 link-local (AWS IMDS 169.254.169.254 포함)
     if (isLinkLocalHost(lower)) {
-        return { ok: false, reason: "link-local(169.254/16) 주소는 사용할 수 없습니다." };
+        return { ok: false, reason: { key: "ldap_linklocal_forbidden" } };
     }
     return { ok: true };
 }
@@ -72,10 +78,10 @@ const ALLOWED_LDAP_PORTS = new Set([389, 636, 3268, 3269]);
 /** LDAP 포트 검증(정수 범위 + 허용 목록). */
 export function validateLdapPort(port: number): ValidationResult {
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
-        return { ok: false, reason: "포트 번호가 올바르지 않습니다." };
+        return { ok: false, reason: { key: "ldap_port_invalid" } };
     }
     if (!ALLOWED_LDAP_PORTS.has(port)) {
-        return { ok: false, reason: `허용되지 않는 LDAP 포트입니다 (허용: ${[...ALLOWED_LDAP_PORTS].join(", ")}).` };
+        return { ok: false, reason: { key: "ldap_port_not_allowed", params: { allowed: [...ALLOWED_LDAP_PORTS].join(", ") } } };
     }
     return { ok: true };
 }
