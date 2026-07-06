@@ -82,6 +82,14 @@ jobs:
             - name: Test
               run: bun run test
 
+            - name: Migration drift check
+              run: |
+                  bun run db:generate:all
+                  if ! git diff --exit-code -- drizzle; then
+                    echo "::error::스키마가 변경되었으나 마이그레이션이 생성되지 않았습니다. 'bun run db:generate:all' 실행 후 drizzle*/ 변경분을 커밋하세요." >&2
+                    exit 1
+                  fi
+
             - name: Build
               run: bun run build
 

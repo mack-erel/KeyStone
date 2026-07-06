@@ -34,14 +34,13 @@ async function sha256Base64Url(input: string): Promise<string> {
 
 export async function createGrant(db: DB, params: CreateGrantParams): Promise<void> {
     const codeHash = await sha256Base64Url(params.code);
-    // code (평문) 컬럼은 legacy 호환을 위해 nullable 로 유지하되, 신규 grant 는
-    // null 로 저장한다. 다음 PR 에서 컬럼 자체를 drop.
+    // raw code(평문)는 DB 에 저장하지 않는다 — SHA-256 해시(codeHash)만 보관.
+    // params.code 는 해시 계산에만 쓰이므로 insert 대상 컬럼에서 제외한다.
     const { code: _omit, ...rest } = params;
     void _omit;
     await db.insert(oidcGrants).values({
         id: crypto.randomUUID(),
         ...rest,
-        code: null,
         codeHash,
         expiresAt: new Date(Date.now() + AUTH_CODE_TTL_MS),
     });
