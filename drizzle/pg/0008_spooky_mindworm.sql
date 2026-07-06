@@ -1,0 +1,1 @@
+CREATE INDEX "users_deletion_pending_idx" ON "users" USING btree ("deletion_scheduled_at") WHERE "users"."status" = 'deletion_pending';

@@ -38,6 +38,11 @@ export const users = mysqlTable(
         username: varchar("username", { length: 255 }),
         email: varchar("email", { length: 320 }).notNull(),
         emailVerifiedAt: datetime("email_verified_at", { mode: "date", fsp: 3 }),
+        // F3: 이메일 변경 대기 상태. 새 주소 확인(email_change_tokens) 전까지 여기 보관하고,
+        // 확인 완료 시 email 로 승격 후 NULL 로 클리어한다. requestedAt 은 대기 시작 시각.
+        // (email 과 동일 계열 타입 유지를 위해 varchar(320) — parity 는 string 계열로 정규화됨.)
+        pendingEmail: varchar("pending_email", { length: 320 }),
+        pendingEmailRequestedAt: datetime("pending_email_requested_at", { mode: "date", fsp: 3 }),
         displayName: text("display_name"),
         role: varchar("role", { length: 64, enum: ["admin", "user"] })
             .notNull()
@@ -72,7 +77,15 @@ export const users = mysqlTable(
             .notNull()
             .default(sql`(CURRENT_TIMESTAMP(3))`),
     },
-    (t) => [uniqueIndex("users_tenant_email_uidx").on(t.tenantId, t.email), uniqueIndex("users_tenant_username_uidx").on(t.tenantId, t.username), index("users_tenant_idx").on(t.tenantId)],
+    (t) => [
+        uniqueIndex("users_tenant_email_uidx").on(t.tenantId, t.email),
+        uniqueIndex("users_tenant_username_uidx").on(t.tenantId, t.username),
+        index("users_tenant_idx").on(t.tenantId),
+        // GC(하드삭제) 조회 지원. MySQL 은 부분(WHERE) 인덱스를 지원하지 않으므로 sqlite/pg 의
+        // 부분 인덱스(users_deletion_pending_idx) 대신 (status, deletionScheduledAt) 복합 인덱스로
+        // 동일 조회(status='deletion_pending' & deletionScheduledAt < now)를 지원한다. parity 예외 등재.
+        index("users_deletion_gc_idx").on(t.status, t.deletionScheduledAt),
+    ],
 );
 
 /**
@@ -251,6 +264,9 @@ export const oidcClients = mysqlTable(
         idTokenSignedResponseAlg: text("id_token_signed_response_alg").notNull().default("RS256"),
         jwksUri: text("jwks_uri"),
         jwks: text("jwks"),
+        // organization scope 클레임의 클라이언트별 노출 토글(JSON). null=미설정=전량 노출(하위호환).
+        // 예: {"department":true,"team":true,"position":false,"jobTitle":true}
+        organizationClaimConfig: text("organization_claim_config"),
         enabled: boolean("enabled").notNull().default(true),
         createdAt: datetime("created_at", { mode: "date", fsp: 3 })
             .notNull()
@@ -939,6 +955,33 @@ export const inviteTokens = mysqlTable(
 );
 
 export type InviteToken = typeof inviteTokens.$inferSelect;
+
+// ---------- Email change ----------
+// F3: 프로필 이메일 변경 확인 토큰. email_verification_tokens 와 분리한다 — 변경 대상 주소
+// (targetEmail)를 토큰에 바인딩해야 하고(확인 링크가 다른 주소로 재사용되지 않도록), 확인
+// 라우트/시맨틱도 다르기 때문이다. SHA-256 해시 저장, TTL 24시간, 1회용(usedAt).
+export const emailChangeTokens = mysqlTable(
+    "email_change_tokens",
+    {
+        id: varchar("id", { length: 64 })
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: varchar("user_id", { length: 64 })
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: varchar("token_hash", { length: 255 }).notNull(),
+        // 변경하려는 새 이메일 주소(토큰에 바인딩). 확인 시 이 값으로 users.email 을 교체한다.
+        targetEmail: varchar("target_email", { length: 320 }).notNull(),
+        expiresAt: datetime("expires_at", { mode: "date", fsp: 3 }).notNull(),
+        usedAt: datetime("used_at", { mode: "date", fsp: 3 }),
+        createdAt: datetime("created_at", { mode: "date", fsp: 3 })
+            .notNull()
+            .default(sql`(CURRENT_TIMESTAMP(3))`),
+    },
+    (t) => [index("email_change_tokens_user_idx").on(t.userId), uniqueIndex("email_change_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type EmailChangeToken = typeof emailChangeTokens.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;

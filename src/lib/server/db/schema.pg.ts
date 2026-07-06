@@ -34,6 +34,10 @@ export const users = pgTable(
         username: text("username"),
         email: text("email").notNull(),
         emailVerifiedAt: timestamp("email_verified_at", { mode: "date", withTimezone: true, precision: 3 }),
+        // F3: 이메일 변경 대기 상태. 새 주소 확인(email_change_tokens) 전까지 여기 보관하고,
+        // 확인 완료 시 email 로 승격 후 NULL 로 클리어한다. requestedAt 은 대기 시작 시각.
+        pendingEmail: text("pending_email"),
+        pendingEmailRequestedAt: timestamp("pending_email_requested_at", { mode: "date", withTimezone: true, precision: 3 }),
         displayName: text("display_name"),
         role: text("role", { enum: ["admin", "user"] })
             .notNull()
@@ -63,7 +67,17 @@ export const users = pgTable(
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
         updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
     },
-    (t) => [uniqueIndex("users_tenant_email_uidx").on(t.tenantId, t.email), uniqueIndex("users_tenant_username_uidx").on(t.tenantId, t.username), index("users_tenant_idx").on(t.tenantId)],
+    (t) => [
+        uniqueIndex("users_tenant_email_uidx").on(t.tenantId, t.email),
+        uniqueIndex("users_tenant_username_uidx").on(t.tenantId, t.username),
+        index("users_tenant_idx").on(t.tenantId),
+        // GC(하드삭제) 조회 지원 — status='deletion_pending' & deletionScheduledAt 경과분만 스캔한다.
+        // 부분 인덱스(WHERE status='deletion_pending')로 삭제 예정 계정만 색인해 공간을 아낀다.
+        // (mysql 은 부분 인덱스 미지원 → users_deletion_gc_idx 복합 인덱스로 대체; parity 예외 등재.)
+        index("users_deletion_pending_idx")
+            .on(t.deletionScheduledAt)
+            .where(sql`${t.status} = 'deletion_pending'`),
+    ],
 );
 
 /**
@@ -227,6 +241,9 @@ export const oidcClients = pgTable(
         idTokenSignedResponseAlg: text("id_token_signed_response_alg").notNull().default("RS256"),
         jwksUri: text("jwks_uri"),
         jwks: text("jwks"),
+        // organization scope 클레임의 클라이언트별 노출 토글(JSON). null=미설정=전량 노출(하위호환).
+        // 예: {"department":true,"team":true,"position":false,"jobTitle":true}
+        organizationClaimConfig: text("organization_claim_config"),
         enabled: boolean("enabled").notNull().default(true),
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
         updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
@@ -853,6 +870,31 @@ export const inviteTokens = pgTable(
 );
 
 export type InviteToken = typeof inviteTokens.$inferSelect;
+
+// ---------- Email change ----------
+// F3: 프로필 이메일 변경 확인 토큰. email_verification_tokens 와 분리한다 — 변경 대상 주소
+// (targetEmail)를 토큰에 바인딩해야 하고(확인 링크가 다른 주소로 재사용되지 않도록), 확인
+// 라우트/시맨틱도 다르기 때문이다. SHA-256 해시 저장, TTL 24시간, 1회용(usedAt).
+export const emailChangeTokens = pgTable(
+    "email_change_tokens",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: text("token_hash").notNull(),
+        // 변경하려는 새 이메일 주소(토큰에 바인딩). 확인 시 이 값으로 users.email 을 교체한다.
+        targetEmail: text("target_email").notNull(),
+        expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true, precision: 3 }).notNull(),
+        usedAt: timestamp("used_at", { mode: "date", withTimezone: true, precision: 3 }),
+        createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    },
+    (t) => [index("email_change_tokens_user_idx").on(t.userId), uniqueIndex("email_change_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type EmailChangeToken = typeof emailChangeTokens.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;

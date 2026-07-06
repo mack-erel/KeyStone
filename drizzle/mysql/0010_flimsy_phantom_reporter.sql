@@ -1,0 +1,1 @@
+ALTER TABLE `oidc_clients` ADD `organization_claim_config` text;
