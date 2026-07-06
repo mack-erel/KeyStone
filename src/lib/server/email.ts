@@ -178,6 +178,24 @@ export async function sendEmailVerificationEmail(to: string, verifyUrl: string, 
     await send(to, "이메일 인증 안내", html, text, platform);
 }
 
+export async function sendInviteEmail(to: string, inviteUrl: string, platform?: App.Platform): Promise<void> {
+    const safeUrl = safeAbsoluteUrl(inviteUrl);
+    if (!safeUrl) {
+        // 잘못된 URL 형식이면 메일 발송 자체 거부.
+        console.error("[email] sendInviteEmail: 잘못된 inviteUrl scheme — 발송 취소");
+        return;
+    }
+    const html = baseHtml(
+        "계정 초대",
+        `<p>계정에 초대되었습니다. 아래 버튼을 클릭하여 비밀번호를 설정하고 가입을 완료하세요. 링크는 72시간 동안 유효합니다.</p>
+<p style="margin:28px 0;">
+  <a href="${escapeHtml(safeUrl)}" style="background:#2563eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">초대 수락하기</a>
+</p>`,
+    );
+    const text = `계정에 초대되었습니다. 아래 링크에서 비밀번호를 설정하고 가입을 완료하세요. 링크는 72시간 동안 유효합니다.\n\n${safeUrl}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
+    await send(to, "계정 초대 안내", html, text, platform);
+}
+
 // ── 보안 알림 메일 (best-effort) ─────────────────────────────────────────────
 // 문구는 호출부에서 수신자 locale 로 번역해 넘긴다(email.ts 는 i18n 에 결합하지 않는다).
 // baseHtml 의 고정 한국어 푸터 대신 전달받은 localized 문구로 본문을 구성한다.

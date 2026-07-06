@@ -12,10 +12,12 @@ const dateFormatter = new Intl.DateTimeFormat("ko-KR", {
 });
 
 let showCreate = $state(false);
+let showInvite = $state(false);
 let resetPasswordUserId = $state<string | null>(null);
 
 const formErr = $derived((form as { error?: string } | null)?.error ?? null);
 const createErr = $derived((form as { create?: boolean; error?: string } | null)?.create ? formErr : null);
+const inviteErr = $derived((form as { invite?: boolean; error?: string } | null)?.invite ? formErr : null);
 const resetErr = $derived((form as { resetPassword?: boolean; error?: string } | null)?.resetPassword ? formErr : null);
 
 const STATUS_COLOR: Record<string, string> = {
@@ -35,10 +37,83 @@ const STATUS_NEXT: Record<string, StatusNext> = {
 <div class="space-y-6">
     <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-gray-900">{t("users.title")}</h1>
-        <button type="button" onclick={() => (showCreate = !showCreate)} class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
-            {showCreate ? t("common.cancel") : t("users.add_btn")}
-        </button>
+        <div class="flex items-center gap-2">
+            <button
+                type="button"
+                onclick={() => {
+                    showInvite = !showInvite;
+                    if (showInvite) showCreate = false;
+                }}
+                class="rounded-md border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-50">
+                {showInvite ? t("common.cancel") : t("users.invite_btn")}
+            </button>
+            <button
+                type="button"
+                onclick={() => {
+                    showCreate = !showCreate;
+                    if (showCreate) showInvite = false;
+                }}
+                class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
+                {showCreate ? t("common.cancel") : t("users.add_btn")}
+            </button>
+        </div>
     </div>
+
+    {#if showInvite}
+        <div class="rounded-xl border border-blue-100 bg-blue-50 p-5">
+            <h2 class="mb-1 font-semibold text-blue-900">{t("users.invite_title")}</h2>
+            <p class="mb-4 text-xs text-blue-700">{t("users.invite_hint")}</p>
+
+            {#if inviteErr}
+                <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {inviteErr}
+                </div>
+            {/if}
+
+            <form
+                method="POST"
+                action="?/invite"
+                use:enhance={() => {
+                    return ({ result, update }) => {
+                        update();
+                        if (result.type === "success") showInvite = false;
+                    };
+                }}
+                class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                    <label for="invite-email" class="block text-xs font-medium text-gray-700">{t("users.email_label")}</label>
+                    <input
+                        id="invite-email"
+                        type="email"
+                        name="email"
+                        required
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="invite-username" class="block text-xs font-medium text-gray-700">{t("users.username_label")}</label>
+                    <input id="invite-username" type="text" name="username" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="invite-displayName" class="block text-xs font-medium text-gray-700">{t("users.display_name_label")}</label>
+                    <input
+                        id="invite-displayName"
+                        type="text"
+                        name="displayName"
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                </div>
+                <div>
+                    <label for="invite-role" class="block text-xs font-medium text-gray-700">{t("users.role_label")}</label>
+                    <select id="invite-role" name="role" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
+                        <option value="user">{t("users.role_user")}</option>
+                        <option value="admin">{t("users.role_admin")}</option>
+                    </select>
+                </div>
+                <div class="flex justify-end sm:col-span-2">
+                    <button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t("users.invite_submit")}</button>
+                </div>
+            </form>
+        </div>
+    {/if}
 
     {#if showCreate}
         <div class="rounded-xl border border-blue-100 bg-blue-50 p-5">
@@ -100,7 +175,7 @@ const STATUS_NEXT: Record<string, StatusNext> = {
         </div>
     {/if}
 
-    {#if formErr && !createErr && !resetErr}
+    {#if formErr && !createErr && !inviteErr && !resetErr}
         <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {formErr}
         </div>
@@ -164,6 +239,11 @@ const STATUS_NEXT: Record<string, StatusNext> = {
                                     <span class="rounded-full px-2 py-0.5 text-xs font-medium {STATUS_COLOR[user.status]}">
                                         {t(`users.status_${user.status}`)}
                                     </span>
+                                    {#if user.pendingInvite}
+                                        <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                            {t("users.badge_pending_invite")}
+                                        </span>
+                                    {/if}
                                     {#if STATUS_NEXT[user.status]}
                                         <form method="POST" action="?/updateStatus" use:enhance>
                                             <input type="hidden" name="id" value={user.id} />
