@@ -7,7 +7,7 @@ import { findActiveUserById } from "$lib/server/auth/users";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { findOidcClient, isValidClientSecret, parseBasicAuth } from "$lib/server/oidc/client";
-import { buildAddressClaim } from "$lib/server/oidc/claims";
+import { buildAddressClaim, buildOrganizationClaims, parseOrganizationClaimConfig } from "$lib/server/oidc/claims";
 import { findAndConsumeGrant } from "$lib/server/oidc/grant";
 import { verifyPkce } from "$lib/server/oidc/pkce";
 import { issueRefreshToken, rotateRefreshToken, revokeRefreshTokenFamily } from "$lib/server/oidc/refresh";
@@ -73,6 +73,7 @@ interface BuildTokenParams {
     user: NonNullable<Awaited<ReturnType<typeof findActiveUserById>>>;
     clientId: string; // 공개 client_id (aud/azp/access token 용)
     clientDbId: string; // oidcClients.id PK (서비스 권한 조회용)
+    organizationClaimConfig: string | null; // oidcClients.organizationClaimConfig(JSON text). null=전량 노출.
     scope: string;
     sessionId: string | null;
     nonce: string | null;
@@ -145,11 +146,17 @@ async function buildTokens(params: BuildTokenParams): Promise<{ idToken: string;
         }
     }
 
-    // groups scope — 활성 조직 멤버십을 code(없으면 name) 문자열 배열로 매핑.
-    // userinfo 응답과 동일 로직(membershipToGroups)을 공유한다. 표준 claim 이므로 assignment 머지 이후에 설정.
-    if (scopes.has("groups")) {
+    // groups / organization scope — 활성 조직 멤버십 기반. userinfo 응답과 동일 로직
+    // (membershipToGroups / buildOrganizationClaims)을 공유한다. 표준 claim 이므로 assignment
+    // 머지 이후에 설정. 두 scope 모두 요청돼도 멤버십은 한 번만 조회한다.
+    if (scopes.has("groups") || scopes.has("organization")) {
         const membership = await getUserMembership(db, user.id);
-        idTokenPayload.groups = membershipToGroups(membership);
+        if (scopes.has("groups")) {
+            idTokenPayload.groups = membershipToGroups(membership);
+        }
+        if (scopes.has("organization")) {
+            Object.assign(idTokenPayload, buildOrganizationClaims(membership, parseOrganizationClaimConfig(params.organizationClaimConfig)));
+        }
     }
 
     const idToken = await signJwt(idTokenPayload, signingKey.privateKey, signingKey.kid);
@@ -372,6 +379,7 @@ export const POST: RequestHandler = async (event) => {
             user,
             clientId,
             clientDbId: client.id,
+            organizationClaimConfig: client.organizationClaimConfig,
             scope: effectiveScope,
             sessionId: record.sessionId,
             nonce: null, // refresh 로 재발급되는 id_token 에는 nonce 를 넣지 않는다 (원 요청 전용)
@@ -464,6 +472,7 @@ export const POST: RequestHandler = async (event) => {
         user,
         clientId,
         clientDbId: client.id,
+        organizationClaimConfig: client.organizationClaimConfig,
         scope: grant.scope,
         sessionId: grant.sessionId,
         nonce: grant.nonce,

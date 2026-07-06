@@ -9,6 +9,28 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const err = $derived((form as { error?: string } | null)?.error ?? null);
 
 let editingId = $state<string | null>(null);
+
+// organization 클레임 노출 토글 — config null/미설정이면 전량 노출(하위호환)이므로 전부 체크.
+const ORG_CLAIM_FIELDS = ["department", "team", "position", "jobTitle"] as const;
+type OrgClaimField = (typeof ORG_CLAIM_FIELDS)[number];
+
+function parseOrgClaimConfig(raw: string | null): Record<OrgClaimField, boolean> {
+    const result: Record<OrgClaimField, boolean> = { department: true, team: true, position: true, jobTitle: true };
+    if (!raw) return result; // null=미설정=전량 노출
+    try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        for (const f of ORG_CLAIM_FIELDS) {
+            if (typeof parsed[f] === "boolean") result[f] = parsed[f] as boolean;
+        }
+    } catch {
+        /* 파싱 실패 시 전량 노출 폴백 */
+    }
+    return result;
+}
+
+// 서버 저장값에서 파생한 체크박스 상태(writable $derived). 체크박스 bind 로 로컬 편집이
+// 가능하고, 저장 후 load 재실행으로 data.client 가 바뀌면 자동으로 재계산된다.
+let orgClaims = $derived(parseOrgClaimConfig((data.client as { organizationClaimConfig: string | null }).organizationClaimConfig));
 </script>
 
 <div class="max-w-3xl space-y-8">
@@ -109,6 +131,34 @@ let editingId = $state<string | null>(null);
                     <input type="checkbox" name="isDefault" value="true" class="rounded" /> default
                 </label>
                 <button type="submit" class="ml-auto rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white">{t("roles.add")}</button>
+            </div>
+        </form>
+    </section>
+
+    <!-- organization scope 클레임 노출 토글 -->
+    <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div class="mb-1 flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-gray-700">{t("oidc.org_claims.title")}</h2>
+        </div>
+        <p class="mb-4 text-xs text-gray-500">{t("oidc.org_claims.desc")}</p>
+
+        {#if (form as { organizationClaimsUpdated?: boolean } | null)?.organizationClaimsUpdated}
+            <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-xs text-green-700">{t("oidc.org_claims.saved")}</div>
+        {/if}
+
+        <form method="POST" action="?/updateOrganizationClaims" use:enhance class="space-y-3">
+            {#each ORG_CLAIM_FIELDS as field (field)}
+                <label class="flex items-start gap-3">
+                    <input type="checkbox" name={field} value="true" bind:checked={orgClaims[field]} class="mt-0.5 rounded" />
+                    <span>
+                        <span class="block text-sm font-medium text-gray-800">{t(`oidc.org_claims.field_${field}`)}</span>
+                        <span class="block text-xs text-gray-500">{t(`oidc.org_claims.field_${field}_desc`)}</span>
+                    </span>
+                </label>
+            {/each}
+            <div class="flex items-center gap-3 border-t border-gray-100 pt-3">
+                <p class="text-xs text-gray-400">{t("oidc.org_claims.all_note")}</p>
+                <button type="submit" class="ml-auto rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white">{t("common.save")}</button>
             </div>
         </form>
     </section>

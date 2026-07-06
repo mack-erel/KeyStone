@@ -6,7 +6,7 @@ import { oidcClients, users } from "$lib/server/db/schema";
 import { verifyAccessToken, tryWithSecretsNullable } from "$lib/server/crypto/keys";
 import { getUserMembership, membershipToGroups } from "$lib/server/org/membership";
 import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
-import { buildAddressClaim } from "$lib/server/oidc/claims";
+import { buildAddressClaim, buildOrganizationClaims, parseOrganizationClaimConfig } from "$lib/server/oidc/claims";
 import { translate } from "$lib/i18n/server";
 
 const RESERVED_USERINFO_CLAIMS = new Set(["sub", "iss", "aud", "iat", "exp", "auth_time"]);
@@ -48,7 +48,7 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         return bearerError("invalid_token", translate(locals.locale, "oidc.errors.token_aud_mismatch"));
     }
     const [issuingClient] = await db
-        .select({ id: oidcClients.id })
+        .select({ id: oidcClients.id, organizationClaimConfig: oidcClients.organizationClaimConfig })
         .from(oidcClients)
         .where(and(eq(oidcClients.tenantId, tenant.id), eq(oidcClients.clientId, claims.clientId), eq(oidcClients.enabled, true)))
         .limit(1);
@@ -125,31 +125,7 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         }
 
         if (scopes.has("organization")) {
-            response.department = membership.departments.map((d) => ({
-                id: d.id,
-                name: d.name,
-                code: d.code,
-                is_primary: d.isPrimary,
-                job_title: d.jobTitle,
-                position: d.position
-                    ? {
-                          id: d.position.id,
-                          name: d.position.name,
-                          code: d.position.code,
-                          level: d.position.level,
-                      }
-                    : null,
-            }));
-            response.team = membership.teams.map((t) => ({
-                id: t.id,
-                name: t.name,
-                code: t.code,
-                department: t.departmentName,
-                is_primary: t.isPrimary,
-                job_title: t.jobTitle,
-            }));
-            response.position = membership.primaryPosition?.name ?? null;
-            response.job_title = membership.primaryJobTitle ?? null;
+            Object.assign(response, buildOrganizationClaims(membership, parseOrganizationClaimConfig(issuingClient.organizationClaimConfig)));
         }
     }
 

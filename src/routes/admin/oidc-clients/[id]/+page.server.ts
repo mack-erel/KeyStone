@@ -6,6 +6,7 @@ import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import type { DB } from "$lib/server/db";
 import { oidcClients, serviceRoles } from "$lib/server/db/schema";
 import { adminError, requireFormId } from "$lib/server/admin/errors";
+import { ORGANIZATION_CLAIM_FIELDS, type OrganizationClaimConfig } from "$lib/server/oidc/claims";
 
 const ROLE_KEY_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 
@@ -108,6 +109,47 @@ export const actions: Actions = {
             .where(and(eq(serviceRoles.id, id), eq(serviceRoles.tenantId, tenant.id), eq(serviceRoles.serviceType, "oidc"), eq(serviceRoles.serviceRefId, params.id)));
 
         return { updated: true };
+    },
+
+    // organization scope 클레임의 클라이언트별 노출 토글 저장.
+    // 네 필드가 모두 켜져 있으면 null(=미설정=전량 노출, 하위호환)로 저장해 DB 를 깨끗이 유지하고,
+    // 하나라도 꺼져 있으면 명시적 JSON config 를 저장한다. token/userinfo 양쪽이 동일 config 를 적용한다.
+    updateOrganizationClaims: async (event) => {
+        const { locals, params } = event;
+        const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
+        const fd = await event.request.formData();
+
+        const c = await clientForTenant(db, tenant.id, params.id);
+        if (!c) return fail(404, { error: adminError(locale, "client_not_found") });
+
+        const config: OrganizationClaimConfig = {};
+        let allEnabled = true;
+        for (const field of ORGANIZATION_CLAIM_FIELDS) {
+            const enabled = fd.get(field) === "true";
+            config[field] = enabled;
+            if (!enabled) allEnabled = false;
+        }
+
+        const value = allEnabled ? null : JSON.stringify(config);
+        await db
+            .update(oidcClients)
+            .set({ organizationClaimConfig: value, updatedAt: new Date() })
+            .where(and(eq(oidcClients.id, c.id), eq(oidcClients.tenantId, tenant.id)));
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            actorId: locals.user!.id,
+            spOrClientId: params.id,
+            kind: "oidc_client_updated",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { organizationClaimConfig: value },
+        });
+
+        return { organizationClaimsUpdated: true };
     },
 
     deleteRole: async (event) => {
