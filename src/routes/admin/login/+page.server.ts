@@ -59,12 +59,12 @@ export const actions: Actions = {
             });
         }
 
-        const { db, tenant } = requireDbContext(event.locals);
+        const { db, tenant, rateLimitStore } = requireDbContext(event.locals);
         const requestMetadata = getRequestMetadata(event);
 
         // 레이트 리밋: IP당 10회/15분
         const rlKey = `admin-login:${requestMetadata.ipKey}`;
-        const rl = await checkRateLimit(db, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
+        const rl = await checkRateLimit(rateLimitStore, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
             return fail(429, {
                 username,

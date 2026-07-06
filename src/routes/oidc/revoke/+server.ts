@@ -25,10 +25,10 @@ function errorResponse(code: string, description: string, status: number): Respo
 
 export const POST: RequestHandler = async (event) => {
     const { locals, request } = event;
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
 
     const { ipKey } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `oidc-revoke:${ipKey}`, { windowMs: 60 * 1000, limit: 60 });
+    const rl = await checkRateLimit(rateLimitStore, `oidc-revoke:${ipKey}`, { windowMs: 60 * 1000, limit: 60 });
     if (!rl.allowed) {
         return new Response(JSON.stringify({ error: "rate_limit_exceeded", error_description: translate(locals.locale, "oidc.errors.rate_limited_short") }), {
             status: 429,

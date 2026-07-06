@@ -74,7 +74,7 @@ export const actions: Actions = {
     resendVerification: async (event) => {
         const { locals } = event;
         if (!locals.user) throw redirect(303, "/login");
-        const { db } = requireDbContext(locals);
+        const { db, rateLimitStore } = requireDbContext(locals);
         const locale = locals.locale;
 
         // 이미 인증된 계정은 조용히 no-op(성공 응답).
@@ -82,7 +82,7 @@ export const actions: Actions = {
             return { resent: true };
         }
 
-        const rl = await checkRateLimit(db, `resend-verification:${locals.user.id}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        const rl = await checkRateLimit(rateLimitStore, `resend-verification:${locals.user.id}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
             return fail(429, { resendError: translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }) });
         }

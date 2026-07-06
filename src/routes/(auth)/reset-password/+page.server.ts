@@ -67,7 +67,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
 
 export const actions: Actions = {
     default: async (event) => {
-        const { db } = requireDbContext(event.locals);
+        const { db, rateLimitStore } = requireDbContext(event.locals);
 
         const formData = await event.request.formData();
         const token = String(formData.get("token") ?? "");
@@ -82,7 +82,7 @@ export const actions: Actions = {
         // ctrls C8: 토큰 제출 브루트포스/자동화 방어. 토큰이 256bit CSPRNG 라 추측 실익은
         // 낮지만, 형제 인증 라우트와 동일하게 IP 당 시도를 제한해 정합성·DB 부하를 막는다.
         const meta = getRequestMetadata(event);
-        const rl = await checkRateLimit(db, `reset-password:${meta.ipKey}`, { windowMs: 15 * 60 * 1000, limit: 10 });
+        const rl = await checkRateLimit(rateLimitStore, `reset-password:${meta.ipKey}`, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
             return failWithSkin(translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }));
         }

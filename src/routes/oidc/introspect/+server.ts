@@ -34,11 +34,11 @@ function inactive(): Response {
 
 export const POST: RequestHandler = async (event) => {
     const { locals, request } = event;
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
     const { signingKeySecrets } = locals.runtimeConfig;
 
     const { ipKey } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `oidc-introspect:${ipKey}`, { windowMs: 60 * 1000, limit: 60 });
+    const rl = await checkRateLimit(rateLimitStore, `oidc-introspect:${ipKey}`, { windowMs: 60 * 1000, limit: 60 });
     if (!rl.allowed) {
         return new Response(JSON.stringify({ error: "rate_limit_exceeded", error_description: translate(locals.locale, "oidc.errors.rate_limited_short") }), {
             status: 429,

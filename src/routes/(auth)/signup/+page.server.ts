@@ -60,7 +60,7 @@ async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], fl
 
 export const actions: Actions = {
     default: async (event) => {
-        const { db, tenant } = requireDbContext(event.locals);
+        const { db, tenant, rateLimitStore } = requireDbContext(event.locals);
 
         const formData = await event.request.formData();
         const username = String(formData.get("username") ?? "")
@@ -77,7 +77,7 @@ export const actions: Actions = {
 
         // IP 기반 레이트리밋 — 60분/5회.
         const meta = getRequestMetadata(event);
-        const rl = await checkRateLimit(db, `signup:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        const rl = await checkRateLimit(rateLimitStore, `signup:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
             return failSkin(429, translate(locale, "signup.err_rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }));
         }

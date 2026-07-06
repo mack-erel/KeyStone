@@ -18,7 +18,7 @@ import { translate } from "$lib/i18n/server";
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
     requireServiceToken(request, locals.runtimeConfig);
-    const { db } = requireDbContext(locals);
+    const { db, rateLimitStore } = requireDbContext(locals);
 
     const config = locals.runtimeConfig;
     if (!config.signingKeySecret) {
@@ -36,7 +36,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     }
 
     // ctrls C3: enrollment 코드 브루트포스 방어 (사용자당 5분 창 10회).
-    const rl = await checkRateLimit(db, `totp-enroll-confirm:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
+    const rl = await checkRateLimit(rateLimitStore, `totp-enroll-confirm:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
         throw error(429, translate(locals.locale, "totp.errors.enroll_rate_limited"));
     }

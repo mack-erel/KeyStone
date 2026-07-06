@@ -21,11 +21,11 @@ function authRedirectError(redirectUri: string, errorCode: string, description: 
 
 export const GET: RequestHandler = async (event) => {
     const { locals, url } = event;
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
 
     // IP당 60회/분 제한 — grant INSERT DoS 방지
     const { ip, ipKey } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `oidc-authorize:${ipKey}`, {
+    const rl = await checkRateLimit(rateLimitStore, `oidc-authorize:${ipKey}`, {
         windowMs: 60 * 1000,
         limit: 60,
     });

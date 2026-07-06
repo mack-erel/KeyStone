@@ -8,7 +8,9 @@ export function requireDbContext(locals: App.Locals) {
         throw error(503, locals.runtimeError ?? "데이터베이스 연결을 초기화하지 못했습니다. DB 바인딩/DATABASE_URL 및 DB_DIALECT 설정을 확인해 주세요.");
     }
 
-    return { db: locals.db, tenant: locals.tenant };
+    // rateLimitStore 는 hooks 에서 db 와 동일 블록에서 세팅되므로 db 가 있으면 반드시 존재한다.
+    // (레이트 리밋을 쓰지 않는 엔드포인트도 이 컨텍스트를 쓰므로 store 부재로 503 을 내지는 않는다.)
+    return { db: locals.db, tenant: locals.tenant, rateLimitStore: locals.rateLimitStore! };
 }
 
 /**

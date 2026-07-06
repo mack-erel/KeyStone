@@ -8,7 +8,7 @@ import { translate } from "$lib/i18n/server";
 
 export const POST: RequestHandler = async (event) => {
     const { url, locals, request } = event;
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
     const { rpID, origin } = getWebAuthnConfig(url);
 
     // Origin 검증 — 외부 사이트가 challenge 를 강탈/누적시키지 못하게.
@@ -21,7 +21,7 @@ export const POST: RequestHandler = async (event) => {
     // webauthn_challenges 테이블을 채우는 (D1 storage exhaustion / latency 증가)
     // 면적을 차단. tenant + IP 키, 5분에 30회.
     const meta = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `webauthn-options:${tenant.id}:${meta.ipKey}`, { windowMs: 5 * 60 * 1000, limit: 30 });
+    const rl = await checkRateLimit(rateLimitStore, `webauthn-options:${tenant.id}:${meta.ipKey}`, { windowMs: 5 * 60 * 1000, limit: 30 });
     if (!rl.allowed) {
         throw error(429, translate(locals.locale, "webauthn.errors.rate_limited_retry", { seconds: Math.ceil(rl.retryAfterMs / 1000) }));
     }

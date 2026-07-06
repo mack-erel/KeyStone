@@ -4,6 +4,7 @@ import { SESSION_COOKIE_NAME, SESSION_TOUCH_INTERVAL_MS } from "$lib/server/auth
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { clearSessionCookie, getSessionContext, touchSession } from "$lib/server/auth/session";
 import { getDb, DB_DIALECT } from "$lib/server/db";
+import { resolveRateLimitStore } from "$lib/server/ratelimit";
 import { ensureNodeGcScheduler, maybeRunWorkersGc } from "$lib/server/db/gc";
 import { LOCALE_COOKIE_NAME, resolveLocale } from "$lib/server/locale";
 
@@ -37,6 +38,7 @@ const PUBLIC_META = [/^\/\.well-known\//, /^\/oidc\/jwks/, /^\/saml\/metadata/];
 
 export const handle: Handle = async ({ event, resolve }) => {
     event.locals.db = undefined;
+    event.locals.rateLimitStore = undefined;
     event.locals.tenant = null;
     event.locals.session = null;
     event.locals.user = null;
@@ -99,6 +101,8 @@ export const handle: Handle = async ({ event, resolve }) => {
             const db = handle.db;
             disposeDb = handle.dispose;
             event.locals.db = db;
+            // 레이트 리밋 저장소: Workers=DB(요청당 db), Node=프로세스 전역 in-memory.
+            event.locals.rateLimitStore = resolveRateLimitStore(event.platform, db);
 
             // 만료 데이터 GC 실행 경로 (요청 처리와 완전히 격리 — 실패해도 무영향):
             // - Workers: 요청의 ~1% 에서 ctx.waitUntil 로 백그라운드 발사(응답 지연 0).

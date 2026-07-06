@@ -183,13 +183,13 @@ function tokenResponse(body: Record<string, unknown>): Response {
 
 export const POST: RequestHandler = async (event) => {
     const { locals, request, url } = event;
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
     // signingKeySecret = current (발급 전용), signingKeySecrets = 복호 fallback 용.
     const { signingKeySecret, signingKeySecrets } = locals.runtimeConfig;
 
     // 레이트 리밋: IP당 30회/분
     const { ip, ipKey, userAgent } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `token:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
+    const rl = await checkRateLimit(rateLimitStore, `token:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
     if (!rl.allowed) {
         return new Response(
             JSON.stringify({
@@ -280,7 +280,7 @@ export const POST: RequestHandler = async (event) => {
 
     // per-client 레이트 리밋: 인증 성공한 클라이언트당 60회/분.
     // IP 기반 리밋과 별개로, 자격증명을 아는 남용 클라이언트를 격리한다.
-    const clientRl = await checkRateLimit(db, `token-client:${clientId}`, { windowMs: 60 * 1000, limit: 60 });
+    const clientRl = await checkRateLimit(rateLimitStore, `token-client:${clientId}`, { windowMs: 60 * 1000, limit: 60 });
     if (!clientRl.allowed) {
         await recordTokenFailure(clientId, "rate_limit_exceeded", "client 요청이 너무 많습니다");
         return new Response(

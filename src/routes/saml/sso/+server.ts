@@ -432,11 +432,11 @@ async function handleIdpInitiated(event: Parameters<RequestHandler>[0], ctx: { d
  */
 async function ssoPreflight(event: Parameters<RequestHandler>[0]) {
     const { locals, platform } = event;
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
     const config = getRuntimeConfig(platform);
 
     const { ipKey } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `saml-sso:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
+    const rl = await checkRateLimit(rateLimitStore, `saml-sso:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
     if (!rl.allowed) {
         throw error(429, translate(locals.locale, "saml.errors.rate_limited"));
     }

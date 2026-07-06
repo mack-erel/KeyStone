@@ -40,7 +40,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
     default: async (event) => {
-        const { db, tenant } = requireDbContext(event.locals);
+        const { db, tenant, rateLimitStore } = requireDbContext(event.locals);
         const locale = event.locals.locale;
 
         const formData = await event.request.formData();
@@ -50,7 +50,7 @@ export const actions: Actions = {
 
         // 토큰 제출 브루트포스 방어 — 형제 인증 라우트와 동일하게 IP 당 제한.
         const meta = getRequestMetadata(event);
-        const rl = await checkRateLimit(db, `accept-invite:${meta.ipKey}`, { windowMs: 15 * 60 * 1000, limit: 10 });
+        const rl = await checkRateLimit(rateLimitStore, `accept-invite:${meta.ipKey}`, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
             return fail(429, { error: translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }) });
         }

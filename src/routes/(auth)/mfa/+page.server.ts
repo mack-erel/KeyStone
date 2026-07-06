@@ -109,12 +109,12 @@ export const actions: Actions = {
             throw redirect(303, "/login");
         }
 
-        if (!event.locals.db) {
+        if (!event.locals.db || !event.locals.rateLimitStore) {
             const msg = translate(locale, "errors.db_not_ready");
             return fail(503, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 
-        const rl = await checkRateLimit(event.locals.db, `mfa:${claims.userId}`, {
+        const rl = await checkRateLimit(event.locals.rateLimitStore, `mfa:${claims.userId}`, {
             windowMs: 5 * 60 * 1000,
             limit: 10,
         });

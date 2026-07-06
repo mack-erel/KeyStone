@@ -62,10 +62,10 @@ export const POST: RequestHandler = async (event) => {
     const body = (await request.json()) as RegistrationResponseJSON & { label?: string };
     const label = typeof body.label === "string" ? sanitizePasskeyLabel(body.label) : "";
 
-    const { db: dbForRl, tenant: tenantForRl } = requireDbContext(locals);
+    const { tenant: tenantForRl, rateLimitStore } = requireDbContext(locals);
     // cf-connecting-ip 전용(H-ADMIN-3) + IPv6 /64 정규화(C6). 위조 가능한 x-forwarded-for 는 쓰지 않는다.
     const { ipKey } = getRequestMetadata(event);
-    const rl = await checkRateLimit(dbForRl, `webauthn-register-verify:${tenantForRl.id}:${ipKey}`, { windowMs: 5 * 60 * 1000, limit: 10 });
+    const rl = await checkRateLimit(rateLimitStore, `webauthn-register-verify:${tenantForRl.id}:${ipKey}`, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
         throw error(429, translate(locals.locale, "webauthn.errors.register_rate_limited"));
     }

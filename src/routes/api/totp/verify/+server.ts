@@ -16,7 +16,7 @@ import { translate } from "$lib/i18n/server";
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
     requireServiceToken(request, locals.runtimeConfig);
-    const { db } = requireDbContext(locals);
+    const { db, rateLimitStore } = requireDbContext(locals);
 
     const config = locals.runtimeConfig;
     if (!config.signingKeySecret) {
@@ -31,7 +31,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     // ctrls C3: TOTP 브루트포스 방어. service-token 경계 안이지만 dispatcher 침해 시
     // 6자리 코드를 무제한 시도해 MFA 를 우회할 수 있으므로 사용자당 시도를 제한한다.
     // (5분 창에 10회 — webauthn-verify 와 동일 강도.)
-    const rl = await checkRateLimit(db, `totp-verify:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
+    const rl = await checkRateLimit(rateLimitStore, `totp-verify:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
         throw error(429, translate(locals.locale, "totp.errors.verify_rate_limited"));
     }
