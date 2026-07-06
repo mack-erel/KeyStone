@@ -4,6 +4,18 @@ import { credentials, type Credential, type User, users } from "$lib/server/db/s
 import { PASSWORD_CREDENTIAL_TYPE, TOTP_CREDENTIAL_TYPE } from "./constants";
 import { verifyPassword } from "./password";
 
+// S1(타이밍 계정 열거 차단): username 미존재/비활성/자격증명 부재 경로에서도 실제 scrypt 1회
+// 비용을 발생시켜 존재/미존재 계정의 응답시간을 균등화한다. 아래 상수는 운영 파라미터
+// (scrypt N=2^15, r=8, p=3)와 동일 비용으로 사전 생성한 고정 더미 해시로, 모듈 로드 시 생성하면
+// cold start 비용이 들므로 상수 문자열로 박아 둔다. verifyPassword 는 이 scrypt 레코드에 대해
+// 파생 1회만 수행하고(비교 실패 → rehash 없음) 결과는 폐기된다.
+const TIMING_DUMMY_HASH = "scrypt$N=32768,r=8,p=3$laGnY6fbAMkDKdFTKRUGyg==$Jm6an31vv6UDMaa2dn2B2riImIX6qmwMUcc6BWcccg8=";
+
+async function equalizeAuthTiming(password: string): Promise<void> {
+    // 결과는 의도적으로 폐기 — 존재/미존재 계정 응답시간 균등화 목적의 더미 검증.
+    await verifyPassword(password, TIMING_DUMMY_HASH);
+}
+
 export function normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
 }
@@ -47,12 +59,15 @@ export async function authenticateLocalUser(db: DB, tenantId: string, username: 
     const user = await findUserByUsername(db, tenantId, username);
 
     if (!user || user.status !== "active") {
+        // 존재-오답 경로와 동일하게 scrypt 1회 비용을 태워 타이밍 오라클을 제거.
+        await equalizeAuthTiming(password);
         return null;
     }
 
     const credential = await findPasswordCredential(db, user.id);
 
     if (!credential?.secret) {
+        await equalizeAuthTiming(password);
         return null;
     }
 

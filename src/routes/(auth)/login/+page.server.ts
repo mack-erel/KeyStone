@@ -9,7 +9,8 @@ import { AMR_PASSWORD, amrToAcr } from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { and, eq } from "drizzle-orm";
-import { identityProviders } from "$lib/server/db/schema";
+import type { DB } from "$lib/server/db";
+import { identityProviders, rateLimits } from "$lib/server/db/schema";
 import { authenticateLdap } from "$lib/server/ldap/auth";
 import { provisionLdapUser } from "$lib/server/ldap/provision";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
@@ -17,6 +18,38 @@ import { decryptSecret, encryptSecret } from "$lib/server/crypto/keys";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { translate } from "$lib/i18n/server";
+
+// S2(계정 단위 잠금): IP 무관하게 동일 계정에 대한 연속 실패를 제한한다. 임계값은 보수적으로
+// 15분 창 10회 실패. 성공 로그인은 카운트하지 않고(오탐 최소화), 실패 분기에서만 checkRateLimit
+// 으로 기록한다. 미존재 계정도 제출된 username 키로 동일하게 카운트/응답하므로 사용자 열거
+// 오라클을 만들지 않는다.
+const USER_LOCK_WINDOW_MS = 15 * 60 * 1000;
+const USER_LOCK_LIMIT = 10;
+
+// checkRateLimit(두 버킷 슬라이딩 윈도우)의 키/윈도우 규약을 증가 없이 read-only 로 재현한다.
+// checkRateLimit 은 호출 시 카운터를 선증가시켜 "성공 미카운트 + 실패 시에만 기록" 요건과
+// 충돌하므로, 상단 잠금 판정에는 증가 없는 조회를 쓰고 실제 기록은 실패 분기에서만 수행한다.
+async function accountLockStatus(db: DB, key: string, windowMs: number, limit: number): Promise<{ locked: boolean; retryAfterMs: number }> {
+    const now = Date.now();
+    const windowIndex = Math.floor(now / windowMs);
+    const windowStart = windowIndex * windowMs;
+    const elapsed = now - windowStart;
+
+    const [cur] = await db
+        .select({ count: rateLimits.count })
+        .from(rateLimits)
+        .where(eq(rateLimits.key, `${key}:${windowIndex}`))
+        .limit(1);
+    const [prev] = await db
+        .select({ count: rateLimits.count })
+        .from(rateLimits)
+        .where(eq(rateLimits.key, `${key}:${windowIndex - 1}`))
+        .limit(1);
+
+    const slidingCount = Math.floor((prev?.count ?? 0) * (1 - elapsed / windowMs)) + (cur?.count ?? 0);
+    const locked = slidingCount > limit;
+    return { locked, retryAfterMs: locked ? windowMs - elapsed : 0 };
+}
 
 async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], flashMsg: string, redirectTo: string | null): Promise<string | null> {
     const skinHint = event.url.searchParams.get("skinHint");
@@ -129,6 +162,29 @@ export const actions: Actions = {
             });
         }
 
+        // 계정 단위 잠금(S2): 인증 시도 전에 잠금 여부를 증가 없이 조회해 조기 차단한다.
+        // (LDAP/로컬 인증 이전이라 두 경로 모두 보호되고, 잠긴 계정은 올바른 비밀번호로도
+        //  진입할 수 없어 scrypt 비용 낭비와 열거 오라클을 함께 차단한다.)
+        const userLockKey = `login:user:${username}`;
+        const lock = await accountLockStatus(db, userLockKey, USER_LOCK_WINDOW_MS, USER_LOCK_LIMIT);
+        if (lock.locked) {
+            await recordAuditEvent(db, {
+                tenantId: tenant.id,
+                kind: "login",
+                outcome: "failure",
+                ip: requestMetadata.ip,
+                userAgent: requestMetadata.userAgent,
+                detail: { username, reason: "account_locked" },
+            });
+            const msg = translate(locale, "login.err_account_locked", { minutes: Math.ceil(lock.retryAfterMs / 60000) });
+            return fail(429, {
+                username,
+                redirectTo,
+                error: msg,
+                skinHtml: await resolveSkinForAction(event, msg, redirectTo),
+            });
+        }
+
         // LDAP 프로바이더가 설정된 경우 먼저 시도
         const [ldapProvider] = await db
             .select()
@@ -185,6 +241,11 @@ export const actions: Actions = {
         }
 
         if (!user) {
+            // 실패 시에만 카운트(성공은 미카운트). 미존재/존재-오답 모두 이 분기를 타므로
+            // 동일하게 기록되어 열거 오라클을 만들지 않는다. 임계 초과는 다음 요청의
+            // accountLockStatus 조기 차단에서 반영된다.
+            await checkRateLimit(db, userLockKey, { windowMs: USER_LOCK_WINDOW_MS, limit: USER_LOCK_LIMIT });
+
             await recordAuditEvent(db, {
                 tenantId: tenant.id,
                 kind: "login",

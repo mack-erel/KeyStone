@@ -42,6 +42,28 @@ function clientAllowsGrant(client: OidcClientRecord, grantType: string): boolean
         .includes(grantType);
 }
 
+interface GrantSessionCheck {
+    row: typeof sessions.$inferSelect | null;
+    revoked: boolean;
+    expired: boolean;
+}
+
+/**
+ * grant/refresh 에 연결된 IdP 세션을 조회하고 폐기(revoked)·만료(expired) 여부를 판정한다.
+ * authorization_code / refresh_token 두 grant 경로에서 공통으로 사용한다.
+ * 세션 row 가 없으면(예: onDelete set null 이전에 삭제) revoked/expired 모두 false 로 두어
+ * 호출부의 기존 관례(row 부재 시 거부하지 않음)를 보존한다.
+ */
+async function checkGrantSession(db: DB, sessionId: string): Promise<GrantSessionCheck> {
+    const [row] = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
+    const session = row ?? null;
+    return {
+        row: session,
+        revoked: Boolean(session?.revokedAt),
+        expired: Boolean(session && session.expiresAt.getTime() <= Date.now()),
+    };
+}
+
 interface BuildTokenParams {
     db: DB;
     tenantId: string;
@@ -307,9 +329,10 @@ export const POST: RequestHandler = async (event) => {
         // 브라우저 세션보다 오래 살아야 하기 때문. (로그아웃 시 refresh token 은 별도 폐기됨.)
         let sessionRow: typeof sessions.$inferSelect | null = null;
         if (record.sessionId) {
-            const [s] = await db.select().from(sessions).where(eq(sessions.id, record.sessionId)).limit(1);
-            sessionRow = s ?? null;
-            if (sessionRow?.revokedAt) {
+            const check = await checkGrantSession(db, record.sessionId);
+            sessionRow = check.row;
+            // 명시적 폐기(revoked)만 거부한다 — 세션의 자연 만료(expired)는 위 주석대로 거부하지 않는다.
+            if (check.revoked) {
                 // 방금 회전된 토큰을 포함해 family 를 폐기하고 거부.
                 await revokeRefreshTokenFamily(db, tenant.id, record.userId, clientId);
                 await recordTokenFailure(clientId, "invalid_grant", "연결된 세션이 로그아웃됨");
@@ -410,6 +433,17 @@ export const POST: RequestHandler = async (event) => {
         if (!valid) {
             await recordTokenFailure(clientId, "invalid_grant", "code_verifier 검증 실패");
             return tokenError("invalid_grant", "code_verifier 검증에 실패했습니다.");
+        }
+    }
+
+    // 연결된 IdP 세션이 로그아웃(폐기)됐거나 만료됐으면 거부한다.
+    // 로그아웃 후에도 5분 TTL 안의 미소진 code 로 토큰이 발급되는 것을 막는다.
+    // sessionId 가 null 인 grant(세션 삭제로 set null 된 경우 등)는 검사를 건너뛰어 기존 동작을 보존한다.
+    if (grant.sessionId) {
+        const sessionCheck = await checkGrantSession(db, grant.sessionId);
+        if (sessionCheck.revoked || sessionCheck.expired) {
+            await recordTokenFailure(clientId, "invalid_grant", sessionCheck.revoked ? "연결된 세션이 로그아웃됨" : "연결된 세션이 만료됨");
+            return tokenError("invalid_grant", "로그아웃되었거나 만료된 세션입니다. 다시 로그인해 주세요.");
         }
     }
 

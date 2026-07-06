@@ -11,8 +11,12 @@ import { DEFAULT_TENANT_SLUG } from "$lib/server/auth/constants";
  * 신뢰된 다른 서비스 (예: stardust dispatcher) 가 username/email → users.id (uuid)
  * 매핑이 필요할 때 호출. Bearer service-token 으로 보호.
  *
- * Query 파라미터 (셋 중 하나):
- *   - `?id=<uuid>`                  : 직접 user id (tenant 무관)
+ * 모든 조회는 tenant 스코프로 강제된다. `tenant` 슬러그 미지정 시 default 테넌트로
+ * 폴백하며(username/email 경로와 동일), id 경로도 예외 없이 해당 tenant 소속만 조회한다.
+ * 전역 dispatcher service-token 이 임의 테넌트 사용자 레코드를 조회하는 것을 막는다.
+ *
+ * Query 파라미터 (셋 중 하나 + 선택적 tenant):
+ *   - `?id=<uuid>&tenant=<slug>`    : user id (해당 tenant 소속일 때만)
  *   - `?username=<u>&tenant=<slug>` : tenant 슬러그 생략 시 default
  *   - `?email=<e>&tenant=<slug>`    : email 매칭 (lowercase 비교)
  *
@@ -32,14 +36,18 @@ export const GET: RequestHandler = async ({ request, url, locals }) => {
         throw error(400, "one of id / username / email required");
     }
 
+    const [tenant] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, tenantSlug)).limit(1);
+    if (!tenant) throw error(404, `tenant not found: ${tenantSlug}`);
+
     if (id) {
-        const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+        const [row] = await db
+            .select()
+            .from(users)
+            .where(and(eq(users.tenantId, tenant.id), eq(users.id, id)))
+            .limit(1);
         if (!row) throw error(404, "user not found");
         return json(shape(row));
     }
-
-    const [tenant] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, tenantSlug)).limit(1);
-    if (!tenant) throw error(404, `tenant not found: ${tenantSlug}`);
 
     if (username) {
         const [row] = await db

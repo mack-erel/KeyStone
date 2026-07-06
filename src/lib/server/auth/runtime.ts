@@ -1,3 +1,6 @@
+import { dev } from "$app/environment";
+import { error } from "@sveltejs/kit";
+
 export interface RuntimeConfig {
     defaultTenantName: string;
     issuerUrl?: string;
@@ -34,12 +37,16 @@ export function getRuntimeConfig(platform: App.Platform | undefined): RuntimeCon
 /**
  * ctrls C-10 후속 sweep: issuer URL 결정 헬퍼.
  *
- * IDP_ISSUER_URL 환경변수가 설정되어 있으면 그 값을 사용. 미설정 시 들어온
- * 요청의 origin 으로 fallback (dev 환경 호환). production 에서 이 fallback 이
- * 동작하면 Host 헤더 주입으로 iss 클레임이 오염될 수 있어 운영 가시화를 위해
- * console.warn 한 번 남긴다 (cold start 마다 1회).
+ * IDP_ISSUER_URL 환경변수가 설정되어 있으면 그 값을 사용.
  *
- * 본 sweep 의 호스트 주입 영향:
+ * S5 fail-closed:
+ * - production(`!dev`): 미설정이면 요청 Host 로 fallback 하지 않고 503 오류로 즉시
+ *   차단한다. Host 헤더 주입으로 iss 클레임/SAML Issuer 가 오염되는 것을 막는다.
+ *   (부트스트랩 경로에서 요청 초기 검증도 하지만, discovery 등 baseline 을
+ *    건너뛰는 라우트를 위한 최종 방어선.)
+ * - dev: 로컬 DX 보존을 위해 요청 origin fallback + 1회 warn 유지.
+ *
+ * production 에서 fallback 을 허용했을 때의 호스트 주입 영향:
  * - discovery/token/userinfo: 발급 토큰의 iss 가 attacker 도메인 — RP 가
  *   strict iss 검증하면 거부 (대부분의 RP) → self-DoS. RP 가 느슨하면
  *   attacker 도메인 신뢰로 이어질 수 있음.
@@ -47,13 +54,14 @@ export function getRuntimeConfig(platform: App.Platform | undefined): RuntimeCon
  *   verifyIdToken 실패 → self-DoS.
  * - SAML SLO/logout: SAML 메시지의 Issuer 가 attacker 도메인 — 마찬가지로
  *   SP 의 strict 검증으로 거부 → self-DoS.
- *
- * 직접 RCE/탈취는 아니지만 RP 호환성 + 운영 위생 차원에서 정상 발급은
- * issuerUrl 가 명시된 경우에만 발생하도록 한다.
  */
 let warnedMissingIssuer = false;
 export function resolveIssuerUrl(runtimeConfig: RuntimeConfig | undefined, fallbackOrigin: string): string {
     if (runtimeConfig?.issuerUrl) return runtimeConfig.issuerUrl;
+    if (!dev) {
+        // production fail-closed: Host 주입을 신뢰하지 않는다.
+        throw error(503, "IDP_ISSUER_URL 이 설정되지 않았습니다. 프로덕션에서는 필수 설정입니다.");
+    }
     if (!warnedMissingIssuer) {
         warnedMissingIssuer = true;
         console.warn("[runtime] IDP_ISSUER_URL 미설정 — 요청 Host 기반 origin fallback. 운영에서는 반드시 명시할 것.");
