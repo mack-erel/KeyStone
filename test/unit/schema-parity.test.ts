@@ -74,6 +74,22 @@ const INDEX_PARITY_EXCEPTIONS: IndexParityException[] = [
         // mysql 은 애플리케이션 레벨 트랜잭션으로 동일 불변식을 보장한다(schema.mysql.ts 주석).
         reason: "MySQL 은 partial unique index 미지원 → 앱 레벨 트랜잭션으로 대체",
     },
+    {
+        table: "users",
+        index: "users_deletion_pending_idx",
+        missingIn: ["mysql"],
+        // sqlite/pg 는 부분 인덱스(WHERE status='deletion_pending')로 삭제 예정 계정만 색인한다.
+        // MySQL 은 부분 인덱스를 지원하지 않아 아래 users_deletion_gc_idx(복합)로 대체한다.
+        reason: "MySQL 은 partial index 미지원 → users_deletion_gc_idx 복합 인덱스로 대체",
+    },
+    {
+        table: "users",
+        index: "users_deletion_gc_idx",
+        missingIn: ["sqlite", "pg"],
+        // MySQL 전용 복합 인덱스(status, deletionScheduledAt). sqlite/pg 는 부분 인덱스
+        // users_deletion_pending_idx 로 동일 GC 조회를 더 좁게 색인하므로 이 인덱스가 없다.
+        reason: "sqlite/pg 는 부분 인덱스 users_deletion_pending_idx 사용 → 복합 인덱스 불필요",
+    },
 ];
 
 // ── introspection 정규화 ──────────────────────────────────────────────────────────

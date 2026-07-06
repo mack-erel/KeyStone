@@ -1,7 +1,7 @@
 import { error, fail } from "@sveltejs/kit";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, or, exists, sql } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
-import { users } from "$lib/server/db/schema";
+import { users, credentials, identities } from "$lib/server/db/schema";
 
 export function requireDbContext(locals: App.Locals) {
     if (!locals.db || !locals.tenant) {
@@ -48,10 +48,29 @@ export async function assertNotLastAdmin(db: DB, tenantId: string, userIdToBeCha
     if (!target) return null;
     if (target.role !== "admin" || target.status !== "active") return null;
 
+    // "다른 활성 admin" 은 실제로 **로그인 가능한** 계정만 센다. status=active 지만 아직
+    // credential/identity 가 없는 계정(예: 미수락 초대 admin)은 로그인 자체가 불가능하므로,
+    // 이런 계정이 last-admin 보호를 완화(다른 관리자 존재로 오인)하지 못하게 한다.
+    // 로그인 가능 판정: password/passkey 등 credential 이 있거나, 연합(identities) 계정이면 사용 가능.
+    // (LDAP/OIDC/SAML 은 identities row, password/webauthn 은 credentials row 를 가진다.)
+    const usableAdmin = or(
+        exists(
+            db
+                .select({ one: sql`1` })
+                .from(credentials)
+                .where(eq(credentials.userId, users.id)),
+        ),
+        exists(
+            db
+                .select({ one: sql`1` })
+                .from(identities)
+                .where(eq(identities.userId, users.id)),
+        ),
+    );
     const otherAdmins = await db
         .select({ id: users.id })
         .from(users)
-        .where(and(eq(users.tenantId, tenantId), eq(users.role, "admin"), eq(users.status, "active"), ne(users.id, userIdToBeChanged)))
+        .where(and(eq(users.tenantId, tenantId), eq(users.role, "admin"), eq(users.status, "active"), ne(users.id, userIdToBeChanged), usableAdmin))
         .limit(1);
 
     if (otherAdmins.length === 0) {

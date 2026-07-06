@@ -21,9 +21,9 @@
  * GC 실패는 요청 처리에 절대 영향을 주지 않는다(전부 try/catch + waitUntil 격리).
  */
 
-import { and, eq, lt, or } from "drizzle-orm";
+import { and, eq, lt, or, isNotNull, inArray } from "drizzle-orm";
 import { getDb, DB_DIALECT, type DB } from "./index";
-import { sessions, oidcGrants, passwordResetTokens, emailVerificationTokens, samlSloStates, samlAuthnRequestIds, samlSessions, users } from "./schema";
+import { sessions, oidcGrants, passwordResetTokens, emailVerificationTokens, emailChangeTokens, samlSloStates, samlAuthnRequestIds, samlSessions, users, inviteTokens } from "./schema";
 import { purgeExpiredChallenges } from "$lib/server/auth/webauthn";
 import { purgeExpiredRefreshTokens, REFRESH_TOKEN_TTL_MS } from "$lib/server/oidc/refresh";
 import { purgeExpiredRateLimits } from "$lib/server/ratelimit";
@@ -72,6 +72,14 @@ const NODE_GC_INTERVAL_MS = 60 * 60 * 1000;
 /** Workers 확률적 GC 발사 비율(요청의 ~1%). */
 const WORKERS_GC_SAMPLE_RATE = 0.01;
 
+/**
+ * users 하드삭제 배치 크기. 대량의 deletion_pending 계정이 한 번에 삭제되면 FK cascade
+ * (credentials/sessions/identities/…)로 인한 광범위한 락이 걸릴 수 있어, id 를 배치 단위로
+ * 조회해 나눠 삭제한다. DELETE … LIMIT 는 방언별(sqlite/pg/mysql) 이식성이 없어 "id 조회 →
+ * IN(...) 삭제" 2단계 루프로 이식성 있게 구현한다.
+ */
+const USERS_GC_BATCH_SIZE = 100;
+
 // ── 결과 타입 ────────────────────────────────────────────────────────────────────
 
 export interface GcTableResult {
@@ -103,6 +111,39 @@ function extractAffected(res: unknown): number | null {
     if (typeof r.affectedRows === "number") return r.affectedRows; // mysql2 (일부 경로)
     if (Array.isArray(r) && r[0] && typeof r[0].affectedRows === "number") return r[0].affectedRows; // mysql2
     return null;
+}
+
+/**
+ * users 하드삭제를 배치로 수행한다(대량 cascade 락 방지). deletion_pending & 유예 경과 계정의
+ * id 를 USERS_GC_BATCH_SIZE 만큼 조회 → IN(...) 삭제하는 루프. 마지막 배치(조회 수 < 배치 크기)
+ * 이후 종료한다. 방언 이식성을 위해 DELETE … LIMIT 대신 2단계(select→delete)로 구현한다.
+ * 자체 try/catch 로 에러를 격리하고 결과를 tables 에 push 한다(다른 테이블 GC 에 영향 없음).
+ */
+async function runUsersBatchDelete(db: DB, now: Date, tables: GcTableResult[]): Promise<void> {
+    try {
+        let total = 0;
+        for (;;) {
+            const rows = await db
+                .select({ id: users.id })
+                .from(users)
+                .where(and(eq(users.status, "deletion_pending"), lt(users.deletionScheduledAt, now)))
+                .limit(USERS_GC_BATCH_SIZE);
+            if (rows.length === 0) break;
+            await db.delete(users).where(
+                inArray(
+                    users.id,
+                    rows.map((r) => r.id),
+                ),
+            );
+            total += rows.length;
+            if (rows.length < USERS_GC_BATCH_SIZE) break;
+        }
+        tables.push({ table: "users", deleted: total, ok: true });
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error(`[gc] delete users 실패:`, msg);
+        tables.push({ table: "users", deleted: null, ok: false, error: msg });
+    }
 }
 
 // ── 통합 GC ──────────────────────────────────────────────────────────────────────
@@ -162,6 +203,16 @@ export async function runExpiredDataGc(db: DB): Promise<GcResult> {
     // email_verification_tokens: expiresAt 경과 시 삭제. 사용됨·미사용 모두 만료 후엔 무효.
     await runDelete("email_verification_tokens", () => db.delete(emailVerificationTokens).where(lt(emailVerificationTokens.expiresAt, now)));
 
+    // email_change_tokens: 만료(expiresAt 경과) 또는 소진(usedAt 설정)된 이메일 변경 토큰 삭제.
+    //   invite_tokens 와 동일 시맨틱 — 소진분도 재사용 불가하므로 함께 정리(무한 성장 차단).
+    //   미만료·미소진 토큰(유효한 변경 대기)은 두 조건 모두 거짓이라 보존된다.
+    await runDelete("email_change_tokens", () => db.delete(emailChangeTokens).where(or(lt(emailChangeTokens.expiresAt, now), isNotNull(emailChangeTokens.usedAt))));
+
+    // invite_tokens: 만료(expiresAt 경과) 또는 소진(usedAt 설정)된 초대 토큰 삭제. 다른 토큰
+    //   테이블과 동일 시맨틱이되, 소진분도 재사용 불가하므로 함께 정리한다(무한 성장 차단).
+    //   미만료·미소진 토큰(유효한 초대 대기)은 두 조건 모두 거짓이라 보존된다.
+    await runDelete("invite_tokens", () => db.delete(inviteTokens).where(or(lt(inviteTokens.expiresAt, now), isNotNull(inviteTokens.usedAt))));
+
     // saml_slo_states: SLO 체인 상태. 자체 expiresAt 경과 시 삭제(만료된 체인은 죽은 상태).
     await runDelete("saml_slo_states", () => db.delete(samlSloStates).where(lt(samlSloStates.expiresAt, now)));
 
@@ -185,13 +236,27 @@ export async function runExpiredDataGc(db: DB): Promise<GcResult> {
     //   **보수적 조건**: (a) status 가 정확히 deletion_pending 이고 (b) deletionScheduledAt < now 인
     //   행만 대상이다. deletionScheduledAt 이 NULL 인 활성/일반 계정은 `<` 비교에서 참이 되지 않아
     //   절대 매칭되지 않으며(활성 계정 오삭제 불가), 유예 미경과 계정도 삭제되지 않는다.
-    await runDelete("users", () => db.delete(users).where(and(eq(users.status, "deletion_pending"), lt(users.deletionScheduledAt, now))));
+    //   대량 cascade 락을 피하려고 배치(USERS_GC_BATCH_SIZE)로 id 를 조회해 나눠 삭제한다.
+    await runUsersBatchDelete(db, now, tables);
 
     const result: GcResult = { startedAt, durationMs: Date.now() - startedAt, tables };
 
     const totalDeleted = tables.reduce((sum, t) => sum + (t.deleted ?? 0), 0);
     const failed = tables.filter((t) => !t.ok).map((t) => t.table);
-    console.log(`[gc] 완료 ${result.durationMs}ms — 삭제 ${totalDeleted}+ 건` + (failed.length ? `, 실패 테이블: ${failed.join(", ")}` : ""), tables);
+    // 구조화(JSON) 로깅 — 로그 수집기에서 파싱 가능한 단일 라인으로 GC 결과를 남긴다.
+    // 과설계(전면 로거/메트릭 파이프라인)는 범위 밖 — 결과 요약 + 테이블별 상세만 직렬화한다.
+    // deleted 는 방언별로 산출 불가할 수 있어 null 이면 "+" 의미(최소 건수)로 totalDeleted 에 0 처리.
+    console.log(
+        JSON.stringify({
+            event: "gc_complete",
+            startedAt: new Date(result.startedAt).toISOString(),
+            durationMs: result.durationMs,
+            totalDeleted,
+            ok: failed.length === 0,
+            failedTables: failed,
+            tables: result.tables,
+        }),
+    );
 
     return result;
 }

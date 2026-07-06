@@ -20,7 +20,9 @@ async function lookupToken(db: App.Locals["db"], tenantId: string, token: string
         .select({ tokenId: inviteTokens.id, userId: users.id, expiresAt: inviteTokens.expiresAt })
         .from(inviteTokens)
         .innerJoin(users, eq(inviteTokens.userId, users.id))
-        .where(and(eq(inviteTokens.tokenHash, tokenHash), isNull(inviteTokens.usedAt), eq(users.tenantId, tenantId)))
+        // status='active' 강제 — 비활성(disabled/locked)·삭제예정(deletion_pending) 계정에 credential 을
+        // 심는 것을 차단한다. 소진 직전(action)에도 이 lookupToken 을 재호출하므로 TOCTOU 창을 최소화한다.
+        .where(and(eq(inviteTokens.tokenHash, tokenHash), isNull(inviteTokens.usedAt), eq(users.tenantId, tenantId), eq(users.status, "active")))
         .limit(1);
     if (!record || record.expiresAt < now) return null;
     return record;
@@ -74,7 +76,7 @@ export const actions: Actions = {
                     userId: record.userId,
                     type: PASSWORD_CREDENTIAL_TYPE,
                     secret: hashedPw,
-                    label: "비밀번호",
+                    label: translate(locale, "accept_invite.credential_label"),
                 }),
             (h) => h.update(users).set({ emailVerifiedAt: now, updatedAt: now }).where(eq(users.id, record.userId)),
             (h) =>

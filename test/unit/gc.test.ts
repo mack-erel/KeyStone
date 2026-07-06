@@ -23,6 +23,7 @@ interface DeleteCapture {
 
 function makeDb(opts: { failFor?: string[] } = {}) {
     const deletes: DeleteCapture[] = [];
+    const selects: DeleteCapture[] = [];
     const db = {
         delete: (table: unknown) => {
             const name = getTableName(table as Parameters<typeof getTableName>[0]);
@@ -34,14 +35,35 @@ function makeDb(opts: { failFor?: string[] } = {}) {
                 },
             };
         },
+        // users 배치 하드삭제(runUsersBatchDelete)는 select().from(users).where(cond).limit(n) 로
+        // id 를 조회한 뒤 delete(users).where(inArray(...)) 한다. select 를 캡처하고, users 는
+        // 한 배치(배치 크기보다 작음)만 반환해 루프가 정확히 1회 만에 종료되게 한다.
+        select: () => ({
+            from: (table: unknown) => {
+                const name = getTableName(table as Parameters<typeof getTableName>[0]);
+                const builder = {
+                    _where: undefined as SQL | undefined,
+                    where(where: SQL) {
+                        this._where = where;
+                        return this;
+                    },
+                    async limit() {
+                        if (opts.failFor?.includes(name)) throw new Error(`boom:${name}`);
+                        if (this._where) selects.push({ table: name, where: this._where });
+                        return name === "users" ? [{ id: "u1" }] : [];
+                    },
+                };
+                return builder;
+            },
+        }),
     } as unknown as DB;
-    return { db, deletes };
+    return { db, deletes, selects };
 }
 
-/** 캡처된 delete 목록에서 테이블명으로 where 를 찾아 렌더링한다. */
-function whereFor(deletes: DeleteCapture[], table: string): { sql: string; params: unknown[] } {
-    const cap = deletes.find((d) => d.table === table);
-    if (!cap) throw new Error(`delete for ${table} 미실행`);
+/** 캡처된 delete/select 목록에서 테이블명으로 where 를 찾아 렌더링한다. */
+function whereFor(captures: DeleteCapture[], table: string): { sql: string; params: unknown[] } {
+    const cap = captures.find((d) => d.table === table);
+    if (!cap) throw new Error(`capture for ${table} 미실행`);
     return render(cap.where);
 }
 
@@ -64,6 +86,8 @@ const ALL_TABLES = [
     "oidc_grants",
     "password_reset_tokens",
     "email_verification_tokens",
+    "email_change_tokens",
+    "invite_tokens",
     "saml_slo_states",
     "saml_authn_request_ids",
     "saml_sessions",
@@ -147,13 +171,14 @@ describe("runExpiredDataGc — 보수적 만료 조건", () => {
         expect(c1).toBeGreaterThanOrEqual(start - SESSION_TTL_MS - 5_000);
     });
 
-    it("users: status=deletion_pending 이고 deletionScheduledAt 경과분만 삭제한다(활성/미경과 보존)", async () => {
+    it("users: status=deletion_pending 이고 deletionScheduledAt 경과분만 (배치)조회·삭제한다(활성/미경과 보존)", async () => {
         const start = Date.now();
-        const { db, deletes } = makeDb();
+        const { db, deletes, selects } = makeDb();
         await runExpiredDataGc(db);
         const end = Date.now();
 
-        const { sql, params } = whereFor(deletes, "users");
+        // 배치 하드삭제는 대상 id 를 select 로 먼저 조회한다 — 대상 조건(where)을 이 select 에서 검증.
+        const { sql, params } = whereFor(selects, "users");
         // 두 조건(AND): status = 'deletion_pending' 그리고 deletion_scheduled_at < now.
         expect(sql).toContain('"users"."status" = ?');
         expect(sql).toContain('"users"."deletion_scheduled_at" < ?');
@@ -165,6 +190,26 @@ describe("runExpiredDataGc — 보수적 만료 조건", () => {
         expect(statusParam).toBe("deletion_pending");
         // 유예 없이 즉시(now) cutoff — 실제 30일 유예는 신청 시 deletionScheduledAt 에 반영되어 있으므로
         // GC 는 예정 시각 경과분만 지운다.
+        expect(cutoff).toBeGreaterThanOrEqual(start - 5_000);
+        expect(cutoff).toBeLessThanOrEqual(end);
+
+        // 조회된 id 로 실제 삭제(inArray)가 배치 수행된다.
+        const delSql = whereFor(deletes, "users").sql;
+        expect(delSql).toContain('"users"."id" in');
+    });
+
+    it("invite_tokens: 만료(expiresAt 경과) 또는 소진(usedAt 설정) 토큰을 삭제한다(유효 대기분 보존)", async () => {
+        const start = Date.now();
+        const { db, deletes } = makeDb();
+        await runExpiredDataGc(db);
+        const end = Date.now();
+
+        const { sql, params } = whereFor(deletes, "invite_tokens");
+        // 두 분기(OR): 만료(expires_at <) 또는 소진(used_at is not null).
+        expect(sql).toContain('"invite_tokens"."expires_at" < ?');
+        expect(sql).toContain('"invite_tokens"."used_at" is not null');
+        expect(sql).toContain(" or ");
+        const cutoff = params[0] as number;
         expect(cutoff).toBeGreaterThanOrEqual(start - 5_000);
         expect(cutoff).toBeLessThanOrEqual(end);
     });
