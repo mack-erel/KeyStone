@@ -16,21 +16,40 @@
  * invalidate 유틸을 노출한다).
  */
 
+import "reflect-metadata";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createClient, type Client } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { eq } from "drizzle-orm";
+import * as x509 from "@peculiar/x509";
+import { X509Certificate } from "@peculiar/x509";
 import type { RequestEvent } from "@sveltejs/kit";
 import type { DB } from "$lib/server/db";
-import { credentials, oidcClients, sessions, tenants, userServiceAssignments, users, type Session, type Tenant, type User } from "$lib/server/db/schema";
+import {
+    credentials,
+    identityProviders,
+    oidcClients,
+    samlSps,
+    sessions,
+    tenants,
+    userServiceAssignments,
+    users,
+    type IdentityProvider,
+    type SamlSp,
+    type Session,
+    type Tenant,
+    type User,
+} from "$lib/server/db/schema";
 import { ensureDefaultTenant, ensureSigningKey } from "$lib/server/auth/bootstrap";
 import { getRuntimeConfig, type RuntimeConfig } from "$lib/server/auth/runtime";
 import { hashPassword } from "$lib/server/auth/password";
 import { hashClientSecret } from "$lib/server/oidc/client";
 import { createSessionRecord } from "$lib/server/auth/session";
-import { b64uEncode } from "$lib/server/crypto/keys";
+import { b64uEncode, getActiveSigningKey } from "$lib/server/crypto/keys";
+import { DbRateLimitStore } from "$lib/server/ratelimit";
+import { ensureXmlEngine, xmldsigjs, XMLSerializer } from "$lib/server/saml/xml-setup";
 
 // ── 테스트용 마스터 시크릿 / issuer ────────────────────────────────────────────────
 // 실 서명·암호화 경로가 이 값을 사용한다. platform.env 로 주입해 getRuntimeConfig 가 읽는다.
@@ -161,6 +180,8 @@ export function makeEvent(opts: MakeEventOptions): RequestEvent<never, never> {
 
     const locals: App.Locals = {
         db: opts.locals.db,
+        // 테스트 DB(요청별 격리)로 DbRateLimitStore 를 주입 — 프로덕션 Workers 경로와 동일.
+        rateLimitStore: new DbRateLimitStore(opts.locals.db),
         tenant: opts.locals.tenant,
         user: opts.locals.user ?? null,
         session: opts.locals.session ?? null,
@@ -310,4 +331,262 @@ export async function catchRedirect(fn: () => unknown): Promise<{ status: number
         throw e;
     }
     throw new Error("redirect 가 발생하지 않았습니다.");
+}
+
+/** throw 된 SvelteKit error() 를 잡아 { status, body } 를 반환한다. error 가 아니면 재throw. */
+export async function catchError(fn: () => unknown): Promise<{ status: number; body: unknown }> {
+    try {
+        await fn();
+    } catch (e) {
+        const r = e as { status?: number; body?: unknown };
+        if (typeof r.status === "number" && "body" in (e as object)) {
+            return { status: r.status, body: r.body };
+        }
+        throw e;
+    }
+    throw new Error("error() 가 발생하지 않았습니다.");
+}
+
+// ── 쿠키 체이닝 헬퍼 ───────────────────────────────────────────────────────────────
+// 같은 브라우저(쿠키 저장소)로 여러 라우트를 연속 호출하는 흐름(login → mfa, POST/saml/sso →
+// 로그인 후 재개)을 재현하기 위해, 하나의 makeCookies 인스턴스를 여러 makeEvent 에 재사용한다.
+
+/** 동일 쿠키 저장소를 여러 makeEvent 에 재사용하는 세션(브라우저) 헬퍼. */
+export function makeCookieJar(initial: Record<string, string> = {}) {
+    const cookies = makeCookies(initial);
+    return {
+        cookies,
+        /** 현재 저장소에 담긴 쿠키명→값 스냅샷. */
+        snapshot: () => Object.fromEntries(cookies._store.entries()) as Record<string, string>,
+        /** 특정 쿠키 값 조회(없으면 undefined). */
+        get: (name: string) => cookies.get(name),
+        /** 저장된 쿠키가 하나라도 있는지. */
+        has: (name: string) => cookies._store.has(name),
+    };
+}
+
+// ── SAML 서명 fixture (saml-verify-xml-signature.test.ts 에서 승격·공용화) ─────────────
+
+const SAML_RSA_ALG: RsaHashedKeyGenParams = {
+    name: "RSASSA-PKCS1-v1_5",
+    hash: "SHA-256",
+    modulusLength: 2048,
+    publicExponent: new Uint8Array([1, 0, 1]),
+};
+
+export interface KeyCert {
+    keys: CryptoKeyPair;
+    certPem: string;
+    certB64: string;
+}
+
+/** 자체서명 RSA 키/인증서 쌍을 만든다(SP AuthnRequest 서명·SP cert 등록용). */
+export async function makeKeyCert(cn: string): Promise<KeyCert> {
+    x509.cryptoProvider.set(crypto as Crypto);
+    const keys = (await crypto.subtle.generateKey(SAML_RSA_ALG, true, ["sign", "verify"])) as CryptoKeyPair;
+    const cert = await x509.X509CertificateGenerator.createSelfSigned({
+        serialNumber: "01",
+        name: `CN=${cn}`,
+        notBefore: new Date("2020-01-01T00:00:00Z"),
+        notAfter: new Date("2035-01-01T00:00:00Z"),
+        signingAlgorithm: SAML_RSA_ALG,
+        keys,
+    });
+    const certPem = cert.toString("pem");
+    const certB64 = certPem
+        .replace(/-----BEGIN CERTIFICATE-----/, "")
+        .replace(/-----END CERTIFICATE-----/, "")
+        .replace(/\s+/g, "");
+    return { keys, certPem, certB64 };
+}
+
+export interface SignAuthnRequestOptions {
+    id: string;
+    kc: KeyCert;
+    issuer: string;
+    destination: string;
+    acsUrl: string;
+    /** true 이면 enveloped ds:Signature 를 붙인다. false 면 서명 없는 XML 을 반환한다. */
+    sign?: boolean;
+    forceAuthn?: boolean;
+}
+
+/**
+ * SP-initiated AuthnRequest XML 을 만든다. sign=true 면 SP 개인키로 enveloped ds:Signature 를
+ * <saml:Issuer> 바로 뒤에 삽입한다(response.ts 서명 생성과 동일 방식). IssueInstant 는 현재
+ * 시각(±5분 skew 검증 통과)을 쓴다.
+ */
+export async function buildAuthnRequestXml(opts: SignAuthnRequestOptions): Promise<string> {
+    ensureXmlEngine();
+    const issueInstant = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    const forceAuthnAttr = opts.forceAuthn ? ` ForceAuthn="true"` : "";
+    const fullXml =
+        `<samlp:AuthnRequest` +
+        ` xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"` +
+        ` xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"` +
+        ` ID="${opts.id}" Version="2.0" IssueInstant="${issueInstant}"` +
+        forceAuthnAttr +
+        ` Destination="${opts.destination}"` +
+        ` AssertionConsumerServiceURL="${opts.acsUrl}">` +
+        `<saml:Issuer>${opts.issuer}</saml:Issuer>` +
+        `</samlp:AuthnRequest>`;
+
+    if (!opts.sign) return fullXml;
+
+    const doc = xmldsigjs.Parse(fullXml);
+    const rootEl = doc.documentElement as Element & { setIdAttribute?: (name: string, flag: boolean) => void };
+    rootEl.setIdAttribute?.("ID", true);
+
+    const signedXml = new xmldsigjs.SignedXml();
+    signedXml.XmlSignature.SignedInfo.CanonicalizationMethod.Algorithm = "http://www.w3.org/2001/10/xml-exc-c14n#";
+    await signedXml.Sign({ name: "RSASSA-PKCS1-v1_5" }, opts.kc.keys.privateKey, doc, {
+        x509: [opts.kc.certB64],
+        references: [{ uri: `#${opts.id}`, hash: "SHA-256", transforms: ["enveloped", "exc-c14n"] }],
+    });
+
+    const sigNode = signedXml.XmlSignature.GetXml();
+    if (sigNode) {
+        const issuerEls = rootEl.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:assertion", "Issuer");
+        const issuerEl = issuerEls[0];
+        if (issuerEl?.nextSibling) {
+            rootEl.insertBefore(sigNode, issuerEl.nextSibling);
+        } else {
+            rootEl.appendChild(sigNode);
+        }
+    }
+    return xmldsigjs.Stringify(doc).replace(/^<\?xml[^?]*\?>\s*/i, "");
+}
+
+/** HTTP-POST 바인딩용 SAMLRequest 파라미터 값(base64(XML), deflate 없음)을 만든다. */
+export function encodePostBindingSamlRequest(xml: string): string {
+    const bytes = new TextEncoder().encode(xml);
+    const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+    return btoa(binary);
+}
+
+/** base64(SAMLResponse) 를 디코드해 XML 문자열로 돌려준다(auto-submit 폼 검증용). */
+export function decodeSamlResponse(b64: string): string {
+    const raw = atob(b64);
+    const bin = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bin[i] = raw.charCodeAt(i);
+    return new TextDecoder().decode(bin);
+}
+
+/**
+ * SAML Response XML 에서 서명된 <saml:Assertion> 을 자족적 문서로 추출한다.
+ * (직렬화 검사·디버깅용. 서명 재검증은 verifyAssertionSignatureInResponse 를 쓴다.)
+ */
+export function extractSignedAssertionXml(responseXml: string): string | null {
+    ensureXmlEngine();
+    const doc = xmldsigjs.Parse(responseXml);
+    const assertionEls = doc.getElementsByTagNameNS("urn:oasis:names:tc:SAML:2.0:assertion", "Assertion");
+    const assertionEl = assertionEls[0];
+    if (!assertionEl) return null;
+    assertionEl.setAttribute("xmlns:saml", "urn:oasis:names:tc:SAML:2.0:assertion");
+    assertionEl.setAttribute("xmlns:xs", "http://www.w3.org/2001/XMLSchema");
+    assertionEl.setAttribute("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
+    const serializer = new XMLSerializer();
+    return serializer.serializeToString(assertionEl as unknown as Parameters<typeof serializer.serializeToString>[0]);
+}
+
+const XMLDSIG_NS = "http://www.w3.org/2000/09/xmldsig#";
+const SAML_ASSERTION_NS = "urn:oasis:names:tc:SAML:2.0:assertion";
+
+/**
+ * SAML Response XML 안의 <saml:Assertion> enveloped 서명을 주어진 인증서 공개키로 **in-place**
+ * 검증한다. Response 문서 컨텍스트 안에서 검증하므로(추출/재직렬화 없이) 서명 시점과 동일한
+ * exc-c14n 네임스페이스 컨텍스트를 본다 — SP 가 실제로 수행하는 검증과 동일한 방식.
+ * 서명 불일치·변조·형식 위반 시 false 를 반환한다.
+ */
+export async function verifyAssertionSignatureInResponse(responseXml: string, certPem: string): Promise<boolean> {
+    try {
+        if (!certPem) return false;
+        ensureXmlEngine();
+        const doc = xmldsigjs.Parse(responseXml);
+        const assertionEl = doc.getElementsByTagNameNS(SAML_ASSERTION_NS, "Assertion")[0] as (Element & { setIdAttribute?: (n: string, f: boolean) => void }) | undefined;
+        if (!assertionEl) return false;
+        assertionEl.setIdAttribute?.("ID", true);
+        const sigEl = assertionEl.getElementsByTagNameNS(XMLDSIG_NS, "Signature")[0];
+        if (!sigEl || sigEl.parentNode !== assertionEl) return false;
+        const cert = new X509Certificate(certPem);
+        const publicKey = await crypto.subtle.importKey("spki", cert.publicKey.rawData, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["verify"]);
+        const signedXml = new xmldsigjs.SignedXml(doc);
+        signedXml.LoadXml(sigEl);
+        return await signedXml.Verify(publicKey);
+    } catch {
+        return false;
+    }
+}
+
+// ── SAML SP / LDAP provider 시드 ──────────────────────────────────────────────────
+
+export interface SeedSamlSpOptions {
+    tenantId: string;
+    entityId: string;
+    acsUrl: string;
+    name?: string;
+    cert?: string | null;
+    nameIdFormat?: string;
+    signResponse?: boolean;
+    signAssertion?: boolean;
+    encryptAssertion?: boolean;
+    wantAuthnRequestsSigned?: boolean;
+    allowedAttributes?: string[] | null;
+    attributeMappingJson?: string | null;
+    enabled?: boolean;
+}
+
+/** SAML SP(Service Provider) 레코드를 삽입한다. */
+export async function seedSamlSp(db: DB, opts: SeedSamlSpOptions): Promise<SamlSp> {
+    const id = crypto.randomUUID();
+    await db.insert(samlSps).values({
+        id,
+        tenantId: opts.tenantId,
+        entityId: opts.entityId,
+        name: opts.name ?? opts.entityId,
+        acsUrl: opts.acsUrl,
+        cert: opts.cert ?? null,
+        nameIdFormat: opts.nameIdFormat ?? "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress",
+        signResponse: opts.signResponse ?? true,
+        signAssertion: opts.signAssertion ?? true,
+        encryptAssertion: opts.encryptAssertion ?? false,
+        wantAuthnRequestsSigned: opts.wantAuthnRequestsSigned ?? false,
+        allowedAttributes: opts.allowedAttributes === undefined ? null : opts.allowedAttributes ? JSON.stringify(opts.allowedAttributes) : null,
+        attributeMappingJson: opts.attributeMappingJson ?? null,
+        enabled: opts.enabled ?? true,
+    });
+    const [row] = await db.select().from(samlSps).where(eq(samlSps.id, id)).limit(1);
+    return row!;
+}
+
+export interface SeedIdentityProviderOptions {
+    tenantId: string;
+    kind?: "ldap" | "oidc" | "saml" | "oauth2";
+    name?: string;
+    /** config_json 에 직렬화될 provider 설정(LDAP 는 LdapProviderConfig). */
+    config?: Record<string, unknown>;
+    enabled?: boolean;
+}
+
+/** identity_providers 레코드(기본 LDAP)를 삽입한다. */
+export async function seedIdentityProvider(db: DB, opts: SeedIdentityProviderOptions): Promise<IdentityProvider> {
+    const id = crypto.randomUUID();
+    await db.insert(identityProviders).values({
+        id,
+        tenantId: opts.tenantId,
+        kind: opts.kind ?? "ldap",
+        name: opts.name ?? "Test LDAP",
+        configJson: opts.config ? JSON.stringify(opts.config) : null,
+        enabled: opts.enabled ?? true,
+    });
+    const [row] = await db.select().from(identityProviders).where(eq(identityProviders.id, id)).limit(1);
+    return row!;
+}
+
+/** 현재 활성 IdP 서명키의 인증서(PEM)를 반환한다(SAML Response 서명 검증용). */
+export async function getIdpSigningCertPem(mem: MemoryDb, tenantId: string): Promise<string> {
+    const config = getRuntimeConfig(makePlatform(mem.env));
+    const key = await getActiveSigningKey(mem.db, tenantId, config.signingKeySecrets);
+    if (!key?.certPem) throw new Error("활성 IdP 서명키 인증서가 없습니다.");
+    return key.certPem;
 }
