@@ -13,6 +13,10 @@ import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { credentials, users } from "$lib/server/db/schema";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { translate } from "$lib/i18n/server";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
+
+// 백업 코드 저잔량 경고 임계값(이하이면 경고 알림). account/mfa 의 backupCodesRemaining 표시와 정합.
+const BACKUP_CODES_LOW_THRESHOLD = 2;
 
 export const load: PageServerLoad = async ({ locals, cookies, platform, url }) => {
     const mfaToken = cookies.get(MFA_PENDING_COOKIE);
@@ -208,6 +212,22 @@ export const actions: Actions = {
 
             const msg = useBackup ? translate(locale, "mfa_login.err_invalid_backup") : translate(locale, "mfa_login.err_invalid_totp");
             return fail(400, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
+        }
+
+        // 백업 코드로 통과한 경우: 소진 처리 후 남은 미사용 코드 수를 계산해
+        // 저잔량(≤임계값) 경고 / 소진(0) 알림을 보안 메일로 발송한다(fire-and-forget).
+        // TOTP 로 통과한 경우엔 백업 코드가 소비되지 않으므로 검사하지 않는다(오탐 방지).
+        if (useBackup) {
+            const remainingRows = await db
+                .select({ id: credentials.id })
+                .from(credentials)
+                .where(and(eq(credentials.userId, user.id), eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE), isNull(credentials.usedAt)));
+            const remaining = remainingRows.length;
+            if (remaining === 0) {
+                dispatchSecurityAlert({ to: user.email, locale: user.locale, kind: "backup_codes_depleted", platform: event.platform });
+            } else if (remaining <= BACKUP_CODES_LOW_THRESHOLD) {
+                dispatchSecurityAlert({ to: user.email, locale: user.locale, kind: "backup_codes_low", platform: event.platform });
+            }
         }
 
         // MFA 통과 — 세션 생성

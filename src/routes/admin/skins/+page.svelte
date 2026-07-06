@@ -273,5 +273,8 @@ function clientLabel(clientType: string, clientRefId: string): string {
         <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_FORM_ACTION&#125;&#125;</code> — {t("skins.placeholder_form_action")}</p>
         <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_REDIRECT_TO&#125;&#125;</code> — {t("skins.placeholder_redirect_to")}</p>
         <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_SKIN_HINT&#125;&#125;</code> — {t("skins.placeholder_skin_hint")}</p>
+        <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_REGISTERED&#125;&#125;</code> — {t("skins.placeholder_registered")}</p>
+        <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_PASSWORD_RESET&#125;&#125;</code> — {t("skins.placeholder_password_reset")}</p>
+        <p><code class="rounded bg-white px-1 py-0.5">&#123;&#123;IDP_FLASH_MSG&#125;&#125;</code> — {t("skins.placeholder_flash_msg")}</p>
     </div>
 </div>
