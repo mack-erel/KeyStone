@@ -4,7 +4,7 @@ import type { DB } from "$lib/server/db";
 import { signingKeys, type Tenant, tenants } from "$lib/server/db/schema";
 import { DEFAULT_TENANT_SLUG } from "./constants";
 import { getRuntimeConfig, type RuntimeConfig } from "./runtime";
-import { generateRsaSigningKey, generateSelfSignedCert, unwrapPrivateKey, wrapPrivateKey } from "$lib/server/crypto/keys";
+import { generateRsaSigningKey, generateSelfSignedCert, tryWithSecrets, unwrapPrivateKey, wrapPrivateKey } from "$lib/server/crypto/keys";
 
 function isUniqueConstraintError(error: unknown): boolean {
     return error instanceof Error && /unique constraint failed/i.test(error.message);
@@ -39,7 +39,7 @@ export async function ensureDefaultTenant(db: DB, platform: App.Platform | undef
     return tenant;
 }
 
-export async function ensureSigningKey(db: DB, tenant: Tenant, signingKeySecret: string, issuerUrl?: string): Promise<void> {
+export async function ensureSigningKey(db: DB, tenant: Tenant, signingKeySecrets: string[], issuerUrl?: string): Promise<void> {
     // SAML KeyDescriptor 용 CN
     let cn = "idp";
     if (issuerUrl) {
@@ -59,7 +59,8 @@ export async function ensureSigningKey(db: DB, tenant: Tenant, signingKeySecret:
     // 키가 있지만 cert_pem 이 없는 경우 (M1 → M2 업그레이드): backfill
     if (existing) {
         if (!existing.certPem) {
-            const privateKey = await unwrapPrivateKey(existing.privateJwkEncrypted, signingKeySecret);
+            // 무보호 예외 지점: 무중단 회전 창에서 previous 로 래핑된 키도 복호되도록 fallback.
+            const privateKey = await tryWithSecrets(signingKeySecrets, (s) => unwrapPrivateKey(existing.privateJwkEncrypted, s));
             const publicJwk = JSON.parse(existing.publicJwk) as JsonWebKey;
             const publicKey = await crypto.subtle.importKey("jwk", publicJwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["verify"]);
             const certPem = await generateSelfSignedCert(publicKey, privateKey, cn);
@@ -69,7 +70,8 @@ export async function ensureSigningKey(db: DB, tenant: Tenant, signingKeySecret:
     }
 
     const { kid, publicKey, privateKey, publicJwk } = await generateRsaSigningKey();
-    const privateJwkEncrypted = await wrapPrivateKey(privateKey, signingKeySecret);
+    // 발급/암호화는 항상 current(=secrets[0])만 사용한다. previous fallback 금지.
+    const privateJwkEncrypted = await wrapPrivateKey(privateKey, signingKeySecrets[0]);
     const certPem = await generateSelfSignedCert(publicKey, privateKey, cn);
 
     await db.insert(signingKeys).values({
@@ -134,8 +136,8 @@ export async function ensureAuthBaseline(db: DB, platform: App.Platform | undefi
     // 프로덕션 필수값 검증 — DB 작업 전에 요청 초기에 fail-fast.
     assertRequiredConfig(config);
     const tenant = await ensureDefaultTenant(db, platform);
-    if (config.signingKeySecret) {
-        await ensureSigningKey(db, tenant, config.signingKeySecret, config.issuerUrl);
+    if (config.signingKeySecrets.length > 0) {
+        await ensureSigningKey(db, tenant, config.signingKeySecrets, config.issuerUrl);
     }
 
     g.__idpBaselineCache = { tenant, expiresAt: now + BASELINE_TTL_MS };

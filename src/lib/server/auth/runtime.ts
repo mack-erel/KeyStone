@@ -4,7 +4,18 @@ import { error } from "@sveltejs/kit";
 export interface RuntimeConfig {
     defaultTenantName: string;
     issuerUrl?: string;
+    /**
+     * 마스터 서명/암호화 시크릿의 **current** 값(=`signingKeySecrets[0]`).
+     * 발급/암호화(토큰 서명, private key 래핑, 시크릿·TOTP 암호화, 쿠키·audit 서명)는
+     * **반드시 이 값(current)만** 사용한다. 미설정이면 undefined.
+     */
     signingKeySecret?: string;
+    /**
+     * 무중단 회전용 시크릿 목록. `[current]` 또는 `[current, previous]`.
+     * **복호/검증 경로만** 이 배열을 current→previous 순차로 시도한다(`tryWithSecrets`).
+     * 미설정이면 빈 배열. `IDP_SIGNING_KEY_SECRET_PREVIOUS` 로 previous 를 주입한다.
+     */
+    signingKeySecrets: string[];
     /**
      * stardust dispatcher 가 idp 의 /api/totp/* 를 호출할 때 사용하는 service token.
      * Authorization: Bearer <token> 헤더로 검증. 단일 fixed token (rotation 은 수동).
@@ -26,10 +37,18 @@ export function getRuntimeConfig(platform: App.Platform | undefined): RuntimeCon
     const nodeEnv = typeof process !== "undefined" ? (process.env as EnvLookup) : undefined;
     const getString = (key: string): string | undefined => readString(platformEnv, key) ?? readString(nodeEnv, key);
 
+    // 무중단 회전: current(=IDP_SIGNING_KEY_SECRET) 를 [0], previous 를 [1] 로 둔다.
+    // - current 미설정이면 secrets 는 빈 배열(previous 단독으로는 발급/검증하지 않는다).
+    // - previous 가 current 와 동일하거나 미설정이면 length 1 → 기존과 동일 동작(회귀 0).
+    const signingKeyCurrent = getString("IDP_SIGNING_KEY_SECRET");
+    const signingKeyPrevious = getString("IDP_SIGNING_KEY_SECRET_PREVIOUS");
+    const signingKeySecrets = signingKeyCurrent ? (signingKeyPrevious && signingKeyPrevious !== signingKeyCurrent ? [signingKeyCurrent, signingKeyPrevious] : [signingKeyCurrent]) : [];
+
     return {
         defaultTenantName: getString("IDP_DEFAULT_TENANT_NAME") ?? "Default Tenant",
         issuerUrl: getString("IDP_ISSUER_URL")?.trim().replace(/\/$/, ""),
-        signingKeySecret: getString("IDP_SIGNING_KEY_SECRET"),
+        signingKeySecret: signingKeyCurrent,
+        signingKeySecrets,
         dispatcherServiceToken: getString("DISPATCHER_SERVICE_TOKEN"),
     };
 }

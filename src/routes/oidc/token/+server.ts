@@ -184,7 +184,8 @@ function tokenResponse(body: Record<string, unknown>): Response {
 export const POST: RequestHandler = async (event) => {
     const { locals, request, url } = event;
     const { db, tenant } = requireDbContext(locals);
-    const { signingKeySecret } = locals.runtimeConfig;
+    // signingKeySecret = current (발급 전용), signingKeySecrets = 복호 fallback 용.
+    const { signingKeySecret, signingKeySecrets } = locals.runtimeConfig;
 
     // 레이트 리밋: IP당 30회/분
     const { ip, ipKey, userAgent } = getRequestMetadata(event);
@@ -302,7 +303,7 @@ export const POST: RequestHandler = async (event) => {
         return tokenError("unauthorized_client", "이 클라이언트에 허용되지 않은 grant_type 입니다.");
     }
 
-    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
     if (!signingKey) {
         return tokenError("server_error", "활성 서명 키를 찾을 수 없습니다.", 503);
     }

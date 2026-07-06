@@ -12,6 +12,8 @@ import {
     unwrapPrivateKey,
     encryptSecret,
     decryptSecret,
+    tryWithSecrets,
+    tryWithSecretsNullable,
     type AccessTokenClaims,
 } from "$lib/server/crypto/keys";
 
@@ -256,5 +258,76 @@ describe("secret 암호화 + HKDF 도메인 분리 (encryptSecret / decryptSecre
 
     it("잘못된 형식 거부", async () => {
         await expect(decryptSecret("only.two", secret)).rejects.toThrow(/Invalid encrypted secret format/);
+    });
+});
+
+// ── 무중단 회전 헬퍼 (tryWithSecrets / tryWithSecretsNullable) ──────────────────
+describe("무중단 시크릿 회전 (tryWithSecrets)", () => {
+    const CURRENT = "new-master-secret-abcdef";
+    const PREVIOUS = "old-master-secret-012345";
+
+    it("throwing 변형: current 로 복호 성공 시 previous 는 시도하지 않는다", async () => {
+        // current 로 암호화된 값 → [current, previous] 로 즉시 성공.
+        const enc = await encryptSecret("payload", CURRENT, "ctx");
+        const tried: string[] = [];
+        const out = await tryWithSecrets([CURRENT, PREVIOUS], (s) => {
+            tried.push(s);
+            return decryptSecret(enc, s, "ctx");
+        });
+        expect(out).toBe("payload");
+        expect(tried).toEqual([CURRENT]); // previous 미시도
+    });
+
+    it("throwing 변형: current 실패 시 previous 로 fallback 복호", async () => {
+        // previous 로 암호화된 (회전 전) 값 → current 실패 후 previous 성공.
+        const encOld = await encryptSecret("legacy", PREVIOUS, "ctx");
+        const tried: string[] = [];
+        const out = await tryWithSecrets([CURRENT, PREVIOUS], (s) => {
+            tried.push(s);
+            return decryptSecret(encOld, s, "ctx");
+        });
+        expect(out).toBe("legacy");
+        expect(tried).toEqual([CURRENT, PREVIOUS]);
+    });
+
+    it("throwing 변형: 전부 실패 시 마지막 에러를 throw", async () => {
+        const encOther = await encryptSecret("x", "totally-different-secret", "ctx");
+        await expect(tryWithSecrets([CURRENT, PREVIOUS], (s) => decryptSecret(encOther, s, "ctx"))).rejects.toThrow();
+    });
+
+    it("throwing 변형: 빈 시크릿 배열은 즉시 throw (미설정 방어)", async () => {
+        await expect(tryWithSecrets([], async () => "x")).rejects.toThrow();
+    });
+
+    it("nullable 변형: 최초 non-null 을 반환하고 이후 시크릿은 시도하지 않는다", async () => {
+        const claims: AccessTokenClaims = { sub: "u", tenantId: "t", clientId: "c", scope: "openid", iat: 0, exp: Math.floor(Date.now() / 1000) + 300 };
+        const token = await generateAccessToken(claims, CURRENT);
+        const tried: string[] = [];
+        const out = await tryWithSecretsNullable([CURRENT, PREVIOUS], (s) => {
+            tried.push(s);
+            return verifyAccessToken(token, s, "t");
+        });
+        expect(out?.sub).toBe("u");
+        expect(tried).toEqual([CURRENT]);
+    });
+
+    it("nullable 변형: current(null) → previous 로 fallback", async () => {
+        const claims: AccessTokenClaims = { sub: "u2", tenantId: "t", clientId: "c", scope: "openid", iat: 0, exp: Math.floor(Date.now() / 1000) + 300 };
+        // previous 로 서명된 (회전 전 발급) 토큰.
+        const token = await generateAccessToken(claims, PREVIOUS);
+        const tried: string[] = [];
+        const out = await tryWithSecretsNullable([CURRENT, PREVIOUS], (s) => {
+            tried.push(s);
+            return verifyAccessToken(token, s, "t");
+        });
+        expect(out?.sub).toBe("u2");
+        expect(tried).toEqual([CURRENT, PREVIOUS]);
+    });
+
+    it("nullable 변형: 전부 null 이면 null", async () => {
+        const claims: AccessTokenClaims = { sub: "u3", tenantId: "t", clientId: "c", scope: "openid", iat: 0, exp: Math.floor(Date.now() / 1000) + 300 };
+        const token = await generateAccessToken(claims, "some-other-secret");
+        const out = await tryWithSecretsNullable([CURRENT, PREVIOUS], (s) => verifyAccessToken(token, s, "t"));
+        expect(out).toBeNull();
     });
 });

@@ -14,7 +14,7 @@ import { identityProviders, rateLimits, users } from "$lib/server/db/schema";
 import { authenticateLdap } from "$lib/server/ldap/auth";
 import { provisionLdapUser } from "$lib/server/ldap/provision";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
-import { decryptSecret, encryptSecret } from "$lib/server/crypto/keys";
+import { decryptSecret, encryptSecret, tryWithSecrets } from "$lib/server/crypto/keys";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { translate } from "$lib/i18n/server";
@@ -202,9 +202,10 @@ export const actions: Actions = {
 
             // 암호화된 bindPassword 가 있으면 복호화 (레거시 평문 bindPassword 는 그대로 사용)
             const config = getRuntimeConfig(event.platform);
-            if (ldapConfig.bindPasswordEnc && !ldapConfig.bindPassword && config.signingKeySecret) {
+            if (ldapConfig.bindPasswordEnc && !ldapConfig.bindPassword && config.signingKeySecrets.length > 0) {
                 try {
-                    ldapConfig.bindPassword = await decryptSecret(ldapConfig.bindPasswordEnc, config.signingKeySecret, "idp-ldap-bind-password-v1");
+                    // 무중단 회전: previous 로 암호화된 bindPassword 도 복호되도록 fallback.
+                    ldapConfig.bindPassword = await tryWithSecrets(config.signingKeySecrets, (s) => decryptSecret(ldapConfig.bindPasswordEnc!, s, "idp-ldap-bind-password-v1"));
                 } catch {
                     // 복호화 실패 시 인증 진행 불가 — bindPassword 없이 진행하면 null 반환됨
                 }

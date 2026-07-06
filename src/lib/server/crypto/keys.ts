@@ -32,6 +32,48 @@ export function b64uDecode(str: string): Uint8Array<ArrayBuffer> {
     return arr;
 }
 
+// ── 무중단 시크릿 회전 헬퍼 ────────────────────────────────────────────────────
+
+/**
+ * 마스터 시크릿 무중단 회전 지원 헬퍼 (Phase 9).
+ *
+ * `secrets` 를 순서대로(current=[0] → previous=[1]) 시도하며, `fn` 이 성공하면 그
+ * 결과를 반환한다. 전부 실패(throw)하면 **마지막** 에러를 다시 throw 한다.
+ *
+ * - **복호/검증 경로 전용**이다. 발급/암호화는 절대 fallback 하지 않고 항상
+ *   `secrets[0]`(current) 만 사용해야 한다.
+ * - throw 로 실패를 알리는 함수(`unwrapPrivateKey`, `decryptSecret`,
+ *   `decryptTotpSecret` 등)에 사용한다. null 로 실패를 알리는 검증 함수는
+ *   `tryWithSecretsNullable` 를 사용한다.
+ */
+export async function tryWithSecrets<T>(secrets: string[], fn: (secret: string) => Promise<T>): Promise<T> {
+    if (secrets.length === 0) throw new Error("tryWithSecrets: 시크릿이 설정되지 않았습니다.");
+    let lastError: unknown;
+    for (const secret of secrets) {
+        try {
+            return await fn(secret);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError;
+}
+
+/**
+ * `tryWithSecrets` 의 null-반환 검증 함수용 변형.
+ *
+ * `verifyAccessToken` / `verifyMfaPendingToken` / `verifyChallengeCookie` 처럼
+ * 실패 시 throw 대신 `null` 을 반환하는 함수에 사용한다. current→previous 순차로
+ * 시도해 **최초의 non-null** 결과를 반환하고, 전부 null 이면 null 을 반환한다.
+ */
+export async function tryWithSecretsNullable<T>(secrets: string[], fn: (secret: string) => Promise<T | null>): Promise<T | null> {
+    for (const secret of secrets) {
+        const result = await fn(secret);
+        if (result !== null) return result;
+    }
+    return null;
+}
+
 // ── private key wrapping ──────────────────────────────────────────────────────
 
 async function deriveWrappingKey(secret: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
@@ -335,7 +377,7 @@ export function invalidateSigningKeyCache(tenantId: string): void {
     publicJwksCache().delete(tenantId);
 }
 
-export async function getActiveSigningKey(db: DB, tenantId: string, secret: string): Promise<ActiveSigningKeyValue | null> {
+export async function getActiveSigningKey(db: DB, tenantId: string, secrets: string[]): Promise<ActiveSigningKeyValue | null> {
     const cache = activeSigningKeyCache();
     const now = Date.now();
     const hit = cache.get(tenantId);
@@ -347,7 +389,10 @@ export async function getActiveSigningKey(db: DB, tenantId: string, secret: stri
         .where(and(eq(signingKeys.tenantId, tenantId), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)))
         .limit(1);
     if (!row) return null; // 활성 키 없음 → 캐시하지 않는다(키 생성 직후 즉시 반영).
-    const privateKey = await unwrapPrivateKey(row.privateJwkEncrypted, secret);
+    // 무중단 회전: 저장된 private key 가 previous 시크릿으로 래핑돼 있을 수 있으므로
+    // current→previous 순차로 unwrap 을 시도한다. (서명 자체는 RSA 키로 하므로 발급
+    // "current 고정" 원칙과 무관 — 여기선 저장 키 복호에만 fallback 을 적용한다.)
+    const privateKey = await tryWithSecrets(secrets, (s) => unwrapPrivateKey(row.privateJwkEncrypted, s));
     const value: ActiveSigningKeyValue = {
         kid: row.kid,
         privateKey,

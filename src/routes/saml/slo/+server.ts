@@ -26,6 +26,7 @@ import { revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
 import { buildSamlLogoutRequest, buildSamlLogoutResponse, buildSamlSloRedirectUrl, collectPendingSpData, parseSamlLogoutRequest, type PendingSpData } from "$lib/server/saml/slo";
 import { verifySamlRedirectSignature } from "$lib/server/saml/parse-authn-request";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
+import { translate } from "$lib/i18n/server";
 
 const SLO_STATE_TTL_MS = 10 * 60 * 1000; // 10 분
 const SLO_REQUEST_ID_TTL_MS = 10 * 60 * 1000; // LogoutRequest replay 가드 보존 기간
@@ -43,13 +44,13 @@ function parsePendingSpData(json: string): PendingSpData[] {
 async function fireOidcBackchannelLogout(event: RequestEvent, idpSession: typeof sessions.$inferSelect): Promise<void> {
     const { locals, platform, url } = event;
     const { db, tenant } = requireDbContext(locals);
-    const signingKeySecret = locals.runtimeConfig.signingKeySecret;
-    if (!signingKeySecret) return;
+    const signingKeySecrets = locals.runtimeConfig.signingKeySecrets;
+    if (signingKeySecrets.length === 0) return;
 
     const bcTargets = await getOidcBackchannelTargets(db, tenant.id, idpSession.id);
     if (bcTargets.length === 0) return;
 
-    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
     if (!signingKey) return;
 
     const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
@@ -72,7 +73,7 @@ async function redirectToNextSp(event: RequestEvent, stateId: string, remaining:
     const { db, tenant } = requireDbContext(locals);
 
     if (remaining.length === 0) {
-        throw error(500, "체인에 남은 SP 가 없습니다");
+        throw error(500, translate(locals.locale, "saml.errors.slo_no_remaining_sp"));
     }
 
     const next = remaining[0];
@@ -84,13 +85,13 @@ async function redirectToNextSp(event: RequestEvent, stateId: string, remaining:
         .set({ pendingSpDataJson: JSON.stringify(rest) })
         .where(eq(samlSloStates.id, stateId));
 
-    const signingKeySecret = locals.runtimeConfig.signingKeySecret;
-    if (!signingKeySecret) {
-        throw error(500, "서명 키가 설정되지 않아 SLO 체인을 계속 진행할 수 없습니다");
+    const signingKeySecrets = locals.runtimeConfig.signingKeySecrets;
+    if (signingKeySecrets.length === 0) {
+        throw error(500, translate(locals.locale, "saml.errors.slo_signing_key_not_configured"));
     }
-    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
     if (!signingKey) {
-        throw error(500, "활성 서명 키가 없습니다");
+        throw error(500, translate(locals.locale, "saml.errors.slo_active_signing_key_missing"));
     }
 
     const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
@@ -169,7 +170,7 @@ export const GET: RequestHandler = async (event) => {
             .where(and(eq(samlSloStates.id, relayState), eq(samlSloStates.tenantId, tenant.id), gt(samlSloStates.expiresAt, new Date())))
             .limit(1);
         if (!state) {
-            throw error(400, "Invalid or expired SLO state");
+            throw error(400, translate(locals.locale, "saml.errors.slo_state_invalid"));
         }
 
         // ctrls C-9: SP-initiated 흐름의 LogoutResponse 는 반드시 initiatingSp 의 cert
@@ -183,15 +184,15 @@ export const GET: RequestHandler = async (event) => {
                 .where(and(eq(samlSps.tenantId, tenant.id), eq(samlSps.entityId, state.initiatingSpEntityId)))
                 .limit(1);
             if (!initiatingSp?.cert) {
-                throw error(400, "initiating SP 인증서가 등록되지 않아 LogoutResponse 를 검증할 수 없습니다.");
+                throw error(400, translate(locals.locale, "saml.errors.slo_initiating_sp_cert_missing"));
             }
             if (!url.searchParams.has("Signature")) {
-                throw error(400, "LogoutResponse 는 반드시 서명되어야 합니다.");
+                throw error(400, translate(locals.locale, "saml.errors.slo_logout_response_must_be_signed"));
             }
             const rawQuery = url.search.replace(/^\?/, "");
             const valid = await verifySamlRedirectSignature(rawQuery, initiatingSp.cert);
             if (!valid) {
-                throw error(400, "LogoutResponse 서명 검증 실패");
+                throw error(400, translate(locals.locale, "saml.errors.slo_logout_response_sig_invalid"));
             }
         }
 
@@ -209,9 +210,9 @@ export const GET: RequestHandler = async (event) => {
 
         // SP-initiated 였다면 최초 SP 로 LogoutResponse 를 돌려준다.
         if (state.initiatorSloUrl && state.inResponseTo) {
-            const signingKeySecret = locals.runtimeConfig.signingKeySecret;
-            if (signingKeySecret) {
-                const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+            const signingKeySecrets = locals.runtimeConfig.signingKeySecrets;
+            if (signingKeySecrets.length > 0) {
+                const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
                 if (signingKey) {
                     const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
                     const responseXml = buildSamlLogoutResponse({
@@ -244,7 +245,7 @@ export const GET: RequestHandler = async (event) => {
             .where(and(eq(samlSloStates.id, stateParam), eq(samlSloStates.tenantId, tenant.id), gt(samlSloStates.expiresAt, new Date())))
             .limit(1);
         if (!state) {
-            throw error(400, "Invalid or expired SLO state");
+            throw error(400, translate(locals.locale, "saml.errors.slo_state_invalid"));
         }
 
         const pending = parsePendingSpData(state.pendingSpDataJson);
@@ -266,7 +267,7 @@ export const GET: RequestHandler = async (event) => {
             // 파서가 DOCTYPE/ENTITY 차단 + onErrorStopParsing + IssueInstant skew(±5분) 를 강제한다.
             parsed = await parseSamlLogoutRequest(samlRequest);
         } catch {
-            throw error(400, "Invalid SAMLRequest");
+            throw error(400, translate(locals.locale, "saml.errors.slo_invalid_saml_request"));
         }
 
         // Destination 검증: SP 가 명시했으면 IdP 의 SLO endpoint 와 정확히 일치해야 한다.
@@ -274,7 +275,7 @@ export const GET: RequestHandler = async (event) => {
         if (parsed.destination) {
             const expectedDestination = `${cfgIssuer.replace(/\/+$/, "")}/saml/slo`;
             if (parsed.destination !== expectedDestination) {
-                throw error(400, "LogoutRequest Destination 이 IdP 의 SLO endpoint 와 일치하지 않습니다.");
+                throw error(400, translate(locals.locale, "saml.errors.slo_destination_mismatch"));
             }
         }
 
@@ -285,7 +286,7 @@ export const GET: RequestHandler = async (event) => {
             .where(and(eq(samlSps.tenantId, tenant.id), eq(samlSps.entityId, parsed.issuer), eq(samlSps.enabled, true)))
             .limit(1);
         if (!sp) {
-            throw error(400, "Unknown SAML SP");
+            throw error(400, translate(locals.locale, "saml.errors.slo_unknown_sp"));
         }
 
         // ctrls C-8: 모든 SP-initiated LogoutRequest 는 SP cert 로 서명 검증되어야
@@ -293,15 +294,15 @@ export const GET: RequestHandler = async (event) => {
         // 위조한 LogoutRequest 로 임의 사용자 강제 로그아웃 + SLO 체인을 트리거할 수
         // 있다. Signature 파라미터 누락도 동일하게 거부.
         if (!sp.cert) {
-            throw error(400, "SP 인증서가 등록되지 않아 SLO 요청을 검증할 수 없습니다.");
+            throw error(400, translate(locals.locale, "saml.errors.slo_sp_cert_missing"));
         }
         if (!url.searchParams.has("Signature")) {
-            throw error(400, "LogoutRequest 는 반드시 서명되어야 합니다.");
+            throw error(400, translate(locals.locale, "saml.errors.slo_logout_request_must_be_signed"));
         }
         const rawQuery = url.search.replace(/^\?/, "");
         const valid = await verifySamlRedirectSignature(rawQuery, sp.cert);
         if (!valid) {
-            throw error(400, "Invalid SAMLRequest signature");
+            throw error(400, translate(locals.locale, "saml.errors.slo_saml_request_sig_invalid"));
         }
 
         // Replay 가드: 서명 검증 성공 후 LogoutRequest ID 를 1회용으로 소비한다.
@@ -315,7 +316,7 @@ export const GET: RequestHandler = async (event) => {
                 .where(and(eq(samlAuthnRequestIds.tenantId, tenant.id), eq(samlAuthnRequestIds.requestId, parsed.id), gt(samlAuthnRequestIds.expiresAt, now)))
                 .limit(1);
             if (seen) {
-                throw error(400, "LogoutRequest ID 가 이미 사용되었습니다 (replay)");
+                throw error(400, translate(locals.locale, "saml.errors.slo_logout_request_replay"));
             }
             try {
                 await db.insert(samlAuthnRequestIds).values({
@@ -326,7 +327,7 @@ export const GET: RequestHandler = async (event) => {
                 });
             } catch {
                 // unique 충돌 → replay 와 동일 처리
-                throw error(400, "LogoutRequest ID 가 이미 사용되었습니다 (replay)");
+                throw error(400, translate(locals.locale, "saml.errors.slo_logout_request_replay"));
             }
         }
 
@@ -393,11 +394,11 @@ export const GET: RequestHandler = async (event) => {
             if (!sp.sloUrl) {
                 throw redirect(302, "/");
             }
-            const signingKeySecret = locals.runtimeConfig.signingKeySecret;
-            if (!signingKeySecret) {
+            const signingKeySecrets = locals.runtimeConfig.signingKeySecrets;
+            if (signingKeySecrets.length === 0) {
                 throw redirect(302, "/");
             }
-            const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+            const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
             if (!signingKey) {
                 throw redirect(302, "/");
             }
@@ -422,7 +423,7 @@ export const GET: RequestHandler = async (event) => {
         // 남은 SP 가 있으면: samlSloState 생성 후 첫 SP 로 체인 시작
         if (!idpSession) {
             // 이론적으로 pending.length > 0 이려면 idpSession 이 있었어야 한다.
-            throw error(500, "SLO 체인 초기화 실패");
+            throw error(500, translate(locals.locale, "saml.errors.slo_chain_init_failed"));
         }
 
         const stateId = crypto.randomUUID();

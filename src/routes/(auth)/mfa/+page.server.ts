@@ -5,6 +5,7 @@ import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { createSessionRecord, revokeOtherSessions, setSessionCookie } from "$lib/server/auth/session";
 import { verifyMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
+import { tryWithSecrets, tryWithSecretsNullable } from "$lib/server/crypto/keys";
 import { verifyTotp, decryptTotpSecret, encryptTotpSecret, isLegacyTotpCiphertext, verifyBackupCode } from "$lib/server/auth/totp";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { AMR_PASSWORD, AMR_TOTP, AMR_BACKUP_CODE, amrToAcr, TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
@@ -30,7 +31,7 @@ export const load: PageServerLoad = async ({ locals, cookies, platform, url }) =
         throw redirect(303, "/login");
     }
 
-    const claims = await verifyMfaPendingToken(mfaToken, config.signingKeySecret);
+    const claims = await tryWithSecretsNullable(config.signingKeySecrets, (s) => verifyMfaPendingToken(mfaToken, s));
     if (!claims) {
         cookies.delete(MFA_PENDING_COOKIE, { path: "/" });
         throw redirect(303, "/login");
@@ -94,7 +95,7 @@ export const actions: Actions = {
             return fail(503, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 
-        const claims = await verifyMfaPendingToken(mfaToken, config.signingKeySecret);
+        const claims = await tryWithSecretsNullable(config.signingKeySecrets, (s) => verifyMfaPendingToken(mfaToken, s));
         if (!claims) {
             event.cookies.delete(MFA_PENDING_COOKIE, { path: "/" });
             throw redirect(303, "/login");
@@ -173,7 +174,7 @@ export const actions: Actions = {
                 .limit(1);
 
             if (totpCred?.secret) {
-                const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret, user.id);
+                const plainSecret = await tryWithSecrets(config.signingKeySecrets, (s) => decryptTotpSecret(totpCred.secret!, s, user.id));
                 // counter 컬럼을 마지막으로 사용된 TOTP 스텝으로 활용 (재사용 방지)
                 const lastUsedStep = totpCred.counter ?? undefined;
                 const matchedStep = await verifyTotp(code, plainSecret, lastUsedStep);
