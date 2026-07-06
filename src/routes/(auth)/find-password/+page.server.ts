@@ -5,6 +5,7 @@ import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/sk
 import { requireDbContext } from "$lib/server/auth/guards";
 import { users, passwordResetTokens } from "$lib/server/db/schema";
 import { sendPasswordResetEmail, generateToken } from "$lib/server/email";
+import { normalizeLocale } from "$lib/i18n/core";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { getRequestMetadata } from "$lib/server/audit";
 import { env } from "$env/dynamic/private";
@@ -89,7 +90,7 @@ export const actions: Actions = {
         }
 
         const [user] = await db
-            .select({ id: users.id, email: users.email })
+            .select({ id: users.id, email: users.email, locale: users.locale })
             .from(users)
             .where(and(eq(users.tenantId, tenant.id), eq(users.email, email), eq(users.username, username)))
             .limit(1);
@@ -120,7 +121,7 @@ export const actions: Actions = {
                 const resetUrl = `${issuer}/reset-password?${resetParams.toString()}`;
                 // ctrls C5(후속): SMTP 왕복을 응답 경로에서 분리해 타이밍 계정 열거를 차단한다.
                 // (find-id 와 동일 패턴 — Workers: waitUntil, Node: fire-and-forget.)
-                const sendPromise = sendPasswordResetEmail(user.email, resetUrl, event.platform).catch(() => {
+                const sendPromise = sendPasswordResetEmail(user.email, resetUrl, normalizeLocale(user.locale ?? locale), event.platform).catch(() => {
                     // 메일 발송 실패는 조용히 무시
                 });
                 const wait = event.platform?.ctx?.waitUntil?.bind(event.platform.ctx);

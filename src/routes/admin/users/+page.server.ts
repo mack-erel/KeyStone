@@ -230,7 +230,8 @@ export const actions: Actions = {
         ]);
 
         // 초대 토큰 발급 + 메일(best-effort, 완전 격리). 발송 실패가 초대 응답을 실패시키지 않는다.
-        await issueInvite(db, userId, email, event.platform);
+        // 초대 대상은 신규 계정(locale 미보유)이므로 관리자 요청 locale 로 발송한다.
+        await issueInvite(db, userId, email, locale, event.platform);
 
         const requestMetadata = getRequestMetadata(event);
         await recordAuditEvent(db, {

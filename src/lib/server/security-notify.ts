@@ -1,4 +1,4 @@
-import type { Locale } from "$lib/i18n/core";
+import { normalizeLocale } from "$lib/i18n/core";
 import { translate } from "$lib/i18n/server";
 import { sendSecurityAlertEmail } from "$lib/server/email";
 
@@ -11,15 +11,18 @@ export type SecurityEventKind =
     | "mfa_enrolled"
     | "mfa_disabled"
     | "backup_codes_regenerated"
+    | "backup_codes_low"
+    | "backup_codes_depleted"
     | "passkey_added"
     | "passkey_removed"
-    | "account_deletion_requested";
+    | "account_deletion_requested"
+    | "email_change_requested"
+    | "session_revoked"
+    | "sessions_revoked_all";
 
-// users.locale ("ko-KR"/"en-US"/"ja-JP" 등) → i18n Locale. en* 만 en, 그 외(미상 포함)는 ko 기본.
-// 근거: 지원 Locale 은 ko|en 뿐이며(core.ts), 알림 미발송보다 ko 기본 발송이 안전.
-export function toLocale(userLocale: string | null | undefined): Locale {
-    return (userLocale ?? "").toLowerCase().startsWith("en") ? "en" : "ko";
-}
+// users.locale ("ko-KR"/"en-US"/"ja-JP" 등) → i18n Locale. 공용 normalizeLocale(core.ts) 로 정규화한다.
+// 하위 호환 별칭 — 기존 호출부/테스트가 toLocale 을 참조한다.
+export const toLocale = normalizeLocale;
 
 // UTC 기준 사람이 읽을 수 있는 타임스탬프(locale 무관, 시간대 모호성 제거).
 function formatWhen(when: Date): string {
@@ -38,7 +41,7 @@ function formatWhen(when: Date): string {
 export function dispatchSecurityAlert(params: { to: string | null | undefined; locale: string | null | undefined; kind: SecurityEventKind; when?: Date; platform?: App.Platform }): void {
     const { to, kind, platform } = params;
     if (!to) return; // 이메일 없는 계정 스킵
-    const L = toLocale(params.locale);
+    const L = normalizeLocale(params.locale);
     const when = params.when ?? new Date();
     const content = {
         subject: translate(L, `security_alert.${kind}.subject`),

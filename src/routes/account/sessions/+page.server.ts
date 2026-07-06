@@ -4,6 +4,8 @@ import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { clearSessionCookie, listActiveSessions, revokeOtherSessions, revokeSessionById } from "$lib/server/auth/session";
 import { revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
+import { translate } from "$lib/i18n/server";
 
 export const load: PageServerLoad = async ({ locals, url }) => {
     if (!locals.user) {
@@ -30,12 +32,12 @@ export const actions: Actions = {
         const formData = await event.request.formData();
         const sessionId = String(formData.get("id") ?? "").trim();
         if (!sessionId) {
-            return fail(400, { error: "세션을 지정해 주세요." });
+            return fail(400, { error: translate(locals.locale, "sessions.err_select_session") });
         }
 
         const revoked = await revokeSessionById(db, sessionId, locals.user.id);
         if (!revoked) {
-            return fail(404, { error: "세션을 찾을 수 없습니다." });
+            return fail(404, { error: translate(locals.locale, "sessions.err_not_found") });
         }
 
         // 세션 폐기와 세트로 refresh token 연쇄 폐기.
@@ -52,6 +54,10 @@ export const actions: Actions = {
             userAgent: requestMetadata.userAgent,
             detail: { sessionId },
         });
+
+        // 보안 알림(best-effort, waitUntil 격리). 본인 직접 철회에도 발송한다 — 세션 탈취 방어.
+        // 현재 세션 철회(=로그아웃) 케이스도 아래 redirect 전에 일관 발송한다.
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "session_revoked", platform: event.platform });
 
         // 현재 세션을 스스로 폐기하면 사실상 로그아웃 — 쿠키를 지우고 로그인으로 보낸다.
         if (locals.session?.id === sessionId) {
@@ -90,6 +96,11 @@ export const actions: Actions = {
             userAgent: requestMetadata.userAgent,
             detail: { count: otherIds.length },
         });
+
+        // 보안 알림(best-effort, waitUntil 격리). 실제 폐기된 다른 세션이 있을 때만 발송한다.
+        if (otherIds.length > 0) {
+            dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "sessions_revoked_all", platform: event.platform });
+        }
 
         return { revokedOthers: true };
     },

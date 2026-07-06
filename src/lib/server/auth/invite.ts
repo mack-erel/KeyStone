@@ -1,4 +1,5 @@
 import { env } from "$env/dynamic/private";
+import type { Locale } from "$lib/i18n/core";
 import type { DB } from "$lib/server/db";
 import { inviteTokens } from "$lib/server/db/schema";
 import { generateToken, sendInviteEmail } from "$lib/server/email";
@@ -12,7 +13,7 @@ export const INVITE_EXPIRY_MS = 72 * 60 * 60 * 1000; // 72시간
  *  - Workers 는 waitUntil 로 응답 경로에서 분리, Node 는 await.
  *  - 토큰 발급/발송 예외는 삼켜서 호출부(계정 생성 응답)에 전파하지 않는다(best-effort).
  */
-export async function issueInvite(db: DB, userId: string, email: string, platform: App.Platform | undefined): Promise<void> {
+export async function issueInvite(db: DB, userId: string, email: string, locale: Locale, platform: App.Platform | undefined): Promise<void> {
     const issuer = env.IDP_ISSUER_URL?.replace(/\.+$/, "").replace(/\/+$/, "");
     if (!issuer) {
         console.error("[invite] IDP_ISSUER_URL 미설정 — 초대 메일 발송 불가");
@@ -23,7 +24,7 @@ export async function issueInvite(db: DB, userId: string, email: string, platfor
         const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS);
         await db.insert(inviteTokens).values({ userId, tokenHash, expiresAt });
         const inviteUrl = `${issuer}/accept-invite?token=${encodeURIComponent(token)}`;
-        const sendPromise = sendInviteEmail(email, inviteUrl, platform).catch(() => {
+        const sendPromise = sendInviteEmail(email, inviteUrl, locale, platform).catch(() => {
             // 발송 실패는 조용히 무시
         });
         const wait = platform?.ctx?.waitUntil?.bind(platform.ctx);

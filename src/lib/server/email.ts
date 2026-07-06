@@ -1,4 +1,6 @@
 import { env } from "$env/dynamic/private";
+import type { Locale } from "$lib/i18n/core";
+import { translate } from "$lib/i18n/server";
 
 // ── 발송 코어: 런타임 분기 ────────────────────────────────────────────────────
 // B6: nodemailer(raw TCP SMTP)는 Cloudflare Workers 런타임에서 동작하지 않는다
@@ -121,79 +123,96 @@ function safeAbsoluteUrl(url: string): string | null {
     }
 }
 
-function baseHtml(title: string, body: string): string {
+// F1: 트랜잭션 메일 전량 수신자 locale 인지. 제목·본문·버튼·푸터·lang 속성을 모두
+// i18n(translate) 로 렌더한다(보안 알림 메일과 동일한 locale-aware 원칙). i18n 키는
+// `email.*` 네임스페이스(ko/en 대칭). lang 속성은 지원 Locale(ko|en)을 그대로 쓴다.
+function baseHtml(locale: Locale, title: string, body: string, footer: string): string {
     return `<!DOCTYPE html>
-<html lang="ko">
+<html lang="${escapeHtml(locale)}">
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#111;">
   <h2 style="margin-bottom:16px;">${escapeHtml(title)}</h2>
   ${body}
-  <p style="margin-top:32px;color:#71717a;font-size:13px;">본인이 요청하지 않았다면 이 이메일을 무시해 주세요.</p>
+  <p style="margin-top:32px;color:#71717a;font-size:13px;">${escapeHtml(footer)}</p>
 </body>
 </html>`;
 }
 
-export async function sendFindIdEmail(to: string, username: string, platform?: App.Platform): Promise<void> {
-    const html = baseHtml(
-        "아이디 확인",
-        `<p>요청하신 아이디 정보입니다.</p>
-<p style="font-size:20px;font-weight:700;margin:24px 0;">${escapeHtml(username)}</p>`,
-    );
-    const text = `요청하신 아이디 정보입니다.\n\n${username}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
-    await send(to, "아이디 안내", html, text, platform);
+// 버튼(CTA) 링크가 들어가는 본문 조각을 공통 구성한다. safeUrl 은 호출부에서 scheme 검증을 마친 값.
+function ctaBody(bodyText: string, safeUrl: string, buttonLabel: string): string {
+    return `<p>${escapeHtml(bodyText)}</p>
+<p style="margin:28px 0;">
+  <a href="${escapeHtml(safeUrl)}" style="background:#2563eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">${escapeHtml(buttonLabel)}</a>
+</p>`;
 }
 
-export async function sendPasswordResetEmail(to: string, resetUrl: string, platform?: App.Platform): Promise<void> {
+export async function sendFindIdEmail(to: string, username: string, locale: Locale, platform?: App.Platform): Promise<void> {
+    const footer = translate(locale, "email.footer");
+    const intro = translate(locale, "email.find_id.intro");
+    const html = baseHtml(
+        locale,
+        translate(locale, "email.find_id.title"),
+        `<p>${escapeHtml(intro)}</p>
+<p style="font-size:20px;font-weight:700;margin:24px 0;">${escapeHtml(username)}</p>`,
+        footer,
+    );
+    const text = `${intro}\n\n${username}\n\n${footer}`;
+    await send(to, translate(locale, "email.find_id.subject"), html, text, platform);
+}
+
+export async function sendPasswordResetEmail(to: string, resetUrl: string, locale: Locale, platform?: App.Platform): Promise<void> {
     const safeUrl = safeAbsoluteUrl(resetUrl);
     if (!safeUrl) {
         // 잘못된 URL 형식이면 메일 발송 자체 거부 — silent skip 으로 user enumeration 차단.
         console.error("[email] sendPasswordResetEmail: 잘못된 resetUrl scheme — 발송 취소");
         return;
     }
-    const html = baseHtml(
-        "비밀번호 재설정",
-        `<p>아래 버튼을 클릭하여 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다.</p>
-<p style="margin:28px 0;">
-  <a href="${escapeHtml(safeUrl)}" style="background:#2563eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">비밀번호 재설정</a>
-</p>`,
-    );
-    const text = `아래 링크에서 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다.\n\n${safeUrl}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
-    await send(to, "비밀번호 재설정 안내", html, text, platform);
+    const footer = translate(locale, "email.footer");
+    const body = translate(locale, "email.password_reset.body");
+    const html = baseHtml(locale, translate(locale, "email.password_reset.title"), ctaBody(body, safeUrl, translate(locale, "email.password_reset.button")), footer);
+    const text = `${translate(locale, "email.password_reset.text")}\n\n${safeUrl}\n\n${footer}`;
+    await send(to, translate(locale, "email.password_reset.subject"), html, text, platform);
 }
 
-export async function sendEmailVerificationEmail(to: string, verifyUrl: string, platform?: App.Platform): Promise<void> {
+export async function sendEmailVerificationEmail(to: string, verifyUrl: string, locale: Locale, platform?: App.Platform): Promise<void> {
     const safeUrl = safeAbsoluteUrl(verifyUrl);
     if (!safeUrl) {
         // 잘못된 URL 형식이면 메일 발송 자체 거부.
         console.error("[email] sendEmailVerificationEmail: 잘못된 verifyUrl scheme — 발송 취소");
         return;
     }
-    const html = baseHtml(
-        "이메일 인증",
-        `<p>아래 버튼을 클릭하여 이메일 주소를 인증하세요. 링크는 24시간 동안 유효합니다.</p>
-<p style="margin:28px 0;">
-  <a href="${escapeHtml(safeUrl)}" style="background:#2563eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">이메일 인증</a>
-</p>`,
-    );
-    const text = `아래 링크에서 이메일 주소를 인증하세요. 링크는 24시간 동안 유효합니다.\n\n${safeUrl}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
-    await send(to, "이메일 인증 안내", html, text, platform);
+    const footer = translate(locale, "email.footer");
+    const body = translate(locale, "email.verify.body");
+    const html = baseHtml(locale, translate(locale, "email.verify.title"), ctaBody(body, safeUrl, translate(locale, "email.verify.button")), footer);
+    const text = `${translate(locale, "email.verify.text")}\n\n${safeUrl}\n\n${footer}`;
+    await send(to, translate(locale, "email.verify.subject"), html, text, platform);
 }
 
-export async function sendInviteEmail(to: string, inviteUrl: string, platform?: App.Platform): Promise<void> {
+// F3: 이메일 변경 확인 메일 — 새 주소로 발송하는 확인 링크. verify 와 별개 라우트/문구를 쓴다.
+export async function sendEmailChangeVerificationEmail(to: string, confirmUrl: string, locale: Locale, platform?: App.Platform): Promise<void> {
+    const safeUrl = safeAbsoluteUrl(confirmUrl);
+    if (!safeUrl) {
+        console.error("[email] sendEmailChangeVerificationEmail: 잘못된 confirmUrl scheme — 발송 취소");
+        return;
+    }
+    const footer = translate(locale, "email.footer");
+    const body = translate(locale, "email.email_change.body");
+    const html = baseHtml(locale, translate(locale, "email.email_change.title"), ctaBody(body, safeUrl, translate(locale, "email.email_change.button")), footer);
+    const text = `${translate(locale, "email.email_change.text")}\n\n${safeUrl}\n\n${footer}`;
+    await send(to, translate(locale, "email.email_change.subject"), html, text, platform);
+}
+
+export async function sendInviteEmail(to: string, inviteUrl: string, locale: Locale, platform?: App.Platform): Promise<void> {
     const safeUrl = safeAbsoluteUrl(inviteUrl);
     if (!safeUrl) {
         // 잘못된 URL 형식이면 메일 발송 자체 거부.
         console.error("[email] sendInviteEmail: 잘못된 inviteUrl scheme — 발송 취소");
         return;
     }
-    const html = baseHtml(
-        "계정 초대",
-        `<p>계정에 초대되었습니다. 아래 버튼을 클릭하여 비밀번호를 설정하고 가입을 완료하세요. 링크는 72시간 동안 유효합니다.</p>
-<p style="margin:28px 0;">
-  <a href="${escapeHtml(safeUrl)}" style="background:#2563eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">초대 수락하기</a>
-</p>`,
-    );
-    const text = `계정에 초대되었습니다. 아래 링크에서 비밀번호를 설정하고 가입을 완료하세요. 링크는 72시간 동안 유효합니다.\n\n${safeUrl}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
-    await send(to, "계정 초대 안내", html, text, platform);
+    const footer = translate(locale, "email.footer");
+    const body = translate(locale, "email.invite.body");
+    const html = baseHtml(locale, translate(locale, "email.invite.title"), ctaBody(body, safeUrl, translate(locale, "email.invite.button")), footer);
+    const text = `${translate(locale, "email.invite.text")}\n\n${safeUrl}\n\n${footer}`;
+    await send(to, translate(locale, "email.invite.subject"), html, text, platform);
 }
 
 // ── 보안 알림 메일 (best-effort) ─────────────────────────────────────────────

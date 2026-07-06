@@ -68,7 +68,7 @@ describe("issueEmailVerification — 토큰 저장/TTL/격리", () => {
         env.IDP_ISSUER_URL = "https://idp.example.com";
         const { db, inserts } = makeDb();
         const before = Date.now();
-        await issueEmailVerification(db, "user-1", "u@example.com", undefined);
+        await issueEmailVerification(db, "user-1", "u@example.com", "ko", undefined);
 
         expect(inserts.length).toBe(1);
         const v = inserts[0];
@@ -87,14 +87,14 @@ describe("issueEmailVerification — 토큰 저장/TTL/격리", () => {
         // SMTP_* 미설정이므로 sendEmailVerificationEmail 내부에서 throw 하지만
         // .catch/try 로 삼켜야 한다 — resolve 되어야 한다(토큰 insert 는 성공).
         const { db, inserts } = makeDb();
-        await expect(issueEmailVerification(db, "user-1", "u@example.com", undefined)).resolves.toBeUndefined();
+        await expect(issueEmailVerification(db, "user-1", "u@example.com", "ko", undefined)).resolves.toBeUndefined();
         expect(inserts.length).toBe(1);
     });
 
     it("IDP_ISSUER_URL 미설정 시 발송/저장 스킵(insert 없음)", async () => {
         // beforeEach 에서 IDP_ISSUER_URL 삭제됨.
         const { db, inserts } = makeDb();
-        await expect(issueEmailVerification(db, "user-1", "u@example.com", undefined)).resolves.toBeUndefined();
+        await expect(issueEmailVerification(db, "user-1", "u@example.com", "ko", undefined)).resolves.toBeUndefined();
         expect(inserts.length).toBe(0);
     });
 
@@ -103,6 +103,6 @@ describe("issueEmailVerification — 토큰 저장/TTL/격리", () => {
         const db = makeDb(() => {
             throw new Error("db down");
         }).db;
-        await expect(issueEmailVerification(db, "user-1", "u@example.com", undefined)).resolves.toBeUndefined();
+        await expect(issueEmailVerification(db, "user-1", "u@example.com", "ko", undefined)).resolves.toBeUndefined();
     });
 });

@@ -1,7 +1,9 @@
 <script lang="ts">
 import { enhance } from "$app/forms";
 import type { ActionData, PageData } from "./$types";
+import type { SubmitFunction } from "@sveltejs/kit";
 import { t } from "$lib/i18n.svelte";
+import FormError from "$lib/components/FormError.svelte";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
@@ -9,6 +11,21 @@ const success = $derived((form as { success?: boolean } | null)?.success ?? fals
 const err = $derived((form as { error?: string } | null)?.error ?? null);
 const resent = $derived((form as { resent?: boolean } | null)?.resent ?? false);
 const resendError = $derived((form as { resendError?: string } | null)?.resendError ?? null);
+
+// F3: 이메일 변경 폼 상태(서버 changeEmail 액션 계약: 성공 changeEmailSent/pendingEmail, 실패 changeEmailError).
+const changeEmailSent = $derived((form as { changeEmailSent?: boolean } | null)?.changeEmailSent ?? false);
+const changeEmailError = $derived((form as { changeEmailError?: string } | null)?.changeEmailError ?? null);
+// 성공 응답의 새 주소 우선, 없으면 load 의 pendingEmail 로 폴백.
+const changedEmail = $derived((form as { pendingEmail?: string } | null)?.pendingEmail ?? data.pendingEmail ?? "");
+
+let changingEmail = $state(false);
+const enhanceChangeEmail: SubmitFunction = () => {
+    changingEmail = true;
+    return async ({ update }) => {
+        await update({ reset: false });
+        changingEmail = false;
+    };
+};
 
 const LOCALE_OPTIONS = [
     { value: "ko-KR", label: "한국어" },
@@ -57,6 +74,53 @@ const TIMEZONE_OPTIONS = [
             {/if}
         </div>
     {/if}
+
+    <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h2 class="text-sm font-semibold text-gray-700">{t("profile.email_change_title")}</h2>
+        <p class="mt-1 text-xs text-gray-500">{t("profile.email_change_desc")}</p>
+
+        {#if data.pendingEmail}
+            <div class="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                {t("profile.email_change_pending", { email: data.pendingEmail })}
+            </div>
+        {/if}
+
+        {#if changeEmailSent}
+            <div class="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                {t("profile.email_change_sent", { email: changedEmail })}
+            </div>
+        {/if}
+
+        <FormError message={changeEmailError} class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" />
+
+        <form method="POST" action="?/changeEmail" use:enhance={enhanceChangeEmail} class="mt-4 space-y-4">
+            <div>
+                <label for="newEmail" class="block text-xs font-medium text-gray-700">{t("profile.email_change_new_label")}</label>
+                <input
+                    id="newEmail"
+                    type="email"
+                    name="newEmail"
+                    required
+                    autocomplete="email"
+                    class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+            </div>
+            <div>
+                <label for="currentPassword" class="block text-xs font-medium text-gray-700">{t("profile.email_change_password_label")}</label>
+                <input
+                    id="currentPassword"
+                    type="password"
+                    name="password"
+                    required
+                    autocomplete="current-password"
+                    class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
+            </div>
+            <div class="flex justify-end">
+                <button type="submit" disabled={changingEmail} class="rounded-md bg-blue-600 px-6 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+                    {changingEmail ? t("common.processing") : t("profile.email_change_submit")}
+                </button>
+            </div>
+        </form>
+    </section>
 
     <form method="POST" action="?/save" use:enhance class="space-y-6">
         <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
