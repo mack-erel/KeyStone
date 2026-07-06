@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
 import { credentials } from "$lib/server/db/schema";
 import { WEBAUTHN_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { findPasswordCredential } from "$lib/server/auth/users";
@@ -89,6 +90,8 @@ export const actions: Actions = {
             ip: requestMetadata.ip,
             userAgent: requestMetadata.userAgent,
         });
+
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "passkey_removed", platform: event.platform });
 
         return { deleted: true };
     },

@@ -4,6 +4,9 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { users } from "$lib/server/db/schema";
 import { getUserMembership } from "$lib/server/org/membership";
+import { issueEmailVerification } from "$lib/server/auth/email-verification";
+import { checkRateLimit } from "$lib/server/ratelimit";
+import { translate } from "$lib/i18n/server";
 
 export const load: PageServerLoad = async ({ locals }) => {
     if (!locals.user) throw redirect(303, "/login");
@@ -23,12 +26,14 @@ export const load: PageServerLoad = async ({ locals }) => {
             bio: locals.user.bio,
             birthdate: locals.user.birthdate,
         },
+        email: locals.user.email,
+        emailVerified: !!locals.user.emailVerifiedAt,
         membership,
     };
 };
 
 export const actions: Actions = {
-    default: async ({ locals, request }) => {
+    save: async ({ locals, request }) => {
         if (!locals.user) throw redirect(303, "/login");
         const { db, tenant } = requireDbContext(locals);
 
@@ -63,5 +68,26 @@ export const actions: Actions = {
             .where(and(eq(users.id, locals.user.id), eq(users.tenantId, tenant.id)));
 
         return { success: true };
+    },
+
+    // 이메일 인증 메일 재발송. 이미 인증됐으면 no-op. rate-limit(기존 인프라 재사용).
+    resendVerification: async (event) => {
+        const { locals } = event;
+        if (!locals.user) throw redirect(303, "/login");
+        const { db } = requireDbContext(locals);
+        const locale = locals.locale;
+
+        // 이미 인증된 계정은 조용히 no-op(성공 응답).
+        if (locals.user.emailVerifiedAt) {
+            return { resent: true };
+        }
+
+        const rl = await checkRateLimit(db, `resend-verification:${locals.user.id}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        if (!rl.allowed) {
+            return fail(429, { resendError: translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }) });
+        }
+
+        await issueEmailVerification(db, locals.user.id, locals.user.email, event.platform);
+        return { resent: true };
     },
 };

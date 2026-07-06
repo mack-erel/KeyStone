@@ -160,6 +160,49 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string, platf
     await send(to, "비밀번호 재설정 안내", html, text, platform);
 }
 
+export async function sendEmailVerificationEmail(to: string, verifyUrl: string, platform?: App.Platform): Promise<void> {
+    const safeUrl = safeAbsoluteUrl(verifyUrl);
+    if (!safeUrl) {
+        // 잘못된 URL 형식이면 메일 발송 자체 거부.
+        console.error("[email] sendEmailVerificationEmail: 잘못된 verifyUrl scheme — 발송 취소");
+        return;
+    }
+    const html = baseHtml(
+        "이메일 인증",
+        `<p>아래 버튼을 클릭하여 이메일 주소를 인증하세요. 링크는 24시간 동안 유효합니다.</p>
+<p style="margin:28px 0;">
+  <a href="${escapeHtml(safeUrl)}" style="background:#2563eb;color:#fff;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;">이메일 인증</a>
+</p>`,
+    );
+    const text = `아래 링크에서 이메일 주소를 인증하세요. 링크는 24시간 동안 유효합니다.\n\n${safeUrl}\n\n본인이 요청하지 않았다면 이 이메일을 무시해 주세요.`;
+    await send(to, "이메일 인증 안내", html, text, platform);
+}
+
+// ── 보안 알림 메일 (best-effort) ─────────────────────────────────────────────
+// 문구는 호출부에서 수신자 locale 로 번역해 넘긴다(email.ts 는 i18n 에 결합하지 않는다).
+// baseHtml 의 고정 한국어 푸터 대신 전달받은 localized 문구로 본문을 구성한다.
+export interface SecurityAlertContent {
+    subject: string;
+    heading: string;
+    body: string;
+    whenText: string;
+    footer: string;
+}
+
+export async function sendSecurityAlertEmail(to: string, content: SecurityAlertContent, platform?: App.Platform): Promise<void> {
+    const html = `<!DOCTYPE html>
+<html lang="ko">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#111;">
+  <h2 style="margin-bottom:16px;">${escapeHtml(content.heading)}</h2>
+  <p>${escapeHtml(content.body)}</p>
+  <p style="color:#71717a;font-size:13px;margin-top:8px;">${escapeHtml(content.whenText)}</p>
+  <p style="margin-top:32px;color:#71717a;font-size:13px;">${escapeHtml(content.footer)}</p>
+</body>
+</html>`;
+    const text = `${content.heading}\n\n${content.body}\n${content.whenText}\n\n${content.footer}`;
+    await send(to, content.subject, html, text, platform);
+}
+
 export async function generateToken(): Promise<{ token: string; tokenHash: string }> {
     const bytes = crypto.getRandomValues(new Uint8Array(32));
     const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");

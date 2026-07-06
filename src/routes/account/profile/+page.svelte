@@ -7,6 +7,8 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
 const success = $derived((form as { success?: boolean } | null)?.success ?? false);
 const err = $derived((form as { error?: string } | null)?.error ?? null);
+const resent = $derived((form as { resent?: boolean } | null)?.resent ?? false);
+const resendError = $derived((form as { resendError?: string } | null)?.resendError ?? null);
 
 const LOCALE_OPTIONS = [
     { value: "ko-KR", label: "한국어" },
@@ -34,7 +36,29 @@ const TIMEZONE_OPTIONS = [
         </div>
     {/if}
 
-    <form method="POST" use:enhance class="space-y-6">
+    {#if !data.emailVerified}
+        <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <p class="font-medium">{t("profile.email_unverified_title")}</p>
+                    <p class="mt-0.5 text-amber-700">{t("profile.email_unverified_desc", { email: data.email })}</p>
+                </div>
+                <form method="POST" action="?/resendVerification" use:enhance>
+                    <button type="submit" class="shrink-0 rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100">
+                        {t("profile.email_resend")}
+                    </button>
+                </form>
+            </div>
+            {#if resent}
+                <p class="mt-2 text-xs text-amber-700">{t("profile.email_resend_sent")}</p>
+            {/if}
+            {#if resendError}
+                <p class="mt-2 text-xs text-red-700">{resendError}</p>
+            {/if}
+        </div>
+    {/if}
+
+    <form method="POST" action="?/save" use:enhance class="space-y-6">
         <section class="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
             <h2 class="mb-4 text-sm font-semibold text-gray-700">{t("profile.basic_info")}</h2>
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">

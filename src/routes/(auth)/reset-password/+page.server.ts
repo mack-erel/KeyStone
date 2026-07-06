@@ -13,6 +13,7 @@ import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/sk
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { getRequestMetadata } from "$lib/server/audit";
 import { translate } from "$lib/i18n/server";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
 
 async function resolveSkin(skinHint: string | null, locals: App.Locals, platform: App.Platform | undefined, token: string | null, redirectTo: string | null, flashMsg = ""): Promise<string | null> {
     if (!skinHint || !locals.db || !locals.tenant) return null;
@@ -94,8 +95,9 @@ export const actions: Actions = {
         const now = new Date();
 
         const [record] = await db
-            .select({ id: passwordResetTokens.id, userId: passwordResetTokens.userId, expiresAt: passwordResetTokens.expiresAt })
+            .select({ id: passwordResetTokens.id, userId: passwordResetTokens.userId, expiresAt: passwordResetTokens.expiresAt, email: users.email, locale: users.locale })
             .from(passwordResetTokens)
+            .innerJoin(users, eq(passwordResetTokens.userId, users.id))
             .where(and(eq(passwordResetTokens.tokenHash, tokenHash), isNull(passwordResetTokens.usedAt)))
             .limit(1);
 
@@ -130,6 +132,9 @@ export const actions: Actions = {
         // 비밀번호가 바뀌었으므로 기존 세션과 OIDC refresh token 을 모두 무효화한다.
         await revokeAllUserSessions(db, record.userId, now);
         await revokeAllUserRefreshTokens(db, record.userId);
+
+        // 보안 알림(best-effort, 완전 격리) — 비밀번호가 변경됨.
+        dispatchSecurityAlert({ to: record.email, locale: record.locale, kind: "password_changed", when: now, platform: event.platform });
 
         const extra = new URLSearchParams();
         if (redirectTo) extra.set("redirectTo", redirectTo);

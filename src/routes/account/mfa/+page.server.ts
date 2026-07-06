@@ -7,6 +7,7 @@ import { generateTotpSecret, buildOtpAuthUri, verifyTotp, encryptTotpSecret, dec
 import { TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { credentials } from "$lib/server/db/schema";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
 
 const TOTP_SETUP_COOKIE = "idp_totp_setup";
 const TOTP_SETUP_TTL_MS = 10 * 60 * 1000; // 10분
@@ -224,6 +225,8 @@ export const actions: Actions = {
             userAgent: requestMetadata.userAgent,
         });
 
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "mfa_enrolled", platform: event.platform });
+
         return { confirm: true, backupCodes: codes };
     },
 
@@ -278,6 +281,8 @@ export const actions: Actions = {
             ip: requestMetadata.ip,
             userAgent: requestMetadata.userAgent,
         });
+
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "mfa_disabled", platform: event.platform });
 
         return { deleted: true };
     },
@@ -346,6 +351,8 @@ export const actions: Actions = {
             ip: requestMetadata.ip,
             userAgent: requestMetadata.userAgent,
         });
+
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "backup_codes_regenerated", platform: event.platform });
 
         return { regenerate: true, backupCodes: codes };
     },

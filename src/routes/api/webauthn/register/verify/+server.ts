@@ -3,6 +3,7 @@ import type { RequestHandler } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { verifyChallengeCookie, verifyRegistrationResponse, savePasskey, getWebAuthnConfig, WEBAUTHN_CHALLENGE_COOKIE } from "$lib/server/auth/webauthn";
 import type { RegistrationResponseJSON } from "$lib/server/auth/webauthn";
@@ -93,6 +94,8 @@ export const POST: RequestHandler = async (event) => {
         ip: requestMetadata.ip,
         userAgent: requestMetadata.userAgent,
     });
+
+    dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "passkey_added", platform });
 
     return json({ ok: true });
 };
