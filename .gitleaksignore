@@ -1,2 +1,11 @@
 # False positive: "pbkdf2/argon2id" 는 credentials.secret 컬럼이 어떤 해시 알고리즘 형식을 저장하는지 설명하는 문자열일 뿐, 실제 시크릿이 아님
 02bc8b64f32a78d60cc39c46acfd6d49b384cbbd:src/lib/server/db/schema.ts:generic-api-key:62
+
+# False positive: 테스트 시드용 고정 비밀번호("pw-strong-123") — 실제 시크릿 아님
+57e8e95ccc4038c7a631a7c3318efcb446c15c8e:test/integration/p12-logic.test.ts:generic-api-key:45
+
+# False positive: AES-GCM 도메인 분리 라벨 문자열("idp-signing-key-wrap-v1") — 실제 시크릿 아님
+e83b290fba4a75c4c989434b024b589c1e256918:scripts/reencrypt-secrets.ts:generic-api-key:194
+
+# False positive: 테스트 상수("wrap-secret-0123456789") — 실제 시크릿 아님
+d48992c3dd491706b9795d1e2ae3de3d234eadcf:test/unit/crypto-keys.test.ts:generic-api-key:204
