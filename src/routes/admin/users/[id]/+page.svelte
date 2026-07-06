@@ -8,6 +8,7 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
 const err = $derived((form as { error?: string } | null)?.error ?? null);
 const updated = $derived((form as { updated?: boolean } | null)?.updated ?? false);
+const forcedLogout = $derived((form as { forcedLogout?: boolean } | null)?.forcedLogout ?? false);
 
 const dateFormatter = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" });
 
@@ -439,6 +440,23 @@ const TIMEZONE_OPTIONS = [
             <div class="flex justify-end sm:col-span-2">
                 <button type="submit" class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t("user_detail.svc_add")}</button>
             </div>
+        </form>
+    </section>
+
+    <!-- 위험 작업 -->
+    <section class="rounded-xl border border-red-200 bg-white p-6 shadow-sm">
+        <h2 class="mb-1 text-sm font-semibold text-red-700">{t("user_detail.danger_zone")}</h2>
+        <p class="mb-4 text-xs text-gray-500">{t("user_detail.force_logout_desc")}</p>
+        {#if forcedLogout}
+            <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2.5 text-sm text-green-700">{t("user_detail.force_logout_done")}</div>
+        {/if}
+        <form method="POST" action="?/forceLogout" use:enhance>
+            <button
+                type="submit"
+                class="rounded-md border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+                onclick={(e) => {
+                    if (!confirm(t("user_detail.force_logout_confirm"))) e.preventDefault();
+                }}>{t("user_detail.force_logout")}</button>
         </form>
     </section>
 </div>

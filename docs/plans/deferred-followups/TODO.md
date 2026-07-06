@@ -1,8 +1,8 @@
 # 실행 투두 — 보류 3건 (병렬 A/B/C)
 
-> **상태(2026-07-05): A/B/C 전부 구현 완료 → 메인 브랜치 통합 완료 → 독립 검증 통과.**
-> 게이트: `bun run test` 54 passed(9 files) · `svelte-check` 0 errors · `eslint`·`build` 통과.
-> 마이그레이션 생성만(d1 0019, pg/mysql/sqlite 0002) — **적용은 사용자 몫**. 커밋 승인 대기.
+> **상태(2026-07-06 갱신): A/B/C 전부 구현·검증·커밋 완료(병합됨).** 이후 admin 콘솔 영어화(cc44d7c)·auth 서버 에러 i18n(1c8c5c0)으로 당초 "Out" 범위였던 항목도 추가 반영됨.
+> 마이그레이션 생성분(d1 0019, pg/mysql/sqlite 0002)의 **실제 DB 적용 여부는 사용자 확인 필요**(미적용이면 배포 전 적용 요망).
+> 후속 전수 개선은 `docs/plans/project-improvement-audit/` 참조.
 
 > 승인된 결정: 기획서 승인 · Phase C FK 검증 **추가** · Phase B 자동판별+**수동 토글** · **병렬 진행**(worktree 격리).
 > 규칙: 스키마 변경은 `db:generate` 까지만(적용 금지). 커밋은 검증 통과 + 승인 후. 쓰기=Opus 위임, 검증=작성자와 분리된 독립 Opus 에이전트.

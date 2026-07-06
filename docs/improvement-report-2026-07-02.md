@@ -3,6 +3,15 @@
 > 3개 병렬 분석(미구현·갭 전수 탐색 / 보안 취약점 리뷰 / 아키텍처·품질 리뷰) 결과를 종합.
 > 분석 기준 브랜치: `chore/remove-d1-binding` (origin/main과 동일, 미커밋 변경 없음).
 
+> **⚠️ 정오표 (2026-07-06 추가)** — 이 리포트의 일부 서술은 이후 커밋으로 stale 해졌다. 최신 현황은 `docs/plans/project-improvement-audit/PLAN.md` 참조.
+>
+> - "Refresh Token 미구현"(A1) → **구현 완료** (`oidc/token`의 refresh_token grant, 회전+재사용 감지 family 폐기 포함).
+> - "SAML Assertion 암호화 미구현" → **구현 완료** (`test/unit/saml-encrypt.test.ts`, `verify:saml-encryption` 스크립트 존재).
+> - "TOTP enroll TOCTOU 미해소" → **해소** (deferred-followups Phase A — `totp_owner_id` unique index + INSERT 409 처리).
+> - "테스트 프레임워크·CI 테스트 단계 전무" → vitest 62+ 테스트 및 CI 게이트(lint/check/test/build/CodeQL/gitleaks) 구축됨.
+> - groups/address/organization scope "보류" → **구현 완료** (claims.ts, token/userinfo 매핑).
+> - E9(보안 감사 문서 public repo 잔존) → **처리 완료** (2026-07-06, repo에서 제거 — 히스토리에는 잔존).
+
 ## 종합 판정
 
 기존 보안 감사(2026-05-12)의 Critical/High 대부분이 실제 코드에 반영되어 있고, **신규 Critical/High 취약점은 없다**. 현재 프로젝트의 부채는 세 갈래로 요약된다.

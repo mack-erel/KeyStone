@@ -2,12 +2,14 @@ import { fail } from "@sveltejs/kit";
 import { and, desc, eq } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
+import { adminError, requireFormId } from "$lib/server/admin/errors";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { encryptSecret } from "$lib/server/crypto/keys";
 import { identityProviders } from "$lib/server/db/schema";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
 import { validateLdapHost, validateLdapPort } from "$lib/server/validation";
+import type { Locale } from "$lib/i18n/core";
 
 function buildConfig(fd: FormData): LdapProviderConfig {
     const port = parseInt(String(fd.get("port") ?? "389"), 10);
@@ -54,13 +56,13 @@ function buildConfig(fd: FormData): LdapProviderConfig {
 // 평문 그대로 저장하던 silent fallback 을 제거. 운영 환경 (signingKeySecret 항상
 // 존재) 에서 정상 동작, dev 환경에서 secret 미설정 시 admin 에게 명시적 에러로
 // 알려 평문 LDAP 자격증명이 DB 에 박히는 사고 차단.
-async function encryptBindPassword(config: LdapProviderConfig, signingKeySecret: string | undefined): Promise<LdapProviderConfig> {
+async function encryptBindPassword(config: LdapProviderConfig, signingKeySecret: string | undefined, locale: Locale): Promise<LdapProviderConfig> {
     if (!config.bindPassword) {
         // 새 bindPassword 입력이 없으면 그대로 통과 (기존 enc 만 보존됨)
         return config;
     }
     if (!signingKeySecret) {
-        throw new Error("IDP_SIGNING_KEY_SECRET 이 설정되어야 LDAP bindPassword 를 저장할 수 있습니다.");
+        throw new Error(adminError(locale, "ldap_signing_key_secret_required"));
     }
     const enc = await encryptSecret(config.bindPassword, signingKeySecret, "idp-ldap-bind-password-v1");
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -83,6 +85,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
     create: async (event) => {
         const { db, tenant } = requireAdminContext(event.locals);
+        const locale = event.locals.locale;
         const fd = await event.request.formData();
 
         const name = String(fd.get("name") ?? "").trim();
@@ -90,12 +93,12 @@ export const actions: Actions = {
         const hasBind = String(fd.get("bindDN") ?? "").trim();
         const hasPattern = String(fd.get("userDnPattern") ?? "").trim();
 
-        if (!name) return fail(400, { create: true, error: "이름은 필수입니다." });
-        if (!host) return fail(400, { create: true, error: "LDAP 호스트는 필수입니다." });
+        if (!name) return fail(400, { create: true, error: adminError(locale, "name_required") });
+        if (!host) return fail(400, { create: true, error: adminError(locale, "ldap_host_required") });
         if (!hasBind && !hasPattern)
             return fail(400, {
                 create: true,
-                error: "Admin Bind DN 또는 유저 DN 패턴 중 하나는 필수입니다.",
+                error: adminError(locale, "ldap_bind_or_userdn_required"),
             });
 
         const hostV = validateLdapHost(host);
@@ -108,7 +111,7 @@ export const actions: Actions = {
         const { signingKeySecret } = getRuntimeConfig(event.platform);
         let config: LdapProviderConfig;
         try {
-            config = await encryptBindPassword(buildConfig(fd), signingKeySecret);
+            config = await encryptBindPassword(buildConfig(fd), signingKeySecret, locale);
         } catch (e) {
             return fail(503, { create: true, error: (e as Error).message });
         }
@@ -137,13 +140,14 @@ export const actions: Actions = {
 
     update: async (event) => {
         const { db, tenant } = requireAdminContext(event.locals);
+        const locale = event.locals.locale;
         const fd = await event.request.formData();
 
         const id = String(fd.get("id") ?? "");
         const name = String(fd.get("name") ?? "").trim();
         const enabled = fd.get("enabled") === "true";
 
-        if (!id || !name) return fail(400, { error: "잘못된 요청입니다." });
+        if (!id || !name) return fail(400, { error: adminError(locale, "invalid_request") });
 
         const host = String(fd.get("host") ?? "").trim();
         if (host) {
@@ -157,7 +161,7 @@ export const actions: Actions = {
         const { signingKeySecret } = getRuntimeConfig(event.platform);
         let config: LdapProviderConfig;
         try {
-            config = await encryptBindPassword(buildConfig(fd), signingKeySecret);
+            config = await encryptBindPassword(buildConfig(fd), signingKeySecret, locale);
         } catch (e) {
             return fail(503, { error: (e as Error).message });
         }
@@ -172,10 +176,12 @@ export const actions: Actions = {
 
     delete: async (event) => {
         const { db, tenant } = requireAdminContext(event.locals);
+        const locale = event.locals.locale;
         const fd = await event.request.formData();
-        const id = String(fd.get("id") ?? "");
 
-        if (!id) return fail(400, { error: "잘못된 요청입니다." });
+        const idr = requireFormId(fd, locale);
+        if (!idr.ok) return idr.failure;
+        const id = idr.id;
 
         await db.delete(identityProviders).where(and(eq(identityProviders.id, id), eq(identityProviders.tenantId, tenant.id)));
 

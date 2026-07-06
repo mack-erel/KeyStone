@@ -7,6 +7,8 @@ import { oidcClients } from "$lib/server/db/schema";
 import { hashClientSecret } from "$lib/server/oidc/client";
 import { ensureCsrfToken, isValidCsrf } from "$lib/server/auth/csrf";
 import { isLoopbackHost } from "$lib/server/validation";
+import { adminError, requireFormId } from "$lib/server/admin/errors";
+import type { Locale } from "$lib/i18n/core";
 
 function generateClientId(): string {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 20);
@@ -30,36 +32,36 @@ const ALLOWED_OIDC_SCOPES = ["openid", "profile", "email", "address", "phone", "
  * @param value 검증할 URL 문자열
  * @param opts.allowCustomScheme 모바일 등 커스텀 scheme 허용 여부 (redirect_uri 한정)
  */
-function validateClientUri(value: string, opts: { allowCustomScheme?: boolean } = {}): { ok: true } | { ok: false; reason: string } {
+function validateClientUri(value: string, locale: Locale, opts: { allowCustomScheme?: boolean } = {}): { ok: true } | { ok: false; reason: string } {
     let parsed: URL;
     try {
         parsed = new URL(value);
     } catch {
-        return { ok: false, reason: `URL 형식이 올바르지 않습니다: ${value}` };
+        return { ok: false, reason: adminError(locale, "url_invalid_format", { value }) };
     }
 
     // RFC 6749 §3.1.2 — fragment 포함 redirect URI 금지
     if (parsed.hash && parsed.hash.length > 0) {
-        return { ok: false, reason: `fragment(#) 가 포함된 URI 는 허용되지 않습니다: ${value}` };
+        return { ok: false, reason: adminError(locale, "url_fragment_forbidden", { value }) };
     }
 
     const scheme = parsed.protocol.replace(/:$/, "").toLowerCase();
     const blocked = ["javascript", "data", "file", "vbscript", "blob"];
     if (blocked.includes(scheme)) {
-        return { ok: false, reason: `${scheme}: 스킴은 허용되지 않습니다.` };
+        return { ok: false, reason: adminError(locale, "scheme_forbidden", { scheme }) };
     }
 
     if (scheme === "https") return { ok: true };
     if (scheme === "http") {
         if (isLoopbackHost(parsed.hostname)) return { ok: true };
-        return { ok: false, reason: `http URL 은 localhost/127.0.0.1 만 허용됩니다: ${value}` };
+        return { ok: false, reason: adminError(locale, "http_localhost_only", { value }) };
     }
     if (opts.allowCustomScheme) {
         // 커스텀 scheme (모바일 redirect 등): RFC 3986 scheme 형식
         if (/^[a-z][a-z0-9+.-]*$/i.test(scheme)) return { ok: true };
-        return { ok: false, reason: `커스텀 scheme 형식이 올바르지 않습니다: ${value}` };
+        return { ok: false, reason: adminError(locale, "custom_scheme_invalid", { value }) };
     }
-    return { ok: false, reason: `허용되지 않는 scheme 입니다 (${scheme}): ${value}` };
+    return { ok: false, reason: adminError(locale, "scheme_not_allowed", { scheme, value }) };
 }
 
 function splitUriList(raw: string): string[] {
@@ -69,23 +71,23 @@ function splitUriList(raw: string): string[] {
         .filter(Boolean);
 }
 
-function validateUriList(raw: string, label: string, opts: { allowCustomScheme?: boolean } = {}): { ok: true; json: string } | { ok: false; reason: string } {
+function validateUriList(raw: string, label: string, locale: Locale, opts: { allowCustomScheme?: boolean } = {}): { ok: true; json: string } | { ok: false; reason: string } {
     const list = splitUriList(raw);
     for (const v of list) {
-        const r = validateClientUri(v, opts);
+        const r = validateClientUri(v, locale, opts);
         if (!r.ok) return { ok: false, reason: `${label}: ${r.reason}` };
     }
     return { ok: true, json: JSON.stringify(list) };
 }
 
-function validateSingleUri(value: string, label: string): { ok: true } | { ok: false; reason: string } {
+function validateSingleUri(value: string, label: string, locale: Locale): { ok: true } | { ok: false; reason: string } {
     if (!value) return { ok: true };
-    const r = validateClientUri(value);
+    const r = validateClientUri(value, locale);
     if (!r.ok) return { ok: false, reason: `${label}: ${r.reason}` };
     return { ok: true };
 }
 
-function normalizeScopes(raw: string): { ok: true; value: string } | { ok: false; reason: string } {
+function normalizeScopes(raw: string, locale: Locale): { ok: true; value: string } | { ok: false; reason: string } {
     const tokens = raw
         .split(/\s+/)
         .map((s) => s.trim())
@@ -94,7 +96,7 @@ function normalizeScopes(raw: string): { ok: true; value: string } | { ok: false
     const out: string[] = [];
     for (const t of tokens) {
         if (!(ALLOWED_OIDC_SCOPES as readonly string[]).includes(t)) {
-            return { ok: false, reason: `허용되지 않는 scope 입니다: ${t}` };
+            return { ok: false, reason: adminError(locale, "scope_not_allowed", { scope: t }) };
         }
         if (!seen.has(t)) {
             seen.add(t);
@@ -102,7 +104,7 @@ function normalizeScopes(raw: string): { ok: true; value: string } | { ok: false
         }
     }
     if (!seen.has("openid")) {
-        return { ok: false, reason: "scope 에는 'openid' 가 포함되어야 합니다." };
+        return { ok: false, reason: adminError(locale, "scope_openid_required") };
     }
     return { ok: true, value: out.join(" ") };
 }
@@ -140,9 +142,10 @@ export const actions: Actions = {
     create: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
-        if (!isValidCsrf(event.cookies, fd)) return fail(403, { create: true, error: "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요." });
+        if (!isValidCsrf(event.cookies, fd)) return fail(403, { create: true, error: adminError(locale, "csrf_failed") });
         const name = String(fd.get("name") ?? "").trim();
         const redirectUrisRaw = String(fd.get("redirectUris") ?? "").trim();
         const postLogoutUrisRaw = String(fd.get("postLogoutRedirectUris") ?? "").trim();
@@ -153,7 +156,7 @@ export const actions: Actions = {
         const scopesRaw = String(fd.get("scopes") ?? "openid").trim();
         const tokenMethodRaw = String(fd.get("tokenEndpointAuthMethod") ?? "client_secret_basic");
         if (!(ALLOWED_TOKEN_AUTH_METHODS as readonly string[]).includes(tokenMethodRaw)) {
-            return fail(400, { create: true, error: "tokenEndpointAuthMethod 값이 올바르지 않습니다." });
+            return fail(400, { create: true, error: adminError(locale, "invalid_token_auth_method") });
         }
         const tokenMethod = tokenMethodRaw as TokenAuthMethod;
         // public client(none)는 PKCE 필수
@@ -161,20 +164,20 @@ export const actions: Actions = {
         // ctrls H-OIDC-4: 와일드카드 redirect_uri 매칭은 명시적 opt-in.
         const allowWildcardRedirectUri = fd.get("allowWildcardRedirectUri") === "true";
 
-        if (!name) return fail(400, { create: true, error: "이름은 필수입니다." });
-        if (!redirectUrisRaw) return fail(400, { create: true, error: "Redirect URI 는 필수입니다." });
+        if (!name) return fail(400, { create: true, error: adminError(locale, "name_required") });
+        if (!redirectUrisRaw) return fail(400, { create: true, error: adminError(locale, "redirect_uri_required") });
 
         // URL 검증
-        const redirectV = validateUriList(redirectUrisRaw, "Redirect URI", { allowCustomScheme: true });
+        const redirectV = validateUriList(redirectUrisRaw, "Redirect URI", locale, { allowCustomScheme: true });
         if (!redirectV.ok) return fail(400, { create: true, error: redirectV.reason });
-        const postLogoutV = postLogoutUrisRaw ? validateUriList(postLogoutUrisRaw, "Post-Logout Redirect URI") : null;
+        const postLogoutV = postLogoutUrisRaw ? validateUriList(postLogoutUrisRaw, "Post-Logout Redirect URI", locale) : null;
         if (postLogoutV && !postLogoutV.ok) return fail(400, { create: true, error: postLogoutV.reason });
-        const frontV = validateSingleUri(frontchannelLogoutUri, "Frontchannel Logout URI");
+        const frontV = validateSingleUri(frontchannelLogoutUri, "Frontchannel Logout URI", locale);
         if (!frontV.ok) return fail(400, { create: true, error: frontV.reason });
-        const backV = validateSingleUri(backchannelLogoutUri, "Backchannel Logout URI");
+        const backV = validateSingleUri(backchannelLogoutUri, "Backchannel Logout URI", locale);
         if (!backV.ok) return fail(400, { create: true, error: backV.reason });
 
-        const scopesV = normalizeScopes(scopesRaw);
+        const scopesV = normalizeScopes(scopesRaw, locale);
         if (!scopesV.ok) return fail(400, { create: true, error: scopesV.reason });
 
         const clientId = generateClientId();
@@ -219,9 +222,10 @@ export const actions: Actions = {
     update: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
-        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요." });
+        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: adminError(locale, "csrf_failed") });
         const id = String(fd.get("id") ?? "");
         const name = String(fd.get("name") ?? "").trim();
         const redirectUrisRaw = String(fd.get("redirectUris") ?? "").trim();
@@ -233,18 +237,18 @@ export const actions: Actions = {
         const scopesRaw = String(fd.get("scopes") ?? "openid").trim();
         const enabled = fd.get("enabled") === "true";
 
-        if (!id || !name) return fail(400, { error: "잘못된 요청입니다." });
-        if (!redirectUrisRaw) return fail(400, { error: "Redirect URI 는 필수입니다." });
+        if (!id || !name) return fail(400, { error: adminError(locale, "invalid_request") });
+        if (!redirectUrisRaw) return fail(400, { error: adminError(locale, "redirect_uri_required") });
 
-        const redirectV = validateUriList(redirectUrisRaw, "Redirect URI", { allowCustomScheme: true });
+        const redirectV = validateUriList(redirectUrisRaw, "Redirect URI", locale, { allowCustomScheme: true });
         if (!redirectV.ok) return fail(400, { error: redirectV.reason });
-        const postLogoutV = postLogoutUrisRaw ? validateUriList(postLogoutUrisRaw, "Post-Logout Redirect URI") : null;
+        const postLogoutV = postLogoutUrisRaw ? validateUriList(postLogoutUrisRaw, "Post-Logout Redirect URI", locale) : null;
         if (postLogoutV && !postLogoutV.ok) return fail(400, { error: postLogoutV.reason });
-        const frontV = validateSingleUri(frontchannelLogoutUri, "Frontchannel Logout URI");
+        const frontV = validateSingleUri(frontchannelLogoutUri, "Frontchannel Logout URI", locale);
         if (!frontV.ok) return fail(400, { error: frontV.reason });
-        const backV = validateSingleUri(backchannelLogoutUri, "Backchannel Logout URI");
+        const backV = validateSingleUri(backchannelLogoutUri, "Backchannel Logout URI", locale);
         if (!backV.ok) return fail(400, { error: backV.reason });
-        const scopesV = normalizeScopes(scopesRaw);
+        const scopesV = normalizeScopes(scopesRaw, locale);
         if (!scopesV.ok) return fail(400, { error: scopesV.reason });
 
         // public client(none)는 PKCE를 수정 시에도 강제 유지
@@ -293,11 +297,13 @@ export const actions: Actions = {
     regenerateSecret: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
-        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요." });
-        const id = String(fd.get("id") ?? "");
-        if (!id) return fail(400, { error: "잘못된 요청입니다." });
+        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: adminError(locale, "csrf_failed") });
+        const idr = requireFormId(fd, locale);
+        if (!idr.ok) return idr.failure;
+        const id = idr.id;
 
         const newSecret = generateClientSecret();
         const newSecretHashed = await hashClientSecret(newSecret);
@@ -324,11 +330,13 @@ export const actions: Actions = {
     delete: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
-        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요." });
-        const id = String(fd.get("id") ?? "");
-        if (!id) return fail(400, { error: "잘못된 요청입니다." });
+        if (!isValidCsrf(event.cookies, fd)) return fail(403, { error: adminError(locale, "csrf_failed") });
+        const idr = requireFormId(fd, locale);
+        if (!idr.ok) return idr.failure;
+        const id = idr.id;
 
         await db.delete(oidcClients).where(and(eq(oidcClients.id, id), eq(oidcClients.tenantId, tenant.id)));
 
