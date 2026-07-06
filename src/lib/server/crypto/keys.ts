@@ -281,32 +281,89 @@ export async function decryptSecret(encrypted: string, masterSecret: string, con
 
 // ── DB helpers ────────────────────────────────────────────────────────────────
 
-export async function getActiveSigningKey(
-    db: DB,
-    tenantId: string,
-    secret: string,
-): Promise<{
+/**
+ * 서명키/JWKS 단기 캐시 (task 2-4).
+ *
+ * getActiveSigningKey/getPublicJwks 는 모든 토큰 발급·JWKS 요청 경로에서 호출되어
+ * 매번 DB 조회를 유발한다. tenant 별 globalThis isolate 캐시로 반복 조회를 절감한다
+ * (bootstrap.ts 의 baseline 캐시와 동일 패턴).
+ *
+ * 한계(의도된 트레이드오프):
+ *   - 캐시는 isolate 로컬이다. 서명키 회전/비활성화 액션은 같은 isolate 에서
+ *     invalidateSigningKeyCache 로 즉시 반영되지만, 다른 isolate 는 최대 TTL 만큼
+ *     이전 활성 키를 계속 볼 수 있고 TTL 만료로 수렴한다. 회전은 드문 관리 작업이며
+ *     짧은 TTL 로 이 수렴 창을 제한한다.
+ *   - null(활성 키 없음)/빈 JWKS 는 캐시하지 않는다 — 최초 부트스트랩으로 키가 막
+ *     생성된 직후에도 다음 호출이 곧바로 DB 를 다시 조회해 새 키를 반영하기 위함이다.
+ *   - 캐시된 privateKey(CryptoKey)/publicJwk 는 메모리에만 머무르며 로그로 노출되지
+ *     않는다. wrapped private key 원문은 캐시에 담지 않는다(복호화된 CryptoKey 만 보관).
+ *
+ * secret 은 isolate 수명 내 불변(env 유래)이므로 캐시 키에서 제외한다 — secret 이
+ * 바뀌면 isolate 자체가 재시작되어 캐시가 사라진다.
+ */
+const SIGNING_KEY_CACHE_TTL_MS = 60 * 1000; // 60초
+
+interface ActiveSigningKeyValue {
     kid: string;
     privateKey: CryptoKey;
     publicJwk: JsonWebKey;
     certPem: string | null;
-} | null> {
+}
+
+interface CacheEntry<T> {
+    value: T;
+    expiresAt: number;
+}
+
+// tenant 별 캐시 — 멀티테넌트 혼선 방지를 위해 tenantId 를 키로 사용.
+const g = globalThis as typeof globalThis & {
+    __idpActiveSigningKeyCache?: Map<string, CacheEntry<ActiveSigningKeyValue>>;
+    __idpPublicJwksCache?: Map<string, CacheEntry<Array<Record<string, unknown>>>>;
+};
+
+function activeSigningKeyCache(): Map<string, CacheEntry<ActiveSigningKeyValue>> {
+    return (g.__idpActiveSigningKeyCache ??= new Map());
+}
+
+function publicJwksCache(): Map<string, CacheEntry<Array<Record<string, unknown>>>> {
+    return (g.__idpPublicJwksCache ??= new Map());
+}
+
+/** 서명키 회전/비활성화 후 호출 — 해당 tenant 의 서명키·JWKS 캐시를 즉시 무효화한다. */
+export function invalidateSigningKeyCache(tenantId: string): void {
+    activeSigningKeyCache().delete(tenantId);
+    publicJwksCache().delete(tenantId);
+}
+
+export async function getActiveSigningKey(db: DB, tenantId: string, secret: string): Promise<ActiveSigningKeyValue | null> {
+    const cache = activeSigningKeyCache();
+    const now = Date.now();
+    const hit = cache.get(tenantId);
+    if (hit && hit.expiresAt > now) return hit.value;
+
     const [row] = await db
         .select()
         .from(signingKeys)
         .where(and(eq(signingKeys.tenantId, tenantId), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)))
         .limit(1);
-    if (!row) return null;
+    if (!row) return null; // 활성 키 없음 → 캐시하지 않는다(키 생성 직후 즉시 반영).
     const privateKey = await unwrapPrivateKey(row.privateJwkEncrypted, secret);
-    return {
+    const value: ActiveSigningKeyValue = {
         kid: row.kid,
         privateKey,
         publicJwk: JSON.parse(row.publicJwk) as JsonWebKey,
         certPem: row.certPem ?? null,
     };
+    cache.set(tenantId, { value, expiresAt: now + SIGNING_KEY_CACHE_TTL_MS });
+    return value;
 }
 
 export async function getPublicJwks(db: DB, tenantId: string): Promise<Array<Record<string, unknown>>> {
+    const cache = publicJwksCache();
+    const now = Date.now();
+    const hit = cache.get(tenantId);
+    if (hit && hit.expiresAt > now) return hit.value;
+
     // 회전 또는 비활성 처리된 키는 JWKS 에 노출하지 않는다.
     const rows = await db
         .select({
@@ -317,10 +374,12 @@ export async function getPublicJwks(db: DB, tenantId: string): Promise<Array<Rec
         })
         .from(signingKeys)
         .where(and(eq(signingKeys.tenantId, tenantId), eq(signingKeys.active, true), isNull(signingKeys.rotatedAt)));
-    return rows.map((r) => ({
+    const value = rows.map((r) => ({
         ...(JSON.parse(r.publicJwk) as Record<string, unknown>),
         kid: r.kid,
         use: r.use,
         alg: r.alg,
     }));
+    if (value.length > 0) cache.set(tenantId, { value, expiresAt: now + SIGNING_KEY_CACHE_TTL_MS }); // 빈 JWKS 는 캐시하지 않는다.
+    return value;
 }

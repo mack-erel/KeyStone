@@ -13,6 +13,7 @@
 
 import { and, eq, isNull, lt } from "drizzle-orm";
 import { type DB, DB_DIALECT } from "$lib/server/db";
+import { runAtomic } from "$lib/server/db/atomic";
 import { oidcRefreshTokens } from "$lib/server/db/schema";
 
 export type OidcRefreshTokenRecord = typeof oidcRefreshTokens.$inferSelect;
@@ -141,35 +142,52 @@ export async function rotateRefreshToken(db: DB, tenantId: string, clientId: str
     const newToken = generateRefreshToken();
     const newHash = await hashRefreshToken(newToken);
 
-    // old 토큰을 원자적으로 claim (revokedAt IS NULL 가드). 동시 사용은 하나만 성공.
+    // old 토큰 claim(revokedAt IS NULL 가드) 과 new 토큰 insert 를 하나의 원자 단위로 실행한다.
+    //
+    // 동시성 시맨틱: claim UPDATE 가 실제로 한 행을 revoke 했는가(비-mysql RETURNING rows,
+    // mysql affectedRows)가 동시 회전 경쟁의 승자를 결정한다 — revokedAt IS NULL 가드로
+    // 동시 요청 중 단 하나만 claim 에 성공한다. (기존 시맨틱 그대로 보존)
+    //
+    // 원자성: claim 과 insert 를 같은 batch/transaction 에 묶어 부분 적용을 제거한다.
+    // insert 가 실패하면 claim 도 함께 rollback 되므로, 기존에 존재하던 "claim 성공 +
+    // insert 실패 → old-revoked·new-부재(세션 유실)" 창이 사라진다. 이 창이 닫히는 것은
+    // batch(d1/sqlite)·transaction(pg/mysql) 모두 중간 실패 시 전체 rollback 하기 때문이다.
+    //
+    // 경쟁 패자 처리: batch 는 앞 문장 결과로 뒤 문장을 조건 분기할 수 없으므로 insert 는
+    // 항상 실행된다. 패자(claim 0행)의 요청도 new 토큰을 삽입하지만, 이 raw 값은 호출자에게
+    // 반환되지 않고(never handed out) 곧바로 아래 family 폐기로 승자 토큰과 함께 무효화된다
+    // — 재사용 감지 시맨틱(RFC 6819 §5.2.2.3)과 결과가 동일하다.
     const claimWhere = and(eq(oidcRefreshTokens.id, record.id), isNull(oidcRefreshTokens.revokedAt));
-    let claimed: boolean;
-    if (DB_DIALECT === "mysql") {
-        const res = (await db.update(oidcRefreshTokens).set({ revokedAt: now, replacedById: newId }).where(claimWhere)) as unknown as [{ affectedRows: number }];
-        claimed = Boolean(res?.[0]?.affectedRows);
-    } else {
+    const buildClaim = (h: Pick<DB, "update">) => {
+        const builder = h.update(oidcRefreshTokens).set({ revokedAt: now, replacedById: newId }).where(claimWhere);
+        // mysql 은 UPDATE ... RETURNING 미지원 → affectedRows 로 승자 판정. 그 외 방언은 RETURNING.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const updateBuilder = db.update(oidcRefreshTokens).set({ revokedAt: now, replacedById: newId }).where(claimWhere) as any;
-        const rows = (await updateBuilder.returning({ id: oidcRefreshTokens.id })) as Array<{ id: string }>;
-        claimed = rows.length > 0;
-    }
+        return DB_DIALECT === "mysql" ? builder : (builder as any).returning({ id: oidcRefreshTokens.id });
+    };
+    const buildInsert = (h: Pick<DB, "insert">) =>
+        h.insert(oidcRefreshTokens).values({
+            id: newId,
+            tenantId,
+            clientId,
+            userId: record.userId,
+            sessionId: record.sessionId,
+            tokenHash: newHash,
+            scope: record.scope,
+            expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+        });
+
+    // claim 이 index 0 → 결과 배열 첫 항목이 claim 결과. insert 실패는 여기서 throw 되어
+    // (rollback 후) 호출자로 전파된다 — old 토큰은 원복되어 재시도 가능하다.
+    const [claimResult] = await runAtomic(db, [buildClaim, buildInsert]);
+    const claimed =
+        DB_DIALECT === "mysql" ? Boolean((claimResult as [{ affectedRows: number }] | undefined)?.[0]?.affectedRows) : ((claimResult as Array<{ id: string }> | undefined) ?? []).length > 0;
 
     if (!claimed) {
         // 이미 다른 요청이 회전 → 동시 재사용으로 간주하고 family 폐기.
+        // (위 insert 로 삽입된 new 토큰도 활성 상태이므로 family 폐기에 함께 무효화된다.)
         await revokeRefreshTokenFamily(db, tenantId, record.userId, clientId);
         return { ok: false, reason: "reuse" };
     }
-
-    await db.insert(oidcRefreshTokens).values({
-        id: newId,
-        tenantId,
-        clientId,
-        userId: record.userId,
-        sessionId: record.sessionId,
-        tokenHash: newHash,
-        scope: record.scope,
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-    });
 
     return { ok: true, record, newToken };
 }
