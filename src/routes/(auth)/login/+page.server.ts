@@ -3,20 +3,27 @@ import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { createSessionRecord, revokeOtherSessions, setSessionCookie } from "$lib/server/auth/session";
-import { authenticateLocalUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
+import { authenticateLocalUser, authenticatePendingDeletionUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
 import { AMR_PASSWORD, amrToAcr } from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
-import { checkRateLimit } from "$lib/server/ratelimit";
+import { checkRateLimit, peekRateLimit } from "$lib/server/ratelimit";
 import { and, eq } from "drizzle-orm";
-import { identityProviders } from "$lib/server/db/schema";
+import { identityProviders, users } from "$lib/server/db/schema";
 import { authenticateLdap } from "$lib/server/ldap/auth";
 import { provisionLdapUser } from "$lib/server/ldap/provision";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
-import { decryptSecret, encryptSecret } from "$lib/server/crypto/keys";
+import { decryptSecret, encryptSecret, tryWithSecrets } from "$lib/server/crypto/keys";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { translate } from "$lib/i18n/server";
+
+// S2(계정 단위 잠금): IP 무관하게 동일 계정에 대한 연속 실패를 제한한다. 임계값은 보수적으로
+// 15분 창 10회 실패. 성공 로그인은 카운트하지 않고(오탐 최소화), 실패 분기에서만 checkRateLimit
+// 으로 기록한다. 미존재 계정도 제출된 username 키로 동일하게 카운트/응답하므로 사용자 열거
+// 오라클을 만들지 않는다.
+const USER_LOCK_WINDOW_MS = 15 * 60 * 1000;
+const USER_LOCK_LIMIT = 10;
 
 async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], flashMsg: string, redirectTo: string | null): Promise<string | null> {
     const skinHint = event.url.searchParams.get("skinHint");
@@ -80,6 +87,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
         runtimeError: locals.runtimeError,
         registered: url.searchParams.get("registered") === "1",
         passwordReset: url.searchParams.get("passwordReset") === "1",
+        deletionRequested: url.searchParams.get("deletionRequested") === "1",
         // OIDC login_hint 전달 시 아이디 입력란 프리필용.
         loginHint: url.searchParams.get("loginHint")?.trim() || null,
     };
@@ -91,6 +99,8 @@ export const actions: Actions = {
         const username = normalizeUsername(String(formData.get("username") ?? ""));
         const password = String(formData.get("password") ?? "");
         const redirectTo = sanitizeRedirectTarget(String(formData.get("redirectTo") ?? ""));
+        // 탈퇴 예정 계정 복구 확인 흐름의 2단계 제출 표식(1=복구 확정).
+        const recover = String(formData.get("recover") ?? "") === "1";
         const locale = event.locals.locale;
 
         if (!username || !password) {
@@ -113,14 +123,39 @@ export const actions: Actions = {
             });
         }
 
-        const { db, tenant } = requireDbContext(event.locals);
+        const { db, tenant, rateLimitStore } = requireDbContext(event.locals);
         const requestMetadata = getRequestMetadata(event);
 
         // 레이트 리밋: IP당 10회/15분
         const rlKey = `login:${requestMetadata.ipKey}`;
-        const rl = await checkRateLimit(db, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
+        const rl = await checkRateLimit(rateLimitStore, rlKey, { windowMs: 15 * 60 * 1000, limit: 10 });
         if (!rl.allowed) {
             const msg = translate(locale, "login.err_rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) });
+            return fail(429, {
+                username,
+                redirectTo,
+                error: msg,
+                skinHtml: await resolveSkinForAction(event, msg, redirectTo),
+            });
+        }
+
+        // 계정 단위 잠금(S2): 인증 시도 전에 잠금 여부를 증가 없이 조회해 조기 차단한다.
+        // (LDAP/로컬 인증 이전이라 두 경로 모두 보호되고, 잠긴 계정은 올바른 비밀번호로도
+        //  진입할 수 없어 scrypt 비용 낭비와 열거 오라클을 함께 차단한다.)
+        // peekRateLimit: 증가 없이 조회만. checkRateLimit 은 호출 시 선증가시켜 "성공 미카운트 +
+        // 실패 시에만 기록" 요건과 충돌하므로, 잠금 판정은 peek 로 하고 실제 기록은 실패 분기에서만 한다.
+        const userLockKey = `login:user:${username}`;
+        const lock = await peekRateLimit(rateLimitStore, userLockKey, { windowMs: USER_LOCK_WINDOW_MS, limit: USER_LOCK_LIMIT });
+        if (!lock.allowed) {
+            await recordAuditEvent(db, {
+                tenantId: tenant.id,
+                kind: "login",
+                outcome: "failure",
+                ip: requestMetadata.ip,
+                userAgent: requestMetadata.userAgent,
+                detail: { username, reason: "account_locked" },
+            });
+            const msg = translate(locale, "login.err_account_locked", { minutes: Math.ceil(lock.retryAfterMs / 60000) });
             return fail(429, {
                 username,
                 redirectTo,
@@ -143,9 +178,10 @@ export const actions: Actions = {
 
             // 암호화된 bindPassword 가 있으면 복호화 (레거시 평문 bindPassword 는 그대로 사용)
             const config = getRuntimeConfig(event.platform);
-            if (ldapConfig.bindPasswordEnc && !ldapConfig.bindPassword && config.signingKeySecret) {
+            if (ldapConfig.bindPasswordEnc && !ldapConfig.bindPassword && config.signingKeySecrets.length > 0) {
                 try {
-                    ldapConfig.bindPassword = await decryptSecret(ldapConfig.bindPasswordEnc, config.signingKeySecret, "idp-ldap-bind-password-v1");
+                    // 무중단 회전: previous 로 암호화된 bindPassword 도 복호되도록 fallback.
+                    ldapConfig.bindPassword = await tryWithSecrets(config.signingKeySecrets, (s) => decryptSecret(ldapConfig.bindPasswordEnc!, s, "idp-ldap-bind-password-v1"));
                 } catch {
                     // 복호화 실패 시 인증 진행 불가 — bindPassword 없이 진행하면 null 반환됨
                 }
@@ -185,6 +221,59 @@ export const actions: Actions = {
         }
 
         if (!user) {
+            // 탈퇴 예정(soft-delete) 계정 복구 흐름. authenticateLocalUser 는 active 만 통과시키므로
+            // deletion_pending 계정은 위에서 null 이 된다. 비밀번호가 맞으면(=본인) 복구 확인으로 분기한다.
+            const pendingUser = await authenticatePendingDeletionUser(db, tenant.id, username, password);
+            if (pendingUser) {
+                const nowMs = Date.now();
+                const scheduledMs = pendingUser.deletionScheduledAt ? new Date(pendingUser.deletionScheduledAt).getTime() : null;
+                const withinGrace = scheduledMs !== null && scheduledMs > nowMs;
+
+                if (!withinGrace) {
+                    // 유예 경과 — GC 하드삭제 대상. 복구 불가, 로그인 거부.
+                    await recordAuditEvent(db, {
+                        tenantId: tenant.id,
+                        userId: pendingUser.id,
+                        kind: "login",
+                        outcome: "failure",
+                        ip: requestMetadata.ip,
+                        userAgent: requestMetadata.userAgent,
+                        detail: { username, reason: "deletion_grace_elapsed" },
+                    });
+                    const msg = translate(locale, "login.err_account_deleting");
+                    return fail(400, { username, redirectTo, error: msg, skinHtml: await resolveSkinForAction(event, msg, redirectTo) });
+                }
+
+                if (!recover) {
+                    // 1단계: 복구 확인 프롬프트를 띄운다(세션 생성/복구 없음). 사용자가 비밀번호를
+                    // 다시 입력하고 recover=1 로 재제출하면 아래 2단계에서 실제 복구+로그인이 진행된다.
+                    return { recovery: true as const, username, redirectTo };
+                }
+
+                // 2단계: 복구 확정 — 계정을 활성으로 환원하고 삭제 예정을 해제한 뒤 정상 로그인으로 진행.
+                await db
+                    .update(users)
+                    .set({ status: "active", deletionScheduledAt: null, updatedAt: new Date() })
+                    .where(and(eq(users.id, pendingUser.id), eq(users.tenantId, tenant.id)));
+                await recordAuditEvent(db, {
+                    tenantId: tenant.id,
+                    userId: pendingUser.id,
+                    actorId: pendingUser.id,
+                    kind: "user_deletion_cancelled",
+                    outcome: "success",
+                    ip: requestMetadata.ip,
+                    userAgent: requestMetadata.userAgent,
+                });
+                user = { ...pendingUser, status: "active", deletionScheduledAt: null };
+            }
+        }
+
+        if (!user) {
+            // 실패 시에만 카운트(성공은 미카운트). 미존재/존재-오답 모두 이 분기를 타므로
+            // 동일하게 기록되어 열거 오라클을 만들지 않는다. 임계 초과는 다음 요청의
+            // accountLockStatus 조기 차단에서 반영된다.
+            await checkRateLimit(rateLimitStore, userLockKey, { windowMs: USER_LOCK_WINDOW_MS, limit: USER_LOCK_LIMIT });
+
             await recordAuditEvent(db, {
                 tenantId: tenant.id,
                 kind: "login",

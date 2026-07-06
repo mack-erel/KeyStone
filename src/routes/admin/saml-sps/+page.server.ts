@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 import { desc, eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
+import { adminError, requireFormId } from "$lib/server/admin/errors";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { samlSps } from "$lib/server/db/schema";
 import { validateSamlUrl } from "$lib/server/validation";
@@ -59,6 +60,7 @@ export const actions: Actions = {
     create: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
         const name = String(fd.get("name") ?? "").trim();
@@ -75,19 +77,19 @@ export const actions: Actions = {
         const encryptAssertion = fd.get("encryptAssertion") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
 
-        if (!name) return fail(400, { create: true, error: "이름은 필수입니다." });
-        if (!entityId) return fail(400, { create: true, error: "Entity ID 는 필수입니다." });
-        if (!acsUrl) return fail(400, { create: true, error: "ACS URL 은 필수입니다." });
+        if (!name) return fail(400, { create: true, error: adminError(locale, "name_required") });
+        if (!entityId) return fail(400, { create: true, error: adminError(locale, "entity_id_required") });
+        if (!acsUrl) return fail(400, { create: true, error: adminError(locale, "acs_url_required") });
         // Assertion 암호화는 SP 공개키가 있어야 가능하다.
-        if (encryptAssertion && !cert) return fail(400, { create: true, error: "Assertion 암호화를 사용하려면 SP 인증서가 필요합니다." });
+        if (encryptAssertion && !cert) return fail(400, { create: true, error: adminError(locale, "sp_cert_required_for_encryption") });
 
         const acsV = validateSamlUrl(acsUrl, "ACS URL");
-        if (!acsV.ok) return fail(400, { create: true, error: acsV.reason });
+        if (!acsV.ok) return fail(400, { create: true, error: adminError(locale, acsV.reason.key, acsV.reason.params) });
         const sloV = validateSamlUrl(sloUrl, "SLO URL");
-        if (!sloV.ok) return fail(400, { create: true, error: sloV.reason });
+        if (!sloV.ok) return fail(400, { create: true, error: adminError(locale, sloV.reason.key, sloV.reason.params) });
 
         if (!(ALLOWED_NAMEID_FORMATS as readonly string[]).includes(nameIdFormat)) {
-            return fail(400, { create: true, error: "허용되지 않는 NameID Format 입니다." });
+            return fail(400, { create: true, error: adminError(locale, "nameid_format_forbidden") });
         }
 
         // 중복 Entity ID 확인
@@ -96,7 +98,7 @@ export const actions: Actions = {
             .from(samlSps)
             .where(and(eq(samlSps.tenantId, tenant.id), eq(samlSps.entityId, entityId)))
             .limit(1);
-        if (existing) return fail(409, { create: true, error: "이미 등록된 Entity ID 입니다." });
+        if (existing) return fail(409, { create: true, error: adminError(locale, "entity_id_taken") });
 
         await db.insert(samlSps).values({
             id: crypto.randomUUID(),
@@ -133,6 +135,7 @@ export const actions: Actions = {
     update: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
@@ -150,17 +153,17 @@ export const actions: Actions = {
         const enabled = fd.get("enabled") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
 
-        if (!id || !name || !acsUrl) return fail(400, { error: "필수 항목이 누락되었습니다." });
+        if (!id || !name || !acsUrl) return fail(400, { error: adminError(locale, "required_field_missing") });
         // Assertion 암호화는 SP 공개키가 있어야 가능하다.
-        if (encryptAssertion && !cert) return fail(400, { error: "Assertion 암호화를 사용하려면 SP 인증서가 필요합니다." });
+        if (encryptAssertion && !cert) return fail(400, { error: adminError(locale, "sp_cert_required_for_encryption") });
 
         const acsV = validateSamlUrl(acsUrl, "ACS URL");
-        if (!acsV.ok) return fail(400, { error: acsV.reason });
+        if (!acsV.ok) return fail(400, { error: adminError(locale, acsV.reason.key, acsV.reason.params) });
         const sloV = validateSamlUrl(sloUrl, "SLO URL");
-        if (!sloV.ok) return fail(400, { error: sloV.reason });
+        if (!sloV.ok) return fail(400, { error: adminError(locale, sloV.reason.key, sloV.reason.params) });
 
         if (nameIdFormat && !(ALLOWED_NAMEID_FORMATS as readonly string[]).includes(nameIdFormat)) {
-            return fail(400, { error: "허용되지 않는 NameID Format 입니다." });
+            return fail(400, { error: adminError(locale, "nameid_format_forbidden") });
         }
 
         // ctrls H-SAML-4: 보안 설정 변경을 audit 로그에 정확히 기록.
@@ -225,10 +228,12 @@ export const actions: Actions = {
     delete: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
-        const id = String(fd.get("id") ?? "");
-        if (!id) return fail(400, { error: "잘못된 요청입니다." });
+        const idr = requireFormId(fd, locale);
+        if (!idr.ok) return idr.failure;
+        const id = idr.id;
 
         await db.delete(samlSps).where(and(eq(samlSps.id, id), eq(samlSps.tenantId, tenant.id)));
 

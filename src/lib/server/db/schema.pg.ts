@@ -34,13 +34,20 @@ export const users = pgTable(
         username: text("username"),
         email: text("email").notNull(),
         emailVerifiedAt: timestamp("email_verified_at", { mode: "date", withTimezone: true, precision: 3 }),
+        // F3: 이메일 변경 대기 상태. 새 주소 확인(email_change_tokens) 전까지 여기 보관하고,
+        // 확인 완료 시 email 로 승격 후 NULL 로 클리어한다. requestedAt 은 대기 시작 시각.
+        pendingEmail: text("pending_email"),
+        pendingEmailRequestedAt: timestamp("pending_email_requested_at", { mode: "date", withTimezone: true, precision: 3 }),
         displayName: text("display_name"),
         role: text("role", { enum: ["admin", "user"] })
             .notNull()
             .default("user"),
-        status: text("status", { enum: ["active", "disabled", "locked"] })
+        status: text("status", { enum: ["active", "disabled", "locked", "deletion_pending"] })
             .notNull()
             .default("active"),
+        // 셀프서비스 계정 삭제(소프트 삭제) 예정 시각. status='deletion_pending' 일 때만 값이 있으며,
+        // 이 시각이 지나면 GC 가 하드 삭제한다. 복구(로그인) 시 status='active' 환원 + 이 값 NULL.
+        deletionScheduledAt: timestamp("deletion_scheduled_at", { mode: "date", withTimezone: true, precision: 3 }),
         // 프로필
         givenName: text("given_name"),
         familyName: text("family_name"),
@@ -60,7 +67,17 @@ export const users = pgTable(
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
         updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
     },
-    (t) => [uniqueIndex("users_tenant_email_uidx").on(t.tenantId, t.email), uniqueIndex("users_tenant_username_uidx").on(t.tenantId, t.username), index("users_tenant_idx").on(t.tenantId)],
+    (t) => [
+        uniqueIndex("users_tenant_email_uidx").on(t.tenantId, t.email),
+        uniqueIndex("users_tenant_username_uidx").on(t.tenantId, t.username),
+        index("users_tenant_idx").on(t.tenantId),
+        // GC(하드삭제) 조회 지원 — status='deletion_pending' & deletionScheduledAt 경과분만 스캔한다.
+        // 부분 인덱스(WHERE status='deletion_pending')로 삭제 예정 계정만 색인해 공간을 아낀다.
+        // (mysql 은 부분 인덱스 미지원 → users_deletion_gc_idx 복합 인덱스로 대체; parity 예외 등재.)
+        index("users_deletion_pending_idx")
+            .on(t.deletionScheduledAt)
+            .where(sql`${t.status} = 'deletion_pending'`),
+    ],
 );
 
 /**
@@ -224,6 +241,9 @@ export const oidcClients = pgTable(
         idTokenSignedResponseAlg: text("id_token_signed_response_alg").notNull().default("RS256"),
         jwksUri: text("jwks_uri"),
         jwks: text("jwks"),
+        // organization scope 클레임의 클라이언트별 노출 토글(JSON). null=미설정=전량 노출(하위호환).
+        // 예: {"department":true,"team":true,"position":false,"jobTitle":true}
+        organizationClaimConfig: text("organization_claim_config"),
         enabled: boolean("enabled").notNull().default(true),
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
         updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
@@ -245,10 +265,8 @@ export const oidcGrants = pgTable(
             .notNull()
             .references(() => users.id, { onDelete: "cascade" }),
         sessionId: text("session_id").references(() => sessions.id, { onDelete: "set null" }),
-        // ctrls C-6: authorization code 평문 저장 제거.
-        // 신규 grant 는 codeHash (SHA-256) 만 저장. code 평문 컬럼은 legacy 호환
-        // 위해 nullable 로 유지 — 다음 PR 에서 컬럼 자체 drop.
-        code: text("code"),
+        // ctrls C-6: authorization code 평문 저장 제거. 신규/기존 grant 모두 codeHash
+        // (SHA-256) 만 저장한다. (legacy code 평문 컬럼은 본 PR 에서 drop 완료.)
         codeHash: text("code_hash"),
         codeChallenge: text("code_challenge"),
         codeChallengeMethod: text("code_challenge_method", { enum: ["S256", "plain"] }),
@@ -262,9 +280,7 @@ export const oidcGrants = pgTable(
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
     },
     (t) => [
-        // 기존 code 평문 unique 는 유지 (legacy grants 가 남아 있는 동안). NULL 다중 허용.
-        uniqueIndex("oidc_grants_code_uidx").on(t.code),
-        // codeHash unique — 신규 grant 의 1회용 invariant. NULL 다중 허용 (legacy row).
+        // codeHash unique — grant 의 1회용 invariant. NULL 다중 허용 (legacy row).
         uniqueIndex("oidc_grants_code_hash_uidx").on(t.codeHash),
         index("oidc_grants_tenant_client_idx").on(t.tenantId, t.clientId),
         index("oidc_grants_expires_idx").on(t.expiresAt),
@@ -809,6 +825,76 @@ export const passwordResetTokens = pgTable(
 );
 
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+
+// ---------- Email Verification ----------
+// password_reset_tokens 와 동일 패턴(SHA-256 해시 저장, TTL, 1회용). TTL 24시간.
+
+export const emailVerificationTokens = pgTable(
+    "email_verification_tokens",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: text("token_hash").notNull(),
+        expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true, precision: 3 }).notNull(),
+        usedAt: timestamp("used_at", { mode: "date", withTimezone: true, precision: 3 }),
+        createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    },
+    (t) => [index("email_verification_tokens_user_idx").on(t.userId), uniqueIndex("email_verification_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type EmailVerificationToken = typeof emailVerificationTokens.$inferSelect;
+
+// ---------- Invite ----------
+// email_verification_tokens 와 동일 패턴(SHA-256 해시 저장, TTL, 1회용). TTL 72시간.
+// 초대는 관리자가 비밀번호 없이 계정을 선생성하고, 이 토큰 링크로 최초 비밀번호를 설정한다.
+
+export const inviteTokens = pgTable(
+    "invite_tokens",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: text("token_hash").notNull(),
+        expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true, precision: 3 }).notNull(),
+        usedAt: timestamp("used_at", { mode: "date", withTimezone: true, precision: 3 }),
+        createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    },
+    (t) => [index("invite_tokens_user_idx").on(t.userId), uniqueIndex("invite_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type InviteToken = typeof inviteTokens.$inferSelect;
+
+// ---------- Email change ----------
+// F3: 프로필 이메일 변경 확인 토큰. email_verification_tokens 와 분리한다 — 변경 대상 주소
+// (targetEmail)를 토큰에 바인딩해야 하고(확인 링크가 다른 주소로 재사용되지 않도록), 확인
+// 라우트/시맨틱도 다르기 때문이다. SHA-256 해시 저장, TTL 24시간, 1회용(usedAt).
+export const emailChangeTokens = pgTable(
+    "email_change_tokens",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        tokenHash: text("token_hash").notNull(),
+        // 변경하려는 새 이메일 주소(토큰에 바인딩). 확인 시 이 값으로 users.email 을 교체한다.
+        targetEmail: text("target_email").notNull(),
+        expiresAt: timestamp("expires_at", { mode: "date", withTimezone: true, precision: 3 }).notNull(),
+        usedAt: timestamp("used_at", { mode: "date", withTimezone: true, precision: 3 }),
+        createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    },
+    (t) => [index("email_change_tokens_user_idx").on(t.userId), uniqueIndex("email_change_tokens_hash_uidx").on(t.tokenHash)],
+);
+
+export type EmailChangeToken = typeof emailChangeTokens.$inferSelect;
 
 export type User = typeof users.$inferSelect;
 export type Credential = typeof credentials.$inferSelect;

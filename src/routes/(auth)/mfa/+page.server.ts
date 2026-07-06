@@ -5,6 +5,7 @@ import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { createSessionRecord, revokeOtherSessions, setSessionCookie } from "$lib/server/auth/session";
 import { verifyMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
+import { tryWithSecrets, tryWithSecretsNullable } from "$lib/server/crypto/keys";
 import { verifyTotp, decryptTotpSecret, encryptTotpSecret, isLegacyTotpCiphertext, verifyBackupCode } from "$lib/server/auth/totp";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { AMR_PASSWORD, AMR_TOTP, AMR_BACKUP_CODE, amrToAcr, TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
@@ -12,6 +13,10 @@ import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { credentials, users } from "$lib/server/db/schema";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { translate } from "$lib/i18n/server";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
+
+// 백업 코드 저잔량 경고 임계값(이하이면 경고 알림). account/mfa 의 backupCodesRemaining 표시와 정합.
+const BACKUP_CODES_LOW_THRESHOLD = 2;
 
 export const load: PageServerLoad = async ({ locals, cookies, platform, url }) => {
     const mfaToken = cookies.get(MFA_PENDING_COOKIE);
@@ -30,7 +35,7 @@ export const load: PageServerLoad = async ({ locals, cookies, platform, url }) =
         throw redirect(303, "/login");
     }
 
-    const claims = await verifyMfaPendingToken(mfaToken, config.signingKeySecret);
+    const claims = await tryWithSecretsNullable(config.signingKeySecrets, (s) => verifyMfaPendingToken(mfaToken, s));
     if (!claims) {
         cookies.delete(MFA_PENDING_COOKIE, { path: "/" });
         throw redirect(303, "/login");
@@ -94,7 +99,7 @@ export const actions: Actions = {
             return fail(503, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 
-        const claims = await verifyMfaPendingToken(mfaToken, config.signingKeySecret);
+        const claims = await tryWithSecretsNullable(config.signingKeySecrets, (s) => verifyMfaPendingToken(mfaToken, s));
         if (!claims) {
             event.cookies.delete(MFA_PENDING_COOKIE, { path: "/" });
             throw redirect(303, "/login");
@@ -108,12 +113,12 @@ export const actions: Actions = {
             throw redirect(303, "/login");
         }
 
-        if (!event.locals.db) {
+        if (!event.locals.db || !event.locals.rateLimitStore) {
             const msg = translate(locale, "errors.db_not_ready");
             return fail(503, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
         }
 
-        const rl = await checkRateLimit(event.locals.db, `mfa:${claims.userId}`, {
+        const rl = await checkRateLimit(event.locals.rateLimitStore, `mfa:${claims.userId}`, {
             windowMs: 5 * 60 * 1000,
             limit: 10,
         });
@@ -173,7 +178,7 @@ export const actions: Actions = {
                 .limit(1);
 
             if (totpCred?.secret) {
-                const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret, user.id);
+                const plainSecret = await tryWithSecrets(config.signingKeySecrets, (s) => decryptTotpSecret(totpCred.secret!, s, user.id));
                 // counter 컬럼을 마지막으로 사용된 TOTP 스텝으로 활용 (재사용 방지)
                 const lastUsedStep = totpCred.counter ?? undefined;
                 const matchedStep = await verifyTotp(code, plainSecret, lastUsedStep);
@@ -207,6 +212,22 @@ export const actions: Actions = {
 
             const msg = useBackup ? translate(locale, "mfa_login.err_invalid_backup") : translate(locale, "mfa_login.err_invalid_totp");
             return fail(400, { error: msg, skinHtml: await resolveMfaSkinForAction(event, msg) });
+        }
+
+        // 백업 코드로 통과한 경우: 소진 처리 후 남은 미사용 코드 수를 계산해
+        // 저잔량(≤임계값) 경고 / 소진(0) 알림을 보안 메일로 발송한다(fire-and-forget).
+        // TOTP 로 통과한 경우엔 백업 코드가 소비되지 않으므로 검사하지 않는다(오탐 방지).
+        if (useBackup) {
+            const remainingRows = await db
+                .select({ id: credentials.id })
+                .from(credentials)
+                .where(and(eq(credentials.userId, user.id), eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE), isNull(credentials.usedAt)));
+            const remaining = remainingRows.length;
+            if (remaining === 0) {
+                dispatchSecurityAlert({ to: user.email, locale: user.locale, kind: "backup_codes_depleted", platform: event.platform });
+            } else if (remaining <= BACKUP_CODES_LOW_THRESHOLD) {
+                dispatchSecurityAlert({ to: user.email, locale: user.locale, kind: "backup_codes_low", platform: event.platform });
+            }
         }
 
         // MFA 통과 — 세션 생성

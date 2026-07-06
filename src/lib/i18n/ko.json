@@ -35,7 +35,8 @@
         "change": "변경",
         "saving": "저장되었습니다.",
         "search": "검색",
-        "next_page": "다음 페이지 →"
+        "next_page": "다음 페이지 →",
+        "processing": "처리 중..."
     },
     "login": {
         "username": "아이디",
@@ -53,8 +54,15 @@
         "password_reset_success": "비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.",
         "err_missing_credentials": "아이디와 비밀번호를 입력해 주세요.",
         "err_rate_limit": "로그인 시도가 너무 많습니다. {{minutes}}분 후 다시 시도해 주세요.",
+        "err_account_locked": "로그인 시도가 너무 많습니다. {{minutes}}분 후 다시 시도해 주세요.",
         "err_invalid_credentials": "아이디 또는 비밀번호가 올바르지 않습니다.",
-        "err_mfa_config": "2단계 인증 설정에 문제가 있습니다. 관리자에게 문의해 주세요."
+        "err_mfa_config": "2단계 인증 설정에 문제가 있습니다. 관리자에게 문의해 주세요.",
+        "err_account_deleting": "이 계정은 삭제 처리 중이며 더 이상 로그인할 수 없습니다.",
+        "deletion_requested_notice": "탈퇴가 접수되었습니다. 유예기간(30일) 내에 다시 로그인하면 계정을 복구할 수 있습니다.",
+        "recovery_desc": "이 계정은 탈퇴(삭제) 예정 상태입니다. 계속 사용하려면 비밀번호를 다시 입력해 계정을 복구하세요.",
+        "recovery_password_label": "비밀번호를 다시 입력해 복구",
+        "recovery_confirm": "계정 복구 후 로그인",
+        "recovery_cancel": "← 로그인으로 돌아가기"
     },
     "admin": {
         "title": "관리자 대시보드",
@@ -73,7 +81,98 @@
         "teams": "팀",
         "parts": "파트",
         "ldap_providers": "LDAP 프로바이더",
-        "skins": "로그인 스킨"
+        "skins": "로그인 스킨",
+        "errors": {
+            "invalid_request": "잘못된 요청입니다.",
+            "user_not_found": "사용자를 찾을 수 없습니다.",
+            "name_required": "이름은 필수입니다.",
+            "password_min_length": "비밀번호는 8자 이상이어야 합니다.",
+            "csrf_failed": "CSRF 검증에 실패했습니다. 페이지를 새로 고친 뒤 다시 시도해 주세요.",
+            "invalid_expiry_format": "만료일 형식이 올바르지 않습니다.",
+            "required_field_missing": "필수 항목이 누락되었습니다.",
+            "signing_key_secret_missing": "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            "email_password_required": "이메일과 비밀번호는 필수입니다.",
+            "email_required": "이메일은 필수입니다.",
+            "invalid_role": "역할이 올바르지 않습니다.",
+            "email_taken": "이미 사용 중인 이메일입니다.",
+            "username_taken": "이미 사용 중인 아이디입니다.",
+            "cannot_change_own_status": "자기 자신의 상태를 변경할 수 없습니다.",
+            "cannot_change_own_role": "자기 자신의 역할을 변경할 수 없습니다.",
+            "password_required": "비밀번호를 입력해 주세요.",
+            "cannot_delete_self": "자기 자신을 삭제할 수 없습니다.",
+            "invalid_role_value": "잘못된 role 값입니다.",
+            "invalid_status_value": "잘못된 status 값입니다.",
+            "cannot_change_own_role_status": "자기 자신의 role/status 는 변경할 수 없습니다. 다른 관리자에게 요청해 주세요.",
+            "last_admin_race": "동시에 다른 관리자도 강등된 것으로 보입니다. 변경을 취소했습니다. 다시 시도해 주세요.",
+            "select_department": "부서를 선택해 주세요.",
+            "department_not_found": "부서를 찾을 수 없습니다.",
+            "position_not_found": "직책을 찾을 수 없습니다.",
+            "select_team": "팀을 선택해 주세요.",
+            "team_not_found": "팀을 찾을 수 없습니다.",
+            "select_part": "파트를 선택해 주세요.",
+            "part_not_found": "파트를 찾을 수 없습니다.",
+            "select_service": "서비스를 선택해 주세요.",
+            "invalid_service_type": "잘못된 서비스 종류입니다.",
+            "invalid_service_id": "잘못된 서비스 ID 입니다.",
+            "oidc_client_not_found": "OIDC 클라이언트를 찾을 수 없습니다.",
+            "saml_sp_not_found": "SAML SP 를 찾을 수 없습니다.",
+            "role_not_in_service": "선택한 role 이 해당 서비스에 속하지 않습니다.",
+            "attributes_not_object": "attributesJson 은 JSON object 여야 합니다.",
+            "attributes_parse_failed": "attributesJson 파싱 실패.",
+            "assignment_exists": "이미 해당 서비스에 매핑이 존재합니다. 먼저 삭제해 주세요.",
+            "scope_openid_required": "scope 에는 'openid' 가 포함되어야 합니다.",
+            "invalid_token_auth_method": "tokenEndpointAuthMethod 값이 올바르지 않습니다.",
+            "redirect_uri_required": "Redirect URI 는 필수입니다.",
+            "client_not_found": "클라이언트를 찾을 수 없습니다.",
+            "invalid_role_key": "key 는 영숫자/._- 만 허용 (1~64자).",
+            "label_required": "label 은 필수입니다.",
+            "role_key_exists": "이미 존재하는 role key 입니다.",
+            "ldap_host_required": "LDAP 호스트는 필수입니다.",
+            "ldap_bind_or_userdn_required": "Admin Bind DN 또는 유저 DN 패턴 중 하나는 필수입니다.",
+            "ldap_signing_key_secret_required": "IDP_SIGNING_KEY_SECRET 이 설정되어야 LDAP bindPassword 를 저장할 수 있습니다.",
+            "invalid_url": "유효한 URL을 입력해 주세요.",
+            "https_only": "https URL만 허용됩니다.",
+            "loopback_forbidden": "loopback 주소는 사용할 수 없습니다.",
+            "internal_addr_forbidden": "내부망/메타데이터 주소는 사용할 수 없습니다.",
+            "required_fields": "필수 항목을 입력해 주세요.",
+            "invalid_client_type": "clientType이 올바르지 않습니다.",
+            "cache_ttl_negative": "cacheTtlSeconds 는 0 이상이어야 합니다.",
+            "cache_ttl_max": "cacheTtlSeconds 는 {{max}} 초(1일) 를 초과할 수 없습니다.",
+            "skin_config_exists": "이미 동일한 클라이언트/스킨 타입 설정이 있습니다.",
+            "skin_not_found": "스킨을 찾을 수 없습니다.",
+            "url_required": "URL을 입력해 주세요.",
+            "rotate_conflict": "다른 rotate 작업이 진행 중이거나 DB 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            "entity_id_required": "Entity ID 는 필수입니다.",
+            "acs_url_required": "ACS URL 은 필수입니다.",
+            "sp_cert_required_for_encryption": "Assertion 암호화를 사용하려면 SP 인증서가 필요합니다.",
+            "nameid_format_forbidden": "허용되지 않는 NameID Format 입니다.",
+            "entity_id_taken": "이미 등록된 Entity ID 입니다.",
+            "login_missing_credentials": "아이디와 비밀번호를 입력해 주세요.",
+            "login_invalid_credentials": "아이디 또는 비밀번호가 올바르지 않습니다.",
+            "login_not_admin": "관리자 권한이 없는 계정입니다.",
+            "login_mfa_config": "MFA 설정 오류: IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            "login_mfa_required": "관리자 계정은 MFA(OTP) 설정이 필수입니다. 먼저 MFA를 등록해 주세요.",
+            "login_rate_limit": "로그인 시도가 너무 많습니다. {{minutes}}분 후 다시 시도해 주세요.",
+            "team_name_required": "팀명을 입력해 주세요.",
+            "part_name_required": "파트명을 입력해 주세요.",
+            "position_name_required": "직급명을 입력해 주세요.",
+            "department_name_required": "부서명을 입력해 주세요.",
+            "level_must_be_number": "레벨은 숫자여야 합니다.",
+            "url_invalid_format": "URL 형식이 올바르지 않습니다: {{value}}",
+            "url_fragment_forbidden": "fragment(#) 가 포함된 URI 는 허용되지 않습니다: {{value}}",
+            "scheme_forbidden": "{{scheme}}: 스킴은 허용되지 않습니다.",
+            "http_localhost_only": "http URL 은 localhost/127.0.0.1 만 허용됩니다: {{value}}",
+            "custom_scheme_invalid": "커스텀 scheme 형식이 올바르지 않습니다: {{value}}",
+            "scheme_not_allowed": "허용되지 않는 scheme 입니다 ({{scheme}}): {{value}}",
+            "scope_not_allowed": "허용되지 않는 scope 입니다: {{scope}}",
+            "saml_url_invalid_format": "{{label}}: URL 형식이 올바르지 않습니다.",
+            "saml_url_http_loopback_only": "{{label}}: http URL 은 localhost/127.0.0.1 만 허용됩니다.",
+            "saml_url_https_only": "{{label}}: https URL 만 허용됩니다.",
+            "ldap_metadata_host_forbidden": "클라우드 메타데이터 호스트는 사용할 수 없습니다.",
+            "ldap_linklocal_forbidden": "link-local(169.254/16) 주소는 사용할 수 없습니다.",
+            "ldap_port_invalid": "포트 번호가 올바르지 않습니다.",
+            "ldap_port_not_allowed": "허용되지 않는 LDAP 포트입니다 (허용: {{allowed}})."
+        }
     },
     "admin_login": {
         "subtitle": "관리자 로그인",
@@ -86,7 +185,42 @@
     "account": {
         "profile": "내 프로필",
         "mfa": "2단계 인증",
-        "passkeys": "패스키"
+        "passkeys": "패스키",
+        "sessions": {
+            "title": "활성 세션",
+            "subtitle": "현재 로그인된 기기와 세션을 확인하고, 낯선 기기를 로그아웃할 수 있습니다.",
+            "current_badge": "현재 세션",
+            "ip_label": "IP",
+            "device_label": "기기",
+            "last_seen_label": "마지막 활동",
+            "created_label": "로그인 시각",
+            "unknown": "알 수 없음",
+            "revoke": "로그아웃",
+            "revoke_current": "이 기기 로그아웃",
+            "revoke_confirm": "이 세션을 로그아웃할까요?",
+            "revoke_current_confirm": "현재 사용 중인 기기입니다. 로그아웃하면 이 화면에서도 로그아웃됩니다. 계속할까요?",
+            "revoke_others": "다른 모든 기기에서 로그아웃",
+            "revoke_others_confirm": "현재 기기를 제외한 모든 세션을 로그아웃할까요?",
+            "empty": "활성 세션이 없습니다.",
+            "revoked_notice": "선택한 세션을 로그아웃했습니다.",
+            "revoked_others_notice": "다른 모든 기기에서 로그아웃했습니다.",
+            "err_select_session": "세션을 지정해 주세요.",
+            "err_not_found": "세션을 찾을 수 없습니다."
+        },
+        "danger_zone": {
+            "title": "계정 탈퇴",
+            "subtitle": "계정을 삭제 예정 상태로 전환합니다. 유예기간 동안은 다시 로그인해 복구할 수 있습니다.",
+            "warning_title": "탈퇴하면 다음이 진행됩니다.",
+            "warning_grace": "지금 탈퇴를 신청하면 계정이 {{days}}일 후 영구 삭제됩니다. 그때까지는 로그인해서 복구할 수 있습니다.",
+            "warning_recovery": "탈퇴 즉시 모든 기기에서 로그아웃되며, 유예기간이 지나면 계정과 관련 데이터가 영구 삭제됩니다.",
+            "password_label": "본인 확인을 위한 비밀번호",
+            "totp_label": "인증 앱 코드 (TOTP)",
+            "confirm_label": "위 내용을 이해했으며 계정 탈퇴를 신청합니다.",
+            "confirm_dialog": "정말 탈퇴를 신청하시겠습니까? 즉시 로그아웃되며 유예기간이 지나면 영구 삭제됩니다.",
+            "submit": "계정 탈퇴 신청",
+            "err_reauth": "본인 확인에 실패했습니다. 비밀번호 또는 인증 코드를 확인해 주세요.",
+            "err_last_admin": "마지막 활성 관리자는 탈퇴할 수 없습니다. 먼저 다른 관리자를 지정해 주세요."
+        }
     },
     "logout": {
         "in_progress": "로그아웃 중..."
@@ -100,7 +234,12 @@
         "confirm": "확인",
         "use_backup": "백업 코드로 로그인",
         "use_totp": "인증 앱 코드로 로그인",
-        "back_to_login": "← 로그인으로 돌아가기"
+        "back_to_login": "← 로그인으로 돌아가기",
+        "err_config": "MFA 설정에 문제가 있습니다. 잠시 후 다시 시도해 주세요.",
+        "err_rate_limit": "인증 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+        "err_missing_code": "코드를 입력해 주세요.",
+        "err_invalid_totp": "인증 코드가 올바르지 않습니다.",
+        "err_invalid_backup": "백업 코드가 올바르지 않습니다."
     },
     "mfa_manage": {
         "title": "2단계 인증 관리",
@@ -157,7 +296,34 @@
         "locale_settings": "지역 설정",
         "org_membership": "조직 소속",
         "team_label": "팀",
-        "part_label": "파트"
+        "part_label": "파트",
+        "email_unverified_title": "이메일이 아직 인증되지 않았습니다.",
+        "email_unverified_desc": "{{email}} 주소로 인증 메일을 보냈습니다. 받은 편지함을 확인해 주세요.",
+        "email_resend": "인증 메일 재발송",
+        "email_resend_sent": "인증 메일을 다시 보냈습니다. 잠시 후 받은 편지함을 확인해 주세요.",
+        "err_birthdate_format": "생년월일 형식이 올바르지 않습니다. (YYYY-MM-DD)",
+        "email_change_title": "이메일 주소 변경",
+        "email_change_desc": "새 이메일 주소로 확인 메일을 보냅니다. 확인 링크를 클릭해야 변경이 완료됩니다.",
+        "email_change_new_label": "새 이메일 주소",
+        "email_change_password_label": "현재 비밀번호",
+        "email_change_submit": "확인 메일 보내기",
+        "email_change_sent": "{{email}} 주소로 확인 메일을 보냈습니다. 링크를 클릭하면 변경이 완료됩니다.",
+        "email_change_pending": "{{email}} 주소로의 변경 확인 대기 중입니다. 받은 편지함을 확인해 주세요.",
+        "err_email_change_password": "현재 비밀번호가 올바르지 않습니다.",
+        "err_email_change_format": "이메일 형식이 올바르지 않습니다.",
+        "err_email_change_same": "현재 이메일과 동일한 주소입니다.",
+        "err_email_change_taken": "이미 사용 중인 이메일 주소입니다.",
+        "err_email_change_no_password": "이 계정은 비밀번호가 설정되어 있지 않아 이메일을 변경할 수 없습니다."
+    },
+    "confirm_email_change": {
+        "title": "이메일 주소 변경 확인",
+        "subtitle": "새 이메일 주소로의 변경을 완료해 주세요.",
+        "confirm_prompt": "아래 버튼을 클릭하면 이메일 주소 변경이 완료됩니다.",
+        "submit": "이메일 변경 확인",
+        "success": "이메일 주소가 변경되었습니다.",
+        "invalid_link": "링크가 만료되었거나 유효하지 않습니다.",
+        "go_login": "로그인하러 가기",
+        "go_profile": "프로필로 가기"
     },
     "audit": {
         "title": "감사 로그",
@@ -247,6 +413,11 @@
     "users": {
         "title": "사용자 관리",
         "add_btn": "+ 사용자 추가",
+        "invite_btn": "사용자 초대",
+        "invite_title": "사용자 초대",
+        "invite_hint": "비밀번호 없이 계정을 만들고 초대 메일을 발송합니다. 초대받은 사용자가 링크에서 비밀번호를 직접 설정합니다.",
+        "invite_submit": "초대 보내기",
+        "badge_pending_invite": "초대중",
         "search_placeholder": "이메일 · 아이디 · 이름 검색",
         "search_empty": "검색 결과가 없습니다.",
         "create_title": "새 사용자 추가",
@@ -274,6 +445,11 @@
     },
     "user_detail": {
         "back": "← 목록",
+        "danger_zone": "위험 작업",
+        "force_logout": "강제 로그아웃",
+        "force_logout_desc": "이 사용자의 모든 세션과 OIDC refresh token 을 즉시 폐기합니다. 상태나 비밀번호는 변경되지 않습니다.",
+        "force_logout_confirm": "이 사용자를 모든 기기에서 강제 로그아웃하시겠습니까?",
+        "force_logout_done": "모든 세션이 폐기되었습니다.",
         "saved": "저장되었습니다.",
         "profile_section": "프로필 정보",
         "given_name": "이름 (Given Name)",
@@ -382,7 +558,49 @@
         "empty": "등록된 클라이언트가 없습니다.",
         "regenerate_secret": "시크릿 재생성",
         "regenerate_confirm": "시크릿을 재생성하시겠습니까? 기존 시크릿은 즉시 무효화됩니다.",
-        "delete_confirm": "클라이언트를 삭제하시겠습니까?"
+        "delete_confirm": "클라이언트를 삭제하시겠습니까?",
+        "org_claims": {
+            "title": "조직 클레임 노출 설정",
+            "desc": "이 클라이언트의 organization scope 가 노출하는 필드를 선택합니다. id_token 과 userinfo 응답에 동일하게 적용됩니다.",
+            "saved": "조직 클레임 설정을 저장했습니다.",
+            "all_note": "모든 필드를 켜면 미설정(전량 노출) 상태로 저장됩니다.",
+            "field_department": "부서 (department)",
+            "field_department_desc": "사용자가 소속된 부서 목록. 각 부서의 코드·주소속 여부·직책·직급을 포함합니다.",
+            "field_team": "팀 (team)",
+            "field_team_desc": "사용자가 소속된 팀 목록. 각 팀의 코드·상위 부서·주소속 여부·직책을 포함합니다.",
+            "field_position": "직급 (position)",
+            "field_position_desc": "사용자 주소속 부서의 직급명.",
+            "field_jobTitle": "직책 (job_title)",
+            "field_jobTitle_desc": "사용자 주소속 부서의 직책."
+        },
+        "errors": {
+            "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+            "rate_limited_short": "요청이 너무 많습니다.",
+            "client_id_redirect_uri_required": "client_id 와 redirect_uri 는 필수입니다.",
+            "response_type_unsupported": "response_type=code 만 지원합니다.",
+            "unknown_client": "등록되지 않은 client_id 입니다.",
+            "redirect_uri_mismatch": "redirect_uri 가 등록된 값과 일치하지 않습니다.",
+            "pkce_required": "PKCE code_challenge 가 필요합니다.",
+            "empty_code_challenge": "code_challenge 가 비어 있습니다.",
+            "code_challenge_method_unsupported": "code_challenge_method=S256 만 지원합니다.",
+            "openid_scope_required": "openid scope 가 필요합니다.",
+            "prompt_none_conflict": "prompt=none 은 다른 prompt 값과 함께 쓸 수 없습니다.",
+            "max_age_invalid": "max_age 는 음이 아닌 정수여야 합니다.",
+            "login_required": "사용자 상호작용 없이 인증을 완료할 수 없습니다.",
+            "session_missing_after_gate": "인증 게이트 이후 세션이 없습니다.",
+            "service_access_denied": "이 서비스에 대한 권한이 없습니다.",
+            "token_param_required": "token 파라미터가 필요합니다.",
+            "id_token_hint_required": "id_token_hint 가 필요합니다.",
+            "aud_mismatch": "aud 가 일치하지 않습니다.",
+            "cross_origin_post_blocked": "cross-origin POST 가 차단되었습니다.",
+            "logging_out": "로그아웃 중...",
+            "signing_key_not_set": "IDP_SIGNING_KEY_SECRET 미설정",
+            "bearer_token_required": "Bearer 토큰이 필요합니다.",
+            "access_token_invalid": "유효하지 않거나 만료된 액세스 토큰입니다.",
+            "token_aud_mismatch": "토큰의 aud 와 client 가 일치하지 않습니다.",
+            "issuing_client_invalid": "발급 client 가 더 이상 유효하지 않습니다.",
+            "user_not_found": "사용자를 찾을 수 없습니다."
+        }
     },
     "saml": {
         "title": "SAML SP 관리",
@@ -411,7 +629,38 @@
         "empty": "등록된 SAML SP 가 없습니다.",
         "delete_confirm": "SP를 삭제하시겠습니까?",
         "parse_error_xml": "XML 파싱 오류",
-        "parse_error_generic": "파싱 실패"
+        "parse_error_generic": "파싱 실패",
+        "errors": {
+            "rate_limited": "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+            "issuer_not_set": "IDP_ISSUER_URL 미설정",
+            "signing_key_not_set": "IDP_SIGNING_KEY_SECRET 미설정",
+            "signing_key_missing": "서명 키가 없습니다. 서버를 재시작하여 키를 생성하세요.",
+            "access_denied": "이 SP에 대한 권한이 없습니다.",
+            "authn_request_replay": "AuthnRequest ID 가 이미 사용되었습니다 (replay)",
+            "unknown_sp": "등록되지 않은 SP 입니다: {{entityId}}",
+            "destination_mismatch": "AuthnRequest Destination 이 IdP 의 SSO endpoint 와 일치하지 않습니다.",
+            "acs_url_mismatch": "AuthnRequest 의 ACS URL 이 등록된 SP ACS URL 과 일치하지 않습니다.",
+            "saml_request_missing": "SAMLRequest 파라미터가 없습니다.",
+            "saml_request_parse_failed": "SAMLRequest 파싱에 실패했습니다.",
+            "sp_cert_missing_for_authn_sig": "SP 인증서가 등록되지 않아 AuthnRequest 서명을 검증할 수 없습니다.",
+            "authn_signature_invalid": "AuthnRequest 서명 검증에 실패했습니다.",
+            "sso_redirecting": "SSO 리다이렉트 중...",
+            "slo_no_remaining_sp": "체인에 남은 SP 가 없습니다.",
+            "slo_signing_key_not_configured": "서명 키가 설정되지 않아 SLO 체인을 계속 진행할 수 없습니다.",
+            "slo_active_signing_key_missing": "활성 서명 키가 없습니다.",
+            "slo_state_invalid": "SLO 상태가 유효하지 않거나 만료되었습니다.",
+            "slo_initiating_sp_cert_missing": "initiating SP 인증서가 등록되지 않아 LogoutResponse 를 검증할 수 없습니다.",
+            "slo_logout_response_must_be_signed": "LogoutResponse 는 반드시 서명되어야 합니다.",
+            "slo_logout_response_sig_invalid": "LogoutResponse 서명 검증에 실패했습니다.",
+            "slo_invalid_saml_request": "유효하지 않은 SAMLRequest 입니다.",
+            "slo_destination_mismatch": "LogoutRequest Destination 이 IdP 의 SLO endpoint 와 일치하지 않습니다.",
+            "slo_unknown_sp": "알 수 없는 SAML SP 입니다.",
+            "slo_sp_cert_missing": "SP 인증서가 등록되지 않아 SLO 요청을 검증할 수 없습니다.",
+            "slo_logout_request_must_be_signed": "LogoutRequest 는 반드시 서명되어야 합니다.",
+            "slo_saml_request_sig_invalid": "SAMLRequest 서명이 유효하지 않습니다.",
+            "slo_logout_request_replay": "LogoutRequest ID 가 이미 사용되었습니다 (replay)",
+            "slo_chain_init_failed": "SLO 체인 초기화에 실패했습니다."
+        }
     },
     "roles": {
         "list_title": "Role 목록",
@@ -467,6 +716,148 @@
         "submit": "비밀번호 변경",
         "invalid_link": "링크가 만료되었거나 유효하지 않습니다."
     },
+    "verify_email": {
+        "title": "이메일 인증",
+        "subtitle": "이메일 주소 인증을 완료해 주세요.",
+        "confirm_prompt": "아래 버튼을 클릭하면 이메일 주소 인증이 완료됩니다.",
+        "submit": "이메일 인증하기",
+        "success": "이메일 주소가 인증되었습니다.",
+        "invalid_link": "링크가 만료되었거나 유효하지 않습니다.",
+        "go_login": "로그인하러 가기"
+    },
+    "accept_invite": {
+        "title": "초대 수락",
+        "subtitle": "비밀번호를 설정하여 가입을 완료해 주세요.",
+        "password_label": "비밀번호",
+        "password_placeholder": "8자 이상",
+        "confirm_label": "비밀번호 확인",
+        "submit": "가입 완료",
+        "success": "가입이 완료되었습니다. 이제 로그인할 수 있습니다.",
+        "invalid_link": "링크가 만료되었거나 유효하지 않습니다.",
+        "go_login": "로그인하러 가기",
+        "err_password_short": "비밀번호는 8자 이상이어야 합니다.",
+        "err_password_mismatch": "비밀번호가 일치하지 않습니다.",
+        "credential_label": "비밀번호"
+    },
+    "errors": {
+        "rate_limit": "요청이 너무 많습니다. {{minutes}}분 후 다시 시도해 주세요.",
+        "db_not_ready": "D1 binding \"DB\" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요."
+    },
+    "email": {
+        "footer": "본인이 요청하지 않았다면 이 이메일을 무시해 주세요.",
+        "find_id": {
+            "subject": "아이디 안내",
+            "title": "아이디 확인",
+            "intro": "요청하신 아이디 정보입니다."
+        },
+        "password_reset": {
+            "subject": "비밀번호 재설정 안내",
+            "title": "비밀번호 재설정",
+            "body": "아래 버튼을 클릭하여 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다.",
+            "button": "비밀번호 재설정",
+            "text": "아래 링크에서 비밀번호를 재설정하세요. 링크는 1시간 동안 유효합니다."
+        },
+        "verify": {
+            "subject": "이메일 인증 안내",
+            "title": "이메일 인증",
+            "body": "아래 버튼을 클릭하여 이메일 주소를 인증하세요. 링크는 24시간 동안 유효합니다.",
+            "button": "이메일 인증",
+            "text": "아래 링크에서 이메일 주소를 인증하세요. 링크는 24시간 동안 유효합니다."
+        },
+        "email_change": {
+            "subject": "이메일 주소 변경 확인",
+            "title": "이메일 주소 변경 확인",
+            "body": "아래 버튼을 클릭하여 새 이메일 주소로의 변경을 확인하세요. 링크는 24시간 동안 유효합니다.",
+            "button": "이메일 변경 확인",
+            "text": "아래 링크에서 새 이메일 주소로의 변경을 확인하세요. 링크는 24시간 동안 유효합니다."
+        },
+        "invite": {
+            "subject": "계정 초대 안내",
+            "title": "계정 초대",
+            "body": "계정에 초대되었습니다. 아래 버튼을 클릭하여 비밀번호를 설정하고 가입을 완료하세요. 링크는 72시간 동안 유효합니다.",
+            "button": "초대 수락하기",
+            "text": "계정에 초대되었습니다. 아래 링크에서 비밀번호를 설정하고 가입을 완료하세요. 링크는 72시간 동안 유효합니다."
+        }
+    },
+    "security_alert": {
+        "when": "발생 시각: {{time}}",
+        "footer": "본인이 한 작업이 아니라면 즉시 비밀번호를 변경하고 관리자에게 문의해 주세요.",
+        "password_changed": {
+            "subject": "[보안 알림] 비밀번호가 변경되었습니다",
+            "heading": "비밀번호가 변경되었습니다",
+            "body": "계정의 비밀번호가 방금 변경되었습니다."
+        },
+        "password_reset_by_admin": {
+            "subject": "[보안 알림] 관리자가 비밀번호를 초기화했습니다",
+            "heading": "비밀번호가 초기화되었습니다",
+            "body": "관리자가 계정의 비밀번호를 초기화했습니다. 새 비밀번호로 로그인해 주세요."
+        },
+        "account_locked": {
+            "subject": "[보안 알림] 계정이 잠겼습니다",
+            "heading": "계정이 잠겼습니다",
+            "body": "계정이 관리자에 의해 잠금 처리되었습니다. 로그인할 수 없습니다."
+        },
+        "account_disabled": {
+            "subject": "[보안 알림] 계정이 비활성화되었습니다",
+            "heading": "계정이 비활성화되었습니다",
+            "body": "계정이 관리자에 의해 비활성화되었습니다. 로그인할 수 없습니다."
+        },
+        "mfa_enrolled": {
+            "subject": "[보안 알림] 2단계 인증이 등록되었습니다",
+            "heading": "2단계 인증이 등록되었습니다",
+            "body": "계정에 2단계 인증(TOTP)이 새로 등록되었습니다."
+        },
+        "mfa_disabled": {
+            "subject": "[보안 알림] 2단계 인증이 해제되었습니다",
+            "heading": "2단계 인증이 해제되었습니다",
+            "body": "계정의 2단계 인증(TOTP)이 삭제되었습니다."
+        },
+        "backup_codes_regenerated": {
+            "subject": "[보안 알림] 백업 코드가 재생성되었습니다",
+            "heading": "백업 코드가 재생성되었습니다",
+            "body": "계정의 2단계 인증 백업 코드가 새로 생성되었습니다. 기존 백업 코드는 더 이상 사용할 수 없습니다."
+        },
+        "backup_codes_low": {
+            "subject": "[보안 알림] 백업 코드가 얼마 남지 않았습니다",
+            "heading": "백업 코드가 얼마 남지 않았습니다",
+            "body": "방금 백업 코드로 로그인했으며, 사용하지 않은 백업 코드가 몇 개 남지 않았습니다. 로그인이 불가능해지지 않도록 곧 백업 코드를 재생성해 주세요."
+        },
+        "backup_codes_depleted": {
+            "subject": "[보안 알림] 백업 코드를 모두 사용했습니다",
+            "heading": "백업 코드를 모두 사용했습니다",
+            "body": "방금 계정의 마지막 백업 코드로 로그인했습니다. 사용할 수 있는 백업 코드가 더 이상 없습니다. 복구 수단을 유지하려면 지금 백업 코드를 재생성해 주세요."
+        },
+        "passkey_added": {
+            "subject": "[보안 알림] 새 패스키가 등록되었습니다",
+            "heading": "새 패스키가 등록되었습니다",
+            "body": "계정에 새 패스키가 등록되었습니다."
+        },
+        "passkey_removed": {
+            "subject": "[보안 알림] 패스키가 삭제되었습니다",
+            "heading": "패스키가 삭제되었습니다",
+            "body": "계정에서 패스키가 삭제되었습니다."
+        },
+        "account_deletion_requested": {
+            "subject": "[보안 알림] 계정 탈퇴가 접수되었습니다",
+            "heading": "계정 탈퇴가 접수되었습니다",
+            "body": "계정 탈퇴가 접수되어 삭제 예정 상태로 전환되었습니다. 유예기간(30일) 내에 다시 로그인하면 계정을 복구할 수 있습니다. 본인이 요청하지 않았다면 즉시 로그인해 복구하고 비밀번호를 변경해 주세요."
+        },
+        "email_change_requested": {
+            "subject": "[보안 알림] 이메일 주소 변경이 요청되었습니다",
+            "heading": "이메일 주소 변경이 요청되었습니다",
+            "body": "계정의 이메일 주소를 변경하려는 요청이 접수되었습니다. 새 주소로 보낸 확인 링크를 클릭해야 변경이 완료됩니다. 본인이 요청하지 않았다면 즉시 비밀번호를 변경하고 관리자에게 문의해 주세요."
+        },
+        "session_revoked": {
+            "subject": "[보안 알림] 세션이 로그아웃되었습니다",
+            "heading": "세션이 로그아웃되었습니다",
+            "body": "계정의 활성 세션 하나가 방금 로그아웃(철회)되었습니다."
+        },
+        "sessions_revoked_all": {
+            "subject": "[보안 알림] 다른 모든 세션이 로그아웃되었습니다",
+            "heading": "다른 모든 세션이 로그아웃되었습니다",
+            "body": "현재 세션을 제외한 계정의 모든 활성 세션이 방금 로그아웃(철회)되었습니다."
+        }
+    },
     "skins": {
         "title": "로그인 스킨",
         "add_btn": "+ 스킨 추가",
@@ -500,6 +891,9 @@
         "placeholder_form_action": "폼 action (비어 있으면 현재 URL로 POST)",
         "placeholder_redirect_to": "로그인 후 리다이렉트 대상 URL",
         "placeholder_skin_hint": "스킨 힌트 값 (hidden input에 활용)",
+        "placeholder_registered": "회원가입 완료 직후 \"1\", 그 외에는 빈 값 (로그인 스킨에서 가입 완료 안내 노출에 활용)",
+        "placeholder_password_reset": "비밀번호 재설정 완료 직후 \"1\", 그 외에는 빈 값 (로그인 스킨에서 재설정 완료 안내 노출에 활용)",
+        "placeholder_flash_msg": "서버가 채우는 플래시 메시지(예: 오류). 이미 HTML 이스케이프됨. 표시할 내용이 없으면 빈 값",
         "guide_title": "커스텀 스킨 개발 가이드",
         "guide_subtitle": "외부 URL에서 HTML을 가져와 로그인·회원가입 화면을 완전히 커스터마이즈할 수 있습니다.",
         "guide_overview_title": "개요",
@@ -534,5 +928,33 @@
         "guide_example_login": "로그인",
         "guide_example_username": "아이디",
         "guide_example_password": "비밀번호"
+    },
+    "webauthn": {
+        "errors": {
+            "login_required": "로그인이 필요합니다.",
+            "signing_key_not_configured": "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.",
+            "invalid_origin": "유효하지 않은 출처입니다.",
+            "register_session_expired": "등록 세션이 만료되었습니다. 다시 시도해 주세요.",
+            "register_session_invalid": "등록 세션이 유효하지 않습니다. 다시 시도해 주세요.",
+            "register_rate_limited": "등록 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+            "register_verify_failed": "패스키 등록 검증에 실패했습니다.",
+            "rate_limited_retry": "요청이 너무 많습니다. {{seconds}}초 후 다시 시도해 주세요.",
+            "auth_rate_limited": "인증 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+            "auth_session_invalid": "인증 세션이 유효하지 않습니다.",
+            "auth_session_expired": "인증 세션이 만료되었거나 이미 사용되었습니다.",
+            "auth_failed": "패스키 인증에 실패했습니다.",
+            "account_disabled": "비활성화된 계정입니다.",
+            "access_denied": "접근 권한이 없습니다.",
+            "auth_cancelled": "패스키 인증이 취소되었습니다."
+        }
+    },
+    "totp": {
+        "errors": {
+            "signing_key_not_set": "IDP_SIGNING_KEY_SECRET 미설정",
+            "verify_rate_limited": "TOTP 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+            "enroll_rate_limited": "TOTP 등록 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."
+        },
+        "default_authenticator_label": "TOTP 인증기 (dispatcher)",
+        "default_backup_code_label": "백업 코드 (dispatcher)"
     }
 }

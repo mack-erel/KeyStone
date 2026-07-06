@@ -1,13 +1,17 @@
 import { fail } from "@sveltejs/kit";
-import { desc, eq, and, lt, or, sql } from "drizzle-orm";
+import { desc, eq, and, lt, gt, or, sql, inArray, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext, assertNotLastAdmin } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
-import { users, credentials } from "$lib/server/db/schema";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
+import { users, credentials, inviteTokens } from "$lib/server/db/schema";
 import { hashPassword } from "$lib/server/auth/password";
 import { normalizeEmail, normalizeUsername } from "$lib/server/auth/users";
 import { PASSWORD_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
+import { adminError, requireFormId } from "$lib/server/admin/errors";
+import { runAtomic } from "$lib/server/db/atomic";
+import { issueInvite } from "$lib/server/auth/invite";
 
 const PAGE_SIZE = 50;
 
@@ -57,7 +61,37 @@ export const load: PageServerLoad = async ({ locals, url }) => {
     const rows = hasMore ? rowsPlusOne.slice(0, PAGE_SIZE) : rowsPlusOne;
     const nextCursor = hasMore && rows.length > 0 ? rows[rows.length - 1].createdAt.getTime() : null;
 
-    return { users: rows, search, pageSize: PAGE_SIZE, nextCursor };
+    // "초대중" 배지 판정: 실제 미사용·미만료 invite_token 을 보유한 사용자만.
+    //
+    // 과거 판정(emailVerifiedAt NULL AND password credential 부재)은 LDAP/OIDC/SAML/패스키 전용
+    // 계정도 만족한다(연합 프로비저닝은 emailVerifiedAt NULL + password credential 없이 계정 생성).
+    // 그래서 연합 사용자 전원이 "초대중"으로 오표시됐다. 진짜 초대 대기 계정은 accept-invite 로
+    // 소비될(usedAt 세팅) 유효 토큰을 갖는다 — accept-invite 서버의 유효성 판정(isNull(usedAt) +
+    // 미만료)과 동일 기준으로 이번 페이지 사용자 id 범위만 배치 조회(N+1 없음)한다.
+    const pageUserIds = rows.map((r) => r.id);
+    const pendingInviteUserIds = new Set<string>();
+    if (pageUserIds.length > 0) {
+        const now = new Date();
+        const inviteRows = await db
+            .select({ userId: inviteTokens.userId })
+            .from(inviteTokens)
+            .where(and(inArray(inviteTokens.userId, pageUserIds), isNull(inviteTokens.usedAt), gt(inviteTokens.expiresAt, now)));
+        for (const t of inviteRows) pendingInviteUserIds.add(t.userId);
+    }
+
+    const usersOut = rows.map((r) => ({
+        id: r.id,
+        username: r.username,
+        email: r.email,
+        displayName: r.displayName,
+        role: r.role,
+        status: r.status,
+        createdAt: r.createdAt,
+        // 초대 대기 상태(유효한 미사용 초대 토큰 보유) 여부.
+        pendingInvite: pendingInviteUserIds.has(r.id),
+    }));
+
+    return { users: usersOut, search, pageSize: PAGE_SIZE, nextCursor };
 };
 
 export const actions: Actions = {
@@ -65,6 +99,7 @@ export const actions: Actions = {
     create: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
         const email = normalizeEmail(String(fd.get("email") ?? ""));
@@ -74,13 +109,13 @@ export const actions: Actions = {
         const password = String(fd.get("password") ?? "");
 
         if (!email || !password) {
-            return fail(400, { create: true, error: "이메일과 비밀번호는 필수입니다." });
+            return fail(400, { create: true, error: adminError(locale, "email_password_required") });
         }
         if (password.length < 8) {
-            return fail(400, { create: true, error: "비밀번호는 8자 이상이어야 합니다." });
+            return fail(400, { create: true, error: adminError(locale, "password_min_length") });
         }
         if (!["admin", "user"].includes(role)) {
-            return fail(400, { create: true, error: "역할이 올바르지 않습니다." });
+            return fail(400, { create: true, error: adminError(locale, "invalid_role") });
         }
 
         // 중복 확인
@@ -90,7 +125,7 @@ export const actions: Actions = {
             .where(and(eq(users.tenantId, tenant.id), eq(users.email, email)))
             .limit(1);
         if (existing) {
-            return fail(409, { create: true, error: "이미 사용 중인 이메일입니다." });
+            return fail(409, { create: true, error: adminError(locale, "email_taken") });
         }
 
         const [existingUsername] = await db
@@ -99,7 +134,7 @@ export const actions: Actions = {
             .where(and(eq(users.tenantId, tenant.id), eq(users.username, username)))
             .limit(1);
         if (existingUsername) {
-            return fail(409, { create: true, error: "이미 사용 중인 아이디입니다." });
+            return fail(409, { create: true, error: adminError(locale, "username_taken") });
         }
 
         const userId = crypto.randomUUID();
@@ -137,22 +172,99 @@ export const actions: Actions = {
         return { create: true };
     },
 
+    // ── 사용자 초대 ────────────────────────────────────────────────────────────
+    // 비밀번호 없이 계정을 선생성(credentials row 생략, emailVerifiedAt NULL, status active)한 뒤
+    // 초대 토큰+메일을 발급한다. 초대 링크 수락 시 최초 비밀번호가 설정된다(accept-invite).
+    invite: async (event) => {
+        const { locals } = event;
+        const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
+
+        const fd = await event.request.formData();
+        const email = normalizeEmail(String(fd.get("email") ?? ""));
+        const username = normalizeUsername(String(fd.get("username") ?? "")) || email.split("@")[0];
+        const displayName = String(fd.get("displayName") ?? "").trim();
+        const role = String(fd.get("role") ?? "user") as "admin" | "user";
+
+        if (!email) {
+            return fail(400, { invite: true, error: adminError(locale, "email_required") });
+        }
+        if (!["admin", "user"].includes(role)) {
+            return fail(400, { invite: true, error: adminError(locale, "invalid_role") });
+        }
+
+        // 중복 확인 — create 액션과 동일 규약(이메일/아이디 중복 차단).
+        const [existing] = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(and(eq(users.tenantId, tenant.id), eq(users.email, email)))
+            .limit(1);
+        if (existing) {
+            return fail(409, { invite: true, error: adminError(locale, "email_taken") });
+        }
+
+        const [existingUsername] = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(and(eq(users.tenantId, tenant.id), eq(users.username, username)))
+            .limit(1);
+        if (existingUsername) {
+            return fail(409, { invite: true, error: adminError(locale, "username_taken") });
+        }
+
+        const userId = crypto.randomUUID();
+        // users insert 를 runAtomic 로 감싼다 — 지금은 단일 write 지만, 초대 계정에 후속 row(예: 기본
+        // 프로필/그룹)를 원자적으로 함께 넣도록 확장할 때 create 액션의 비원자 패턴을 답습하지 않기 위함.
+        await runAtomic(db, [
+            (h) =>
+                h.insert(users).values({
+                    id: userId,
+                    tenantId: tenant.id,
+                    email,
+                    username,
+                    displayName: displayName || null,
+                    role,
+                    status: "active",
+                    // emailVerifiedAt 미설정(NULL) — 초대 링크 수락 시 세팅된다.
+                }),
+        ]);
+
+        // 초대 토큰 발급 + 메일(best-effort, 완전 격리). 발송 실패가 초대 응답을 실패시키지 않는다.
+        // 초대 대상은 신규 계정(locale 미보유)이므로 관리자 요청 locale 로 발송한다.
+        await issueInvite(db, userId, email, locale, event.platform);
+
+        const requestMetadata = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId,
+            actorId: locals.user!.id,
+            kind: "user_invited",
+            outcome: "success",
+            ip: requestMetadata.ip,
+            userAgent: requestMetadata.userAgent,
+            detail: { email, role },
+        });
+
+        return { invite: true };
+    },
+
     // ── 상태 변경 ─────────────────────────────────────────────────────────────
     updateStatus: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
         const status = String(fd.get("status") ?? "") as "active" | "disabled" | "locked";
 
         if (!id || !["active", "disabled", "locked"].includes(status)) {
-            return fail(400, { error: "잘못된 요청입니다." });
+            return fail(400, { error: adminError(locale, "invalid_request") });
         }
 
         // 자기 자신 비활성화 방지
         if (id === locals.user!.id && status !== "active") {
-            return fail(400, { error: "자기 자신의 상태를 변경할 수 없습니다." });
+            return fail(400, { error: adminError(locale, "cannot_change_own_status") });
         }
 
         // 마지막 활성 관리자 보호 — disable/locked 로 전환 시 검사
@@ -160,6 +272,13 @@ export const actions: Actions = {
             const lastAdminFail = await assertNotLastAdmin(db, tenant.id, id);
             if (lastAdminFail) return lastAdminFail;
         }
+
+        // 알림 대상 파악용 — 대상 유저의 이메일/locale(같은 테넌트 범위).
+        const [target] = await db
+            .select({ email: users.email, locale: users.locale })
+            .from(users)
+            .where(and(eq(users.id, id), eq(users.tenantId, tenant.id)))
+            .limit(1);
 
         await db
             .update(users)
@@ -183,6 +302,13 @@ export const actions: Actions = {
             detail: { status },
         });
 
+        // 보안 알림(best-effort, 완전 격리) — 계정 잠금/비활성 전환 시.
+        if (status === "locked") {
+            dispatchSecurityAlert({ to: target?.email, locale: target?.locale, kind: "account_locked", platform: event.platform });
+        } else if (status === "disabled") {
+            dispatchSecurityAlert({ to: target?.email, locale: target?.locale, kind: "account_disabled", platform: event.platform });
+        }
+
         return { updateStatus: true };
     },
 
@@ -190,18 +316,19 @@ export const actions: Actions = {
     updateRole: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
         const role = String(fd.get("role") ?? "") as "admin" | "user";
 
         if (!id || !["admin", "user"].includes(role)) {
-            return fail(400, { error: "잘못된 요청입니다." });
+            return fail(400, { error: adminError(locale, "invalid_request") });
         }
 
         // 자기 자신 역할 변경 방지
         if (id === locals.user!.id) {
-            return fail(400, { error: "자기 자신의 역할을 변경할 수 없습니다." });
+            return fail(400, { error: adminError(locale, "cannot_change_own_role") });
         }
 
         // admin → user 강등 시에만 last-admin 검사 (승격은 항상 허용)
@@ -237,25 +364,26 @@ export const actions: Actions = {
     resetPassword: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
         const id = String(fd.get("id") ?? "");
         const newPassword = String(fd.get("newPassword") ?? "");
 
         if (!id || !newPassword) {
-            return fail(400, { resetPassword: true, error: "비밀번호를 입력해 주세요." });
+            return fail(400, { resetPassword: true, error: adminError(locale, "password_required") });
         }
         if (newPassword.length < 8) {
-            return fail(400, { resetPassword: true, error: "비밀번호는 8자 이상이어야 합니다." });
+            return fail(400, { resetPassword: true, error: adminError(locale, "password_min_length") });
         }
 
         // 대상 유저가 같은 테넌트인지 확인
         const [target] = await db
-            .select({ id: users.id })
+            .select({ id: users.id, email: users.email, locale: users.locale })
             .from(users)
             .where(and(eq(users.id, id), eq(users.tenantId, tenant.id)))
             .limit(1);
-        if (!target) return fail(404, { resetPassword: true, error: "사용자를 찾을 수 없습니다." });
+        if (!target) return fail(404, { resetPassword: true, error: adminError(locale, "user_not_found") });
 
         const hashed = await hashPassword(newPassword);
         const [existing] = await db
@@ -290,6 +418,9 @@ export const actions: Actions = {
             userAgent: requestMetadata.userAgent,
         });
 
+        // 보안 알림(best-effort, 완전 격리) — 관리자가 비밀번호를 초기화함.
+        dispatchSecurityAlert({ to: target.email, locale: target.locale, kind: "password_reset_by_admin", platform: event.platform });
+
         return { resetPassword: true };
     },
 
@@ -297,14 +428,15 @@ export const actions: Actions = {
     delete: async (event) => {
         const { locals } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const fd = await event.request.formData();
-        const id = String(fd.get("id") ?? "");
-
-        if (!id) return fail(400, { error: "잘못된 요청입니다." });
+        const idr = requireFormId(fd, locale);
+        if (!idr.ok) return idr.failure;
+        const id = idr.id;
 
         if (id === locals.user!.id) {
-            return fail(400, { error: "자기 자신을 삭제할 수 없습니다." });
+            return fail(400, { error: adminError(locale, "cannot_delete_self") });
         }
 
         // 마지막 활성 관리자 보호 — 삭제도 동일하게 검사

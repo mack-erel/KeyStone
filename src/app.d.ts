@@ -19,6 +19,8 @@ declare global {
         // interface Error {}
         interface Locals {
             db?: import("$lib/server/db").DB;
+            // 요청당 레이트 리밋 저장소. Workers=DB, Node=in-memory. db 와 함께 hooks 에서 세팅.
+            rateLimitStore?: import("$lib/server/ratelimit").RateLimitStore;
             tenant: import("$lib/server/db/schema").Tenant | null;
             session: import("$lib/server/db/schema").Session | null;
             user: import("$lib/server/db/schema").User | null;

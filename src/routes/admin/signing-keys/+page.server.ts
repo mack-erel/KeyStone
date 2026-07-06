@@ -1,12 +1,14 @@
 import { fail } from "@sveltejs/kit";
 import { desc, eq, and, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
-import { type DB, DB_DIALECT } from "$lib/server/db";
+import type { DB } from "$lib/server/db";
+import { runAtomic } from "$lib/server/db/atomic";
 import { requireAdminContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { signingKeys } from "$lib/server/db/schema";
-import { generateRsaSigningKey, wrapPrivateKey, generateSelfSignedCert } from "$lib/server/crypto/keys";
+import { generateRsaSigningKey, wrapPrivateKey, generateSelfSignedCert, invalidateSigningKeyCache } from "$lib/server/crypto/keys";
+import { adminError } from "$lib/server/admin/errors";
 
 export const load: PageServerLoad = async ({ locals }) => {
     const { db, tenant } = requireAdminContext(locals);
@@ -44,10 +46,11 @@ export const actions: Actions = {
     rotate: async (event) => {
         const { locals, platform } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
 
         const config = getRuntimeConfig(platform);
         if (!config.signingKeySecret) {
-            return fail(503, { error: "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다." });
+            return fail(503, { error: adminError(locale, "signing_key_secret_missing") });
         }
 
         const cn = config.issuerUrl ? new URL(config.issuerUrl).hostname : "idp.local";
@@ -60,8 +63,7 @@ export const actions: Actions = {
         const now = new Date();
 
         // 두 작업을 원자적으로 실행: (1) 기존 활성 키 비활성화, (2) 새 활성 키 INSERT.
-        // - d1:            db.batch (D1 은 interactive transaction 미지원).
-        // - postgres/mysql: interactive transaction.
+        // runAtomic 이 d1/sqlite=batch, postgres/mysql=transaction 분기를 흡수한다.
         // d1/postgres 는 partial unique index (tenantId WHERE active) 가 동시 rotate 의
         // 두 번째 INSERT 를 UNIQUE 위반으로 막아 단일 active invariant 를 DB 레벨에서 강제한다.
         // MySQL 은 partial unique index 를 지원하지 않으므로 이 트랜잭션이 최선의 보호막이다.
@@ -83,22 +85,15 @@ export const actions: Actions = {
             });
 
         try {
-            if (DB_DIALECT === "d1" || DB_DIALECT === "sqlite") {
-                // d1 / libSQL 은 원자적 batch 지원 (정규 DB 타입이 활성 방언일 때만 노출되므로 캐스팅).
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (db as any).batch([buildDeactivate(db), buildInsert(db)]);
-            } else {
-                // postgres / mysql: interactive transaction.
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (db as any).transaction(async (tx: Pick<DB, "update" | "insert">) => {
-                    await buildDeactivate(tx);
-                    await buildInsert(tx);
-                });
-            }
+            await runAtomic(db, [buildDeactivate, buildInsert]);
         } catch {
             // UNIQUE 위반 (동시 rotate) 또는 기타 DB 에러 → 409
-            return fail(409, { error: "다른 rotate 작업이 진행 중이거나 DB 오류가 발생했습니다. 잠시 후 다시 시도해 주세요." });
+            return fail(409, { error: adminError(locale, "rotate_conflict") });
         }
+
+        // 서명키/JWKS 단기 캐시 무효화 — 같은 isolate 에서 새 활성 키를 즉시 반영.
+        // (cross-isolate 는 캐시 TTL 만료로 수렴한다 — crypto/keys.ts 주석 참고.)
+        invalidateSigningKeyCache(tenant.id);
 
         const requestMetadata = getRequestMetadata(event);
         await recordAuditEvent(db, {

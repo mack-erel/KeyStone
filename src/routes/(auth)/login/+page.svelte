@@ -1,12 +1,24 @@
 <script lang="ts">
+import { enhance } from "$app/forms";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
+import type { SubmitFunction } from "@sveltejs/kit";
 import { t } from "$lib/i18n.svelte";
+import FormError from "$lib/components/FormError.svelte";
 import LocaleToggle from "$lib/components/LocaleToggle.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
+
+let submitting = $state(false);
+const enhanceSubmit: SubmitFunction = () => {
+    submitting = true;
+    return async ({ update }) => {
+        await update({ reset: false });
+        submitting = false;
+    };
+};
 
 const skinHtmlEffective = $derived((form as { skinHtml?: string | null } | null)?.skinHtml ?? data.skinHtml);
 
@@ -78,8 +90,10 @@ async function loginWithPasskey() {
 }
 </script>
 
-{#if skinHtmlEffective}
-    <!-- 커스텀 스킨 — 에러/성공 메시지는 스킨 내부 #flash 로 표시됨 -->
+{#if skinHtmlEffective && !form?.recovery}
+    <!-- 커스텀 스킨 — 에러/성공 메시지는 스킨 내부 #flash 로 표시됨.
+         단, soft-delete 복구(form.recovery) 케이스는 스킨에 복구 UI 가 없으므로
+         기본 스킨의 복구 패널로 강제 폴백한다. -->
     {#if !data.dbReady && data.runtimeError}
         <div class="fixed top-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-lg">
             {data.runtimeError}
@@ -120,94 +134,147 @@ async function loginWithPasskey() {
                 </div>
             {/if}
 
-            {#if form?.error}
-                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {form.error}
+            {#if data.deletionRequested}
+                <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {t("login.deletion_requested_notice")}
                 </div>
             {/if}
 
-            {#if passkeyError}
-                <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {passkeyError}
-                </div>
-            {/if}
+            <FormError message={form?.error} class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" />
 
-            <form method="POST" class="space-y-4">
-                <input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ""} />
+            <FormError message={passkeyError} class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" />
 
-                <div>
-                    <label for="username" class="block text-sm font-medium text-gray-700">
-                        {t("login.username")}
-                    </label>
-                    <input
-                        type="text"
-                        name="username"
-                        id="username"
-                        required
-                        autocomplete="username"
-                        value={form?.username ?? data.loginHint ?? ""}
-                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+            {#if form?.recovery}
+                <!-- 탈퇴 예정 계정 복구 확인. 본인 확인을 위해 비밀번호를 다시 입력한다. -->
+                <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {t("login.recovery_desc")}
                 </div>
 
-                <div>
-                    <label for="password" class="block text-sm font-medium text-gray-700">
-                        {t("login.password")}
-                    </label>
-                    <input
-                        type="password"
-                        name="password"
-                        id="password"
-                        required
-                        autocomplete="current-password"
-                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+                <form method="POST" use:enhance={enhanceSubmit} class="space-y-4">
+                    <input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ""} />
+                    <input type="hidden" name="username" value={form?.username ?? ""} />
+                    <input type="hidden" name="recover" value="1" />
+
+                    <div>
+                        <label for="recover-password" class="block text-sm font-medium text-gray-700">
+                            {t("login.recovery_password_label")}
+                        </label>
+                        <input
+                            type="password"
+                            name="password"
+                            id="recover-password"
+                            required
+                            autocomplete="current-password"
+                            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={submitting}
+                        class="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:opacity-60">
+                        {#if submitting}
+                            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            {t("common.processing")}
+                        {:else}
+                            {t("login.recovery_confirm")}
+                        {/if}
+                    </button>
+                </form>
+
+                <div class="mt-5 flex justify-center gap-4 text-sm text-gray-500">
+                    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                    <a href={resolve("/login") + authLinkSuffix} class="hover:text-blue-600">{t("login.recovery_cancel")}</a>
+                </div>
+            {:else}
+                <form method="POST" use:enhance={enhanceSubmit} class="space-y-4">
+                    <input type="hidden" name="redirectTo" value={form?.redirectTo ?? data.redirectTo ?? ""} />
+
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700">
+                            {t("login.username")}
+                        </label>
+                        <input
+                            type="text"
+                            name="username"
+                            id="username"
+                            required
+                            autocomplete="username"
+                            value={form?.username ?? data.loginHint ?? ""}
+                            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+                    </div>
+
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700">
+                            {t("login.password")}
+                        </label>
+                        <input
+                            type="password"
+                            name="password"
+                            id="password"
+                            required
+                            autocomplete="current-password"
+                            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none sm:text-sm" />
+                    </div>
+
+                    <button
+                        type="submit"
+                        disabled={submitting}
+                        class="flex w-full items-center justify-center gap-2 rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none disabled:opacity-60">
+                        {#if submitting}
+                            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            {t("common.processing")}
+                        {:else}
+                            {t("login.submit")}
+                        {/if}
+                    </button>
+                </form>
+
+                <div class="mt-4 flex items-center gap-3">
+                    <div class="h-px flex-1 bg-gray-200"></div>
+                    <span class="text-xs text-gray-400">{t("login.or")}</span>
+                    <div class="h-px flex-1 bg-gray-200"></div>
                 </div>
 
                 <button
-                    type="submit"
-                    class="flex w-full justify-center rounded-md border border-transparent bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none">
-                    {t("login.submit")}
+                    type="button"
+                    onclick={loginWithPasskey}
+                    disabled={passkeyLoading}
+                    class="mt-4 flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60">
+                    {#if passkeyLoading}
+                        <svg class="h-4 w-4 animate-spin text-gray-500" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        {t("login.passkey_authenticating")}
+                    {:else}
+                        <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                        </svg>
+                        {t("login.passkey_login")}
+                    {/if}
                 </button>
-            </form>
 
-            <div class="mt-4 flex items-center gap-3">
-                <div class="h-px flex-1 bg-gray-200"></div>
-                <span class="text-xs text-gray-400">{t("login.or")}</span>
-                <div class="h-px flex-1 bg-gray-200"></div>
-            </div>
-
-            <button
-                type="button"
-                onclick={loginWithPasskey}
-                disabled={passkeyLoading}
-                class="mt-4 flex w-full items-center justify-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60">
-                {#if passkeyLoading}
-                    <svg class="h-4 w-4 animate-spin text-gray-500" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                    </svg>
-                    {t("login.passkey_authenticating")}
-                {:else}
-                    <svg class="h-4 w-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                    </svg>
-                    {t("login.passkey_login")}
-                {/if}
-            </button>
-
-            <div class="mt-5 flex justify-center gap-4 text-sm text-gray-500">
-                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-                <a href={resolve("/signup") + authLinkSuffix} class="hover:text-blue-600">{t("signup.title")}</a>
-                <span>·</span>
-                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-                <a href={resolve("/find-id") + authLinkSuffix} class="hover:text-blue-600">{t("find_id.title")}</a>
-                <span>·</span>
-                <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-                <a href={resolve("/find-password") + authLinkSuffix} class="hover:text-blue-600">{t("find_password.title")}</a>
-            </div>
+                <div class="mt-5 flex justify-center gap-4 text-sm text-gray-500">
+                    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                    <a href={resolve("/signup") + authLinkSuffix} class="hover:text-blue-600">{t("signup.title")}</a>
+                    <span>·</span>
+                    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                    <a href={resolve("/find-id") + authLinkSuffix} class="hover:text-blue-600">{t("find_id.title")}</a>
+                    <span>·</span>
+                    <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+                    <a href={resolve("/find-password") + authLinkSuffix} class="hover:text-blue-600">{t("find_password.title")}</a>
+                </div>
+            {/if}
         </div>
     </div>
 {/if}

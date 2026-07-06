@@ -4,6 +4,8 @@ import { SESSION_COOKIE_NAME, SESSION_TOUCH_INTERVAL_MS } from "$lib/server/auth
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { clearSessionCookie, getSessionContext, touchSession } from "$lib/server/auth/session";
 import { getDb, DB_DIALECT } from "$lib/server/db";
+import { resolveRateLimitStore } from "$lib/server/ratelimit";
+import { ensureNodeGcScheduler, maybeRunWorkersGc } from "$lib/server/db/gc";
 import { LOCALE_COOKIE_NAME, resolveLocale } from "$lib/server/locale";
 
 // CSRF: state-changing 요청에 대해 same-origin을 강제할 라우트
@@ -36,6 +38,7 @@ const PUBLIC_META = [/^\/\.well-known\//, /^\/oidc\/jwks/, /^\/saml\/metadata/];
 
 export const handle: Handle = async ({ event, resolve }) => {
     event.locals.db = undefined;
+    event.locals.rateLimitStore = undefined;
     event.locals.tenant = null;
     event.locals.session = null;
     event.locals.user = null;
@@ -98,6 +101,20 @@ export const handle: Handle = async ({ event, resolve }) => {
             const db = handle.db;
             disposeDb = handle.dispose;
             event.locals.db = db;
+            // 레이트 리밋 저장소: Workers=DB(요청당 db), Node=프로세스 전역 in-memory.
+            event.locals.rateLimitStore = resolveRateLimitStore(event.platform, db);
+
+            // 만료 데이터 GC 실행 경로 (요청 처리와 완전히 격리 — 실패해도 무영향):
+            // - Workers: 요청의 ~1% 에서 ctx.waitUntil 로 백그라운드 발사(응답 지연 0).
+            // - Node: 최초 1회 setInterval(1시간) 스케줄러 기동(중복 가드 내장).
+            // adapter-cloudflare 는 커스텀 worker 엔트리 없이 scheduled() Cron 을 노출할 수
+            // 없어(생성된 _worker.js 는 fetch 만 export) 빌드 침습을 피해 확률적 GC 를 택했다.
+            if (typeof event.platform?.ctx?.waitUntil === "function") {
+                maybeRunWorkersGc(event.platform);
+            } else {
+                ensureNodeGcScheduler();
+            }
+
             event.locals.tenant = skipBaseline ? null : await ensureAuthBaseline(db, event.platform);
 
             const sessionToken = event.cookies.get(SESSION_COOKIE_NAME);

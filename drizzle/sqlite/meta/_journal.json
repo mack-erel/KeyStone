@@ -29,6 +29,55 @@
       "when": 1783246073168,
       "tag": "0003_white_speed_demon",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783297485112,
+      "tag": "0004_next_scarecrow",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783299188782,
+      "tag": "0005_early_black_cat",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783309241281,
+      "tag": "0006_third_lucky_pierre",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783310297361,
+      "tag": "0007_calm_proudstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783319177083,
+      "tag": "0008_free_spyke",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1783320562744,
+      "tag": "0009_slim_the_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1783323958251,
+      "tag": "0010_silent_the_call",
+      "breakpoints": true
     }
   ]
 }

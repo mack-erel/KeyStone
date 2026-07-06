@@ -17,10 +17,20 @@ export default defineConfig({
             "$db-active-driver": resolvePath("./src/lib/server/db/driver-sqlite.ts"),
             "$env/dynamic/private": resolvePath("./test/stubs/env-dynamic-private.ts"),
             "$env/static/private": resolvePath("./test/stubs/env-dynamic-private.ts"),
+            // 통합 테스트(test/integration)가 실 서버 모듈을 직접 구동할 때 필요한 $app/environment 스텁.
+            // 순수 유닛 테스트는 이 모듈을 import 하지 않으므로 영향이 없다.
+            "$app/environment": resolvePath("./test/stubs/app-environment.ts"),
         },
     },
     test: {
         environment: "node",
         include: ["test/**/*.test.ts", "src/**/*.test.ts"],
+        coverage: {
+            // @vitest/coverage-v8 기반. 게이트(threshold)는 강제하지 않고 리포트만 산출한다.
+            provider: "v8",
+            reporter: ["text", "html"],
+            reportsDirectory: "./coverage",
+            include: ["src/lib/**/*.ts"],
+        },
     },
 });

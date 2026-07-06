@@ -197,16 +197,16 @@ wrangler secret put IDP_SIGNING_KEY_SECRET
 
 ## 환경변수
 
-| 변수                                | 필수 | 설명                                                                                     |
-| ----------------------------------- | ---- | ---------------------------------------------------------------------------------------- |
-| `IDP_ISSUER_URL`                    | ✅   | OIDC/SAML 발급자 URL (배포 도메인과 일치)                                                |
-| `IDP_SIGNING_KEY_SECRET`            | ✅   | 서명 키 암호화 KEK (프로덕션은 반드시 Secret)                                            |
-| `DISPATCHER_SERVICE_TOKEN`          | 선택 | stardust dispatcher 가 `/api/totp/*` 호출 시 사용할 Bearer 토큰. 미설정이면 해당 API 503 |
-| `IDP_DEFAULT_TENANT_NAME`           | 선택 | 기본 테넌트 이름 (기본: `My Organization`)                                               |
-| `CLOUDFLARE_ACCOUNT_ID`             | 선택 | Cloudflare 계정 ID (마이그레이션 스크립트에서 사용)                                      |
-| `CLOUDFLARE_D1_DATABASE_ID`         | 선택 | D1 데이터베이스 ID (마이그레이션 스크립트에서 사용)                                      |
-| `CLOUDFLARE_D1_PREVIEW_DATABASE_ID` | 선택 | 프리뷰용 D1 데이터베이스 ID                                                              |
-| `CLOUDFLARE_D1_TOKEN`               | 선택 | D1 API 토큰 (`db:migrate` 스크립트에서 사용)                                             |
+| 변수                                | 필수 | 설명                                                                                                                                  |
+| ----------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `IDP_ISSUER_URL`                    | ✅   | OIDC/SAML 발급자 URL (배포 도메인과 일치). **프로덕션 필수** — 미설정 시 요청 초기 503(fail-closed). dev 에서만 요청 origin 자동 대체 |
+| `IDP_SIGNING_KEY_SECRET`            | ✅   | 서명 키 암호화 KEK (프로덕션은 반드시 Secret). **프로덕션 필수** — 미설정 시 요청 초기에 오류로 차단(fail-fast)                       |
+| `DISPATCHER_SERVICE_TOKEN`          | 선택 | stardust dispatcher 가 `/api/totp/*` 호출 시 사용할 Bearer 토큰. 미설정이면 해당 API 503                                              |
+| `IDP_DEFAULT_TENANT_NAME`           | 선택 | 기본 테넌트 이름 (기본: `My Organization`)                                                                                            |
+| `CLOUDFLARE_ACCOUNT_ID`             | 선택 | Cloudflare 계정 ID (마이그레이션 스크립트에서 사용)                                                                                   |
+| `CLOUDFLARE_D1_DATABASE_ID`         | 선택 | D1 데이터베이스 ID (마이그레이션 스크립트에서 사용)                                                                                   |
+| `CLOUDFLARE_D1_PREVIEW_DATABASE_ID` | 선택 | 프리뷰용 D1 데이터베이스 ID                                                                                                           |
+| `CLOUDFLARE_D1_TOKEN`               | 선택 | D1 API 토큰 (`db:migrate` 스크립트에서 사용)                                                                                          |
 
 > **참고**: 초기 관리자 계정은 `bun run setup` 이 생성합니다. 수동/CI 시드가 필요하면 `IDP_BOOTSTRAP_ADMIN_USERNAME` / `IDP_BOOTSTRAP_ADMIN_EMAIL` / `IDP_BOOTSTRAP_ADMIN_PASSWORD` (+선택 `IDP_BOOTSTRAP_ADMIN_NAME`) 를 설정하고 `bun run db:seed`(방언별: `db:seed:pg` 등)를 실행하세요. 비대화 환경에서는 `SEED_RESET=0|1` 로 초기화 여부를 지정합니다.
 

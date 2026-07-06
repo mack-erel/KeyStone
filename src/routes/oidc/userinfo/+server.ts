@@ -3,10 +3,11 @@ import type { RequestHandler } from "./$types";
 import { and, eq } from "drizzle-orm";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { oidcClients, users } from "$lib/server/db/schema";
-import { verifyAccessToken } from "$lib/server/crypto/keys";
+import { verifyAccessToken, tryWithSecretsNullable } from "$lib/server/crypto/keys";
 import { getUserMembership, membershipToGroups } from "$lib/server/org/membership";
 import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
-import { buildAddressClaim } from "$lib/server/oidc/claims";
+import { buildAddressClaim, buildOrganizationClaims, parseOrganizationClaimConfig } from "$lib/server/oidc/claims";
+import { translate } from "$lib/i18n/server";
 
 const RESERVED_USERINFO_CLAIMS = new Set(["sub", "iss", "aud", "iat", "exp", "auth_time"]);
 
@@ -22,37 +23,37 @@ function bearerError(code: string, description: string): Response {
 
 async function handleUserinfo(locals: App.Locals, request: Request): Promise<Response> {
     const { db, tenant } = requireDbContext(locals);
-    const { signingKeySecret } = locals.runtimeConfig;
+    const { signingKeySecrets } = locals.runtimeConfig;
 
-    if (!signingKeySecret) {
-        return new Response("IDP_SIGNING_KEY_SECRET 미설정", { status: 503 });
+    if (signingKeySecrets.length === 0) {
+        return new Response(translate(locals.locale, "oidc.errors.signing_key_not_set"), { status: 503 });
     }
 
     const authHeader = request.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
-        return bearerError("invalid_token", "Bearer 토큰이 필요합니다.");
+        return bearerError("invalid_token", translate(locals.locale, "oidc.errors.bearer_token_required"));
     }
 
     const token = authHeader.slice(7);
-    const claims = await verifyAccessToken(token, signingKeySecret, tenant.id);
+    const claims = await tryWithSecretsNullable(signingKeySecrets, (s) => verifyAccessToken(token, s, tenant.id));
 
     if (!claims) {
-        return bearerError("invalid_token", "유효하지 않거나 만료된 액세스 토큰입니다.");
+        return bearerError("invalid_token", translate(locals.locale, "oidc.errors.access_token_invalid"));
     }
 
     // ctrls H-OIDC-2: aud 강제. claims.aud (있을 경우) 가 claims.clientId 와 일치해야 한다.
     // 또한 발급 클라이언트가 현재도 등록되어 있고 enabled 인지 확인 — 비활성/삭제된
     // 클라이언트의 토큰은 더 이상 userinfo 접근 불가.
     if (claims.aud && claims.aud !== claims.clientId) {
-        return bearerError("invalid_token", "토큰의 aud 와 client 가 일치하지 않습니다.");
+        return bearerError("invalid_token", translate(locals.locale, "oidc.errors.token_aud_mismatch"));
     }
     const [issuingClient] = await db
-        .select({ id: oidcClients.id })
+        .select({ id: oidcClients.id, organizationClaimConfig: oidcClients.organizationClaimConfig })
         .from(oidcClients)
         .where(and(eq(oidcClients.tenantId, tenant.id), eq(oidcClients.clientId, claims.clientId), eq(oidcClients.enabled, true)))
         .limit(1);
     if (!issuingClient) {
-        return bearerError("invalid_token", "발급 client 가 더 이상 유효하지 않습니다.");
+        return bearerError("invalid_token", translate(locals.locale, "oidc.errors.issuing_client_invalid"));
     }
 
     const [user] = await db
@@ -62,7 +63,7 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         .limit(1);
 
     if (!user) {
-        return bearerError("invalid_token", "사용자를 찾을 수 없습니다.");
+        return bearerError("invalid_token", translate(locals.locale, "oidc.errors.user_not_found"));
     }
 
     const scopes = new Set(claims.scope.split(" "));
@@ -124,31 +125,7 @@ async function handleUserinfo(locals: App.Locals, request: Request): Promise<Res
         }
 
         if (scopes.has("organization")) {
-            response.department = membership.departments.map((d) => ({
-                id: d.id,
-                name: d.name,
-                code: d.code,
-                is_primary: d.isPrimary,
-                job_title: d.jobTitle,
-                position: d.position
-                    ? {
-                          id: d.position.id,
-                          name: d.position.name,
-                          code: d.position.code,
-                          level: d.position.level,
-                      }
-                    : null,
-            }));
-            response.team = membership.teams.map((t) => ({
-                id: t.id,
-                name: t.name,
-                code: t.code,
-                department: t.departmentName,
-                is_primary: t.isPrimary,
-                job_title: t.jobTitle,
-            }));
-            response.position = membership.primaryPosition?.name ?? null;
-            response.job_title = membership.primaryJobTitle ?? null;
+            Object.assign(response, buildOrganizationClaims(membership, parseOrganizationClaimConfig(issuingClient.organizationClaimConfig)));
         }
     }
 

@@ -6,8 +6,10 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { encryptTotpSecret, generateBackupCodes, hashBackupCode, verifyTotp } from "$lib/server/auth/totp";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { credentials, users } from "$lib/server/db/schema";
-import { type DB, DB_DIALECT } from "$lib/server/db";
+import type { DB } from "$lib/server/db";
+import { runAtomic } from "$lib/server/db/atomic";
 import { isUniqueViolation } from "$lib/server/db/errors";
+import { translate } from "$lib/i18n/server";
 
 /**
  * Phase 7.3 — TOTP enrollment confirm.
@@ -16,27 +18,27 @@ import { isUniqueViolation } from "$lib/server/db/errors";
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
     requireServiceToken(request, locals.runtimeConfig);
-    const { db } = requireDbContext(locals);
+    const { db, rateLimitStore } = requireDbContext(locals);
 
     const config = locals.runtimeConfig;
     if (!config.signingKeySecret) {
-        throw error(503, "IDP_SIGNING_KEY_SECRET 미설정");
+        throw error(503, translate(locals.locale, "totp.errors.signing_key_not_set"));
     }
 
     const body = (await request.json().catch(() => null)) as { userId?: string; secret?: string; code?: string; label?: string } | null;
     const userId = body?.userId?.trim();
     const secret = body?.secret?.trim();
     const code = body?.code?.replace(/\s/g, "");
-    const label = body?.label?.trim() || "TOTP 인증기 (dispatcher)";
+    const label = body?.label?.trim() || translate(locals.locale, "totp.default_authenticator_label");
 
     if (!userId || !secret || !code) {
         throw error(400, "userId, secret, code required");
     }
 
     // ctrls C3: enrollment 코드 브루트포스 방어 (사용자당 5분 창 10회).
-    const rl = await checkRateLimit(db, `totp-enroll-confirm:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
+    const rl = await checkRateLimit(rateLimitStore, `totp-enroll-confirm:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
-        throw error(429, "TOTP 등록 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+        throw error(429, translate(locals.locale, "totp.errors.enroll_rate_limited"));
     }
 
     const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
@@ -65,7 +67,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
             userId,
             type: BACKUP_CODE_CREDENTIAL_TYPE,
             secret: await hashBackupCode(c),
-            label: "백업 코드 (dispatcher)",
+            label: translate(locals.locale, "totp.default_backup_code_label"),
         })),
     );
 
@@ -74,8 +76,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     // - totpOwnerId 에 userId 를 채워 credentials_totp_owner_uidx (unique) 가
     //   사용자당 TOTP 1개를 DB 레벨에서 강제 → 동시 confirm 두 건 중 하나만 성공.
     // - 백업코드 등 다른 INSERT 는 totpOwnerId 미설정(NULL) 이므로 unique 검사 제외.
-    // - d1/sqlite: db.batch (interactive transaction 미지원).
-    // - postgres/mysql: interactive transaction.
+    // runAtomic 이 d1/sqlite=batch, postgres/mysql=transaction 분기를 흡수한다.
     const buildTotpInsert = (h: Pick<DB, "insert">) =>
         h.insert(credentials).values({
             id: crypto.randomUUID(),
@@ -90,18 +91,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     const buildBackupInsert = (h: Pick<DB, "insert">) => h.insert(credentials).values(backupCodeRows);
 
     try {
-        if (DB_DIALECT === "d1" || DB_DIALECT === "sqlite") {
-            // d1 / libSQL 은 원자적 batch 지원 (정규 DB 타입이 활성 방언일 때만 노출되므로 캐스팅).
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (db as any).batch([buildTotpInsert(db), buildBackupInsert(db)]);
-        } else {
-            // postgres / mysql: interactive transaction.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (db as any).transaction(async (tx: Pick<DB, "insert">) => {
-                await buildTotpInsert(tx);
-                await buildBackupInsert(tx);
-            });
-        }
+        await runAtomic(db, [buildTotpInsert, buildBackupInsert]);
     } catch (err) {
         // credentials_totp_owner_uidx UNIQUE 위반(동시 이중 등록)일 때만 409 로 매핑한다.
         // 사전 SELECT 를 통과한 두 동시 요청 중 두 번째가 여기서 안전하게 거부된다.

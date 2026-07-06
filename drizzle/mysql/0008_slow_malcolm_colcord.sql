@@ -1,0 +1,1 @@
+CREATE INDEX `users_deletion_gc_idx` ON `users` (`status`,`deletion_scheduled_at`);

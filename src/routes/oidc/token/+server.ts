@@ -7,7 +7,7 @@ import { findActiveUserById } from "$lib/server/auth/users";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { findOidcClient, isValidClientSecret, parseBasicAuth } from "$lib/server/oidc/client";
-import { buildAddressClaim } from "$lib/server/oidc/claims";
+import { buildAddressClaim, buildOrganizationClaims, parseOrganizationClaimConfig } from "$lib/server/oidc/claims";
 import { findAndConsumeGrant } from "$lib/server/oidc/grant";
 import { verifyPkce } from "$lib/server/oidc/pkce";
 import { issueRefreshToken, rotateRefreshToken, revokeRefreshTokenFamily } from "$lib/server/oidc/refresh";
@@ -42,6 +42,28 @@ function clientAllowsGrant(client: OidcClientRecord, grantType: string): boolean
         .includes(grantType);
 }
 
+interface GrantSessionCheck {
+    row: typeof sessions.$inferSelect | null;
+    revoked: boolean;
+    expired: boolean;
+}
+
+/**
+ * grant/refresh 에 연결된 IdP 세션을 조회하고 폐기(revoked)·만료(expired) 여부를 판정한다.
+ * authorization_code / refresh_token 두 grant 경로에서 공통으로 사용한다.
+ * 세션 row 가 없으면(예: onDelete set null 이전에 삭제) revoked/expired 모두 false 로 두어
+ * 호출부의 기존 관례(row 부재 시 거부하지 않음)를 보존한다.
+ */
+async function checkGrantSession(db: DB, sessionId: string): Promise<GrantSessionCheck> {
+    const [row] = await db.select().from(sessions).where(eq(sessions.id, sessionId)).limit(1);
+    const session = row ?? null;
+    return {
+        row: session,
+        revoked: Boolean(session?.revokedAt),
+        expired: Boolean(session && session.expiresAt.getTime() <= Date.now()),
+    };
+}
+
 interface BuildTokenParams {
     db: DB;
     tenantId: string;
@@ -51,6 +73,7 @@ interface BuildTokenParams {
     user: NonNullable<Awaited<ReturnType<typeof findActiveUserById>>>;
     clientId: string; // 공개 client_id (aud/azp/access token 용)
     clientDbId: string; // oidcClients.id PK (서비스 권한 조회용)
+    organizationClaimConfig: string | null; // oidcClients.organizationClaimConfig(JSON text). null=전량 노출.
     scope: string;
     sessionId: string | null;
     nonce: string | null;
@@ -123,11 +146,17 @@ async function buildTokens(params: BuildTokenParams): Promise<{ idToken: string;
         }
     }
 
-    // groups scope — 활성 조직 멤버십을 code(없으면 name) 문자열 배열로 매핑.
-    // userinfo 응답과 동일 로직(membershipToGroups)을 공유한다. 표준 claim 이므로 assignment 머지 이후에 설정.
-    if (scopes.has("groups")) {
+    // groups / organization scope — 활성 조직 멤버십 기반. userinfo 응답과 동일 로직
+    // (membershipToGroups / buildOrganizationClaims)을 공유한다. 표준 claim 이므로 assignment
+    // 머지 이후에 설정. 두 scope 모두 요청돼도 멤버십은 한 번만 조회한다.
+    if (scopes.has("groups") || scopes.has("organization")) {
         const membership = await getUserMembership(db, user.id);
-        idTokenPayload.groups = membershipToGroups(membership);
+        if (scopes.has("groups")) {
+            idTokenPayload.groups = membershipToGroups(membership);
+        }
+        if (scopes.has("organization")) {
+            Object.assign(idTokenPayload, buildOrganizationClaims(membership, parseOrganizationClaimConfig(params.organizationClaimConfig)));
+        }
     }
 
     const idToken = await signJwt(idTokenPayload, signingKey.privateKey, signingKey.kid);
@@ -161,12 +190,13 @@ function tokenResponse(body: Record<string, unknown>): Response {
 
 export const POST: RequestHandler = async (event) => {
     const { locals, request, url } = event;
-    const { db, tenant } = requireDbContext(locals);
-    const { signingKeySecret } = locals.runtimeConfig;
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
+    // signingKeySecret = current (발급 전용), signingKeySecrets = 복호 fallback 용.
+    const { signingKeySecret, signingKeySecrets } = locals.runtimeConfig;
 
     // 레이트 리밋: IP당 30회/분
     const { ip, ipKey, userAgent } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `token:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
+    const rl = await checkRateLimit(rateLimitStore, `token:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
     if (!rl.allowed) {
         return new Response(
             JSON.stringify({
@@ -257,7 +287,7 @@ export const POST: RequestHandler = async (event) => {
 
     // per-client 레이트 리밋: 인증 성공한 클라이언트당 60회/분.
     // IP 기반 리밋과 별개로, 자격증명을 아는 남용 클라이언트를 격리한다.
-    const clientRl = await checkRateLimit(db, `token-client:${clientId}`, { windowMs: 60 * 1000, limit: 60 });
+    const clientRl = await checkRateLimit(rateLimitStore, `token-client:${clientId}`, { windowMs: 60 * 1000, limit: 60 });
     if (!clientRl.allowed) {
         await recordTokenFailure(clientId, "rate_limit_exceeded", "client 요청이 너무 많습니다");
         return new Response(
@@ -280,7 +310,7 @@ export const POST: RequestHandler = async (event) => {
         return tokenError("unauthorized_client", "이 클라이언트에 허용되지 않은 grant_type 입니다.");
     }
 
-    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
     if (!signingKey) {
         return tokenError("server_error", "활성 서명 키를 찾을 수 없습니다.", 503);
     }
@@ -307,9 +337,10 @@ export const POST: RequestHandler = async (event) => {
         // 브라우저 세션보다 오래 살아야 하기 때문. (로그아웃 시 refresh token 은 별도 폐기됨.)
         let sessionRow: typeof sessions.$inferSelect | null = null;
         if (record.sessionId) {
-            const [s] = await db.select().from(sessions).where(eq(sessions.id, record.sessionId)).limit(1);
-            sessionRow = s ?? null;
-            if (sessionRow?.revokedAt) {
+            const check = await checkGrantSession(db, record.sessionId);
+            sessionRow = check.row;
+            // 명시적 폐기(revoked)만 거부한다 — 세션의 자연 만료(expired)는 위 주석대로 거부하지 않는다.
+            if (check.revoked) {
                 // 방금 회전된 토큰을 포함해 family 를 폐기하고 거부.
                 await revokeRefreshTokenFamily(db, tenant.id, record.userId, clientId);
                 await recordTokenFailure(clientId, "invalid_grant", "연결된 세션이 로그아웃됨");
@@ -348,6 +379,7 @@ export const POST: RequestHandler = async (event) => {
             user,
             clientId,
             clientDbId: client.id,
+            organizationClaimConfig: client.organizationClaimConfig,
             scope: effectiveScope,
             sessionId: record.sessionId,
             nonce: null, // refresh 로 재발급되는 id_token 에는 nonce 를 넣지 않는다 (원 요청 전용)
@@ -413,6 +445,17 @@ export const POST: RequestHandler = async (event) => {
         }
     }
 
+    // 연결된 IdP 세션이 로그아웃(폐기)됐거나 만료됐으면 거부한다.
+    // 로그아웃 후에도 5분 TTL 안의 미소진 code 로 토큰이 발급되는 것을 막는다.
+    // sessionId 가 null 인 grant(세션 삭제로 set null 된 경우 등)는 검사를 건너뛰어 기존 동작을 보존한다.
+    if (grant.sessionId) {
+        const sessionCheck = await checkGrantSession(db, grant.sessionId);
+        if (sessionCheck.revoked || sessionCheck.expired) {
+            await recordTokenFailure(clientId, "invalid_grant", sessionCheck.revoked ? "연결된 세션이 로그아웃됨" : "연결된 세션이 만료됨");
+            return tokenError("invalid_grant", "로그아웃되었거나 만료된 세션입니다. 다시 로그인해 주세요.");
+        }
+    }
+
     const user = await findActiveUserById(db, grant.userId);
     if (!user) {
         await recordTokenFailure(clientId, "invalid_grant", "사용자 조회 실패");
@@ -429,6 +472,7 @@ export const POST: RequestHandler = async (event) => {
         user,
         clientId,
         clientDbId: client.id,
+        organizationClaimConfig: client.organizationClaimConfig,
         scope: grant.scope,
         sessionId: grant.sessionId,
         nonce: grant.nonce,

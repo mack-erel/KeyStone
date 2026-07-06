@@ -3,9 +3,12 @@ import type { RequestHandler } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { verifyChallengeCookie, verifyRegistrationResponse, savePasskey, getWebAuthnConfig, WEBAUTHN_CHALLENGE_COOKIE } from "$lib/server/auth/webauthn";
 import type { RegistrationResponseJSON } from "$lib/server/auth/webauthn";
+import { tryWithSecretsNullable } from "$lib/server/crypto/keys";
+import { translate } from "$lib/i18n/server";
 
 /**
  * 패스키 라벨에서 제어문자/BIDI override 등 위험 코드포인트를 제거한다.
@@ -29,7 +32,7 @@ function sanitizePasskeyLabel(label: string): string {
 export const POST: RequestHandler = async (event) => {
     const { locals, cookies, request, url, platform } = event;
     if (!locals.user) {
-        throw error(401, "로그인이 필요합니다.");
+        throw error(401, translate(locals.locale, "webauthn.errors.login_required"));
     }
 
     const { rpID, origin } = getWebAuthnConfig(url);
@@ -37,34 +40,34 @@ export const POST: RequestHandler = async (event) => {
     // Origin 검증
     const reqOrigin = request.headers.get("origin");
     if (reqOrigin && reqOrigin !== origin) {
-        throw error(403, "유효하지 않은 출처입니다.");
+        throw error(403, translate(locals.locale, "webauthn.errors.invalid_origin"));
     }
 
     const config = getRuntimeConfig(platform);
-    if (!config.signingKeySecret) {
-        throw error(503, "IDP_SIGNING_KEY_SECRET 이 설정되지 않았습니다.");
+    if (config.signingKeySecrets.length === 0) {
+        throw error(503, translate(locals.locale, "webauthn.errors.signing_key_not_configured"));
     }
 
     const cookieValue = cookies.get(WEBAUTHN_CHALLENGE_COOKIE);
     if (!cookieValue) {
-        throw error(400, "등록 세션이 만료되었습니다. 다시 시도해 주세요.");
+        throw error(400, translate(locals.locale, "webauthn.errors.register_session_expired"));
     }
 
-    const payload = await verifyChallengeCookie(cookieValue, config.signingKeySecret, "register");
+    const payload = await tryWithSecretsNullable(config.signingKeySecrets, (s) => verifyChallengeCookie(cookieValue, s, "register"));
     if (!payload || payload.userId !== locals.user.id) {
         cookies.delete(WEBAUTHN_CHALLENGE_COOKIE, { path: "/" });
-        throw error(400, "등록 세션이 유효하지 않습니다. 다시 시도해 주세요.");
+        throw error(400, translate(locals.locale, "webauthn.errors.register_session_invalid"));
     }
 
     const body = (await request.json()) as RegistrationResponseJSON & { label?: string };
     const label = typeof body.label === "string" ? sanitizePasskeyLabel(body.label) : "";
 
-    const { db: dbForRl, tenant: tenantForRl } = requireDbContext(locals);
+    const { tenant: tenantForRl, rateLimitStore } = requireDbContext(locals);
     // cf-connecting-ip 전용(H-ADMIN-3) + IPv6 /64 정규화(C6). 위조 가능한 x-forwarded-for 는 쓰지 않는다.
     const { ipKey } = getRequestMetadata(event);
-    const rl = await checkRateLimit(dbForRl, `webauthn-register-verify:${tenantForRl.id}:${ipKey}`, { windowMs: 5 * 60 * 1000, limit: 10 });
+    const rl = await checkRateLimit(rateLimitStore, `webauthn-register-verify:${tenantForRl.id}:${ipKey}`, { windowMs: 5 * 60 * 1000, limit: 10 });
     if (!rl.allowed) {
-        throw error(429, "등록 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+        throw error(429, translate(locals.locale, "webauthn.errors.register_rate_limited"));
     }
 
     const verification = await verifyRegistrationResponse({
@@ -77,7 +80,7 @@ export const POST: RequestHandler = async (event) => {
     cookies.delete(WEBAUTHN_CHALLENGE_COOKIE, { path: "/" });
 
     if (!verification.verified || !verification.registrationInfo) {
-        throw error(400, "패스키 등록 검증에 실패했습니다.");
+        throw error(400, translate(locals.locale, "webauthn.errors.register_verify_failed"));
     }
 
     const { db, tenant } = requireDbContext(locals);
@@ -93,6 +96,8 @@ export const POST: RequestHandler = async (event) => {
         ip: requestMetadata.ip,
         userAgent: requestMetadata.userAgent,
     });
+
+    dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "passkey_added", platform });
 
     return json({ ok: true });
 };

@@ -10,6 +10,7 @@ import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { getRequestMetadata } from "$lib/server/audit";
 import { translate } from "$lib/i18n/server";
+import { issueEmailVerification } from "$lib/server/auth/email-verification";
 
 export const load: PageServerLoad = async ({ locals, url, platform }) => {
     const skinHint = url.searchParams.get("skinHint");
@@ -59,7 +60,7 @@ async function resolveSkinForAction(event: Parameters<Actions["default"]>[0], fl
 
 export const actions: Actions = {
     default: async (event) => {
-        const { db, tenant } = requireDbContext(event.locals);
+        const { db, tenant, rateLimitStore } = requireDbContext(event.locals);
 
         const formData = await event.request.formData();
         const username = String(formData.get("username") ?? "")
@@ -76,7 +77,7 @@ export const actions: Actions = {
 
         // IP 기반 레이트리밋 — 60분/5회.
         const meta = getRequestMetadata(event);
-        const rl = await checkRateLimit(db, `signup:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
+        const rl = await checkRateLimit(rateLimitStore, `signup:${meta.ipKey}`, { windowMs: 60 * 60 * 1000, limit: 5 });
         if (!rl.allowed) {
             return failSkin(429, translate(locale, "signup.err_rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }));
         }
@@ -108,6 +109,9 @@ export const actions: Actions = {
         await db.insert(users).values({ id: userId, tenantId: tenant.id, username, email, displayName: username, role: "user", status: "active" });
         await db.insert(credentials).values({ userId, type: "password", secret: hashedPw, label: "비밀번호", createdAt: now });
         await db.insert(identities).values({ tenantId: tenant.id, userId, provider: "local", subject: email, email, linkedAt: now });
+
+        // 이메일 인증 메일 발송 — 실패해도 가입은 성공 처리(격리).
+        await issueEmailVerification(db, userId, email, locale, event.platform);
 
         const redirectTo = sanitizeRedirectTarget(event.url.searchParams.get("redirectTo"));
         const skinHint = event.url.searchParams.get("skinHint") ?? "";

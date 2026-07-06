@@ -1,0 +1,96 @@
+import { fail } from "@sveltejs/kit";
+import { and, eq, isNull, ne } from "drizzle-orm";
+import type { Actions, PageServerLoad } from "./$types";
+import { requireDbContext } from "$lib/server/auth/guards";
+import { users, emailChangeTokens } from "$lib/server/db/schema";
+import { hashToken } from "$lib/server/email";
+import { runAtomic } from "$lib/server/db/atomic";
+import { checkRateLimit } from "$lib/server/ratelimit";
+import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
+import { translate } from "$lib/i18n/server";
+
+// 토큰 상태를 tenant 범위에서 조회한다(read-only). 유효하면 record 반환, 아니면 null.
+// targetEmail 은 토큰에 바인딩된 변경 대상 주소 — 확인 시 이 값으로만 email 을 교체한다.
+async function lookupToken(db: App.Locals["db"], tenantId: string, token: string) {
+    if (!db) return null;
+    const tokenHash = await hashToken(token);
+    const now = new Date();
+    const [record] = await db
+        .select({
+            tokenId: emailChangeTokens.id,
+            userId: users.id,
+            targetEmail: emailChangeTokens.targetEmail,
+            expiresAt: emailChangeTokens.expiresAt,
+        })
+        .from(emailChangeTokens)
+        .innerJoin(users, eq(emailChangeTokens.userId, users.id))
+        .where(and(eq(emailChangeTokens.tokenHash, tokenHash), isNull(emailChangeTokens.usedAt), eq(users.tenantId, tenantId)))
+        .limit(1);
+    if (!record || record.expiresAt < now) return null;
+    return record;
+}
+
+export const load: PageServerLoad = async ({ locals, url }) => {
+    const token = url.searchParams.get("token");
+    if (!token || !locals.db || !locals.tenant) {
+        return { valid: false, token: null as string | null };
+    }
+    const record = await lookupToken(locals.db, locals.tenant.id, token);
+    if (!record) return { valid: false, token: null as string | null };
+    return { valid: true, token: token as string | null };
+};
+
+export const actions: Actions = {
+    default: async (event) => {
+        const { db, tenant, rateLimitStore } = requireDbContext(event.locals);
+        const locale = event.locals.locale;
+
+        const formData = await event.request.formData();
+        const token = String(formData.get("token") ?? "");
+
+        // 토큰 제출 브루트포스 방어 — 형제 인증 라우트와 동일하게 IP 당 제한.
+        const meta = getRequestMetadata(event);
+        const rl = await checkRateLimit(rateLimitStore, `confirm-email-change:${meta.ipKey}`, { windowMs: 15 * 60 * 1000, limit: 10 });
+        if (!rl.allowed) {
+            return fail(429, { error: translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }) });
+        }
+
+        if (!token) return fail(400, { error: translate(locale, "confirm_email_change.invalid_link") });
+
+        const record = await lookupToken(db, tenant.id, token);
+        if (!record) return fail(400, { error: translate(locale, "confirm_email_change.invalid_link") });
+
+        // 확인 시점 중복 재검사 — 요청 이후 다른 계정이 같은 주소를 선점했을 수 있다.
+        // (users_tenant_email_uidx 가 최종 방어이지만 사용자 친화적 에러를 위해 선검사한다.)
+        const [taken] = await db
+            .select({ id: users.id })
+            .from(users)
+            .where(and(eq(users.tenantId, tenant.id), eq(users.email, record.targetEmail), ne(users.id, record.userId)))
+            .limit(1);
+        if (taken) return fail(409, { error: translate(locale, "confirm_email_change.invalid_link") });
+
+        const now = new Date();
+        // 1회용 소진 + email 교체 + pending 클리어 + emailVerifiedAt 세팅을 원자적으로.
+        // 같은 user 의 미사용 변경 토큰을 모두 소진해 재사용을 차단한다.
+        await runAtomic(db, [
+            (h) =>
+                h
+                    .update(emailChangeTokens)
+                    .set({ usedAt: now })
+                    .where(and(eq(emailChangeTokens.userId, record.userId), isNull(emailChangeTokens.usedAt))),
+            (h) => h.update(users).set({ email: record.targetEmail, pendingEmail: null, pendingEmailRequestedAt: null, emailVerifiedAt: now, updatedAt: now }).where(eq(users.id, record.userId)),
+        ]);
+
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: record.userId,
+            actorId: record.userId,
+            kind: "email_changed",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+        });
+
+        return { changed: true };
+    },
+};

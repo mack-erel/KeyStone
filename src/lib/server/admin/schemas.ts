@@ -36,16 +36,19 @@ export const intField = (message: string) => z.preprocess((v) => (typeof v === "
 /** displayOrder: 유효하지 않거나 빈값이면 0 (기존 parseInt isNaN→0 동작 보존). */
 export const displayOrderField = z.coerce.number().int().catch(0);
 
+// 폼 검증 메시지는 i18n 키(전체 경로)로 담는다. 실제 표시 시점(crud-factory)에서
+// translate(locale, key) 로 해석된다 — 스키마는 로케일 비의존 정적 모듈이므로 키만 보관.
+
 // ── teams ─────────────────────────────────────────────────────────────────
 export const teamCreateSchema = z.object({
-    name: requiredText("팀명을 입력해 주세요."),
+    name: requiredText("admin.errors.team_name_required"),
     code: optionalText,
     departmentId: optionalText,
     description: optionalText,
 });
 export const teamUpdateSchema = z.object({
-    id: requiredText("잘못된 요청입니다."),
-    name: requiredText("잘못된 요청입니다."),
+    id: requiredText("admin.errors.invalid_request"),
+    name: requiredText("admin.errors.invalid_request"),
     code: optionalText,
     departmentId: optionalText,
     description: optionalText,
@@ -54,14 +57,14 @@ export const teamUpdateSchema = z.object({
 
 // ── parts ─────────────────────────────────────────────────────────────────
 export const partCreateSchema = z.object({
-    name: requiredText("파트명을 입력해 주세요."),
+    name: requiredText("admin.errors.part_name_required"),
     code: optionalText,
     teamId: optionalText,
     description: optionalText,
 });
 export const partUpdateSchema = z.object({
-    id: requiredText("잘못된 요청입니다."),
-    name: requiredText("잘못된 요청입니다."),
+    id: requiredText("admin.errors.invalid_request"),
+    name: requiredText("admin.errors.invalid_request"),
     code: optionalText,
     teamId: optionalText,
     description: optionalText,
@@ -70,28 +73,28 @@ export const partUpdateSchema = z.object({
 
 // ── positions ───────────────────────────────────────────────────────────────
 export const positionCreateSchema = z.object({
-    name: requiredText("직급명을 입력해 주세요."),
+    name: requiredText("admin.errors.position_name_required"),
     code: optionalText,
-    level: intField("레벨은 숫자여야 합니다."),
+    level: intField("admin.errors.level_must_be_number"),
 });
 export const positionUpdateSchema = z.object({
-    id: requiredText("잘못된 요청입니다."),
-    name: requiredText("잘못된 요청입니다."),
+    id: requiredText("admin.errors.invalid_request"),
+    name: requiredText("admin.errors.invalid_request"),
     code: optionalText,
-    level: intField("레벨은 숫자여야 합니다."),
+    level: intField("admin.errors.level_must_be_number"),
 });
 
 // ── departments ─────────────────────────────────────────────────────────────
 export const departmentCreateSchema = z.object({
-    name: requiredText("부서명을 입력해 주세요."),
+    name: requiredText("admin.errors.department_name_required"),
     code: optionalText,
     parentId: optionalText,
     description: optionalText,
     displayOrder: displayOrderField,
 });
 export const departmentUpdateSchema = z.object({
-    id: requiredText("잘못된 요청입니다."),
-    name: requiredText("잘못된 요청입니다."),
+    id: requiredText("admin.errors.invalid_request"),
+    name: requiredText("admin.errors.invalid_request"),
     code: optionalText,
     parentId: optionalText,
     description: optionalText,

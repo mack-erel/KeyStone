@@ -22,6 +22,14 @@
         "enabled": true,
         "head_sampling_rate": 1,
     },
+    // ── 만료 데이터 GC ─────────────────────────────────────────────────────────
+    // 만료·소진 행(sessions/oidc_grants/refresh_tokens/webauthn_challenges/rate_limits/
+    // password_reset_tokens/saml_* 등)은 별도 Cron 없이 정리된다:
+    //   요청의 ~1% 에서 ctx.waitUntil 로 GC 를 백그라운드 발사(src/lib/server/db/gc.ts).
+    // adapter-cloudflare 가 생성하는 _worker.js 는 fetch 핸들러만 export 하므로 Cron
+    // Trigger(scheduled 핸들러)를 커스텀 worker 엔트리 없이는 붙일 수 없어 확률적 GC 를
+    // 택했다. 정기 Cron 이 필요하면 커스텀 엔트리로 scheduled() 를 추가하고 아래를 켜라:
+    //   "triggers": { "crons": ["0 * * * *"] }   // 매시 정각, scheduled()->runExpiredDataGc
     "vars": {
         // ── DB 방언 선택 (배포 단위, 하나만 사용) ──────────────────────────────
         // "d1"(기본) | "postgres" | "mysql".

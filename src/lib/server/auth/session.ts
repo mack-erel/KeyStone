@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import type { Cookies } from "@sveltejs/kit";
 import type { DB } from "$lib/server/db";
 import { sessions, users } from "$lib/server/db/schema";
@@ -76,6 +76,57 @@ export async function revokeOtherSessions(db: DB, userId: string, keepSessionId:
         .update(sessions)
         .set({ revokedAt })
         .where(and(eq(sessions.userId, userId), ne(sessions.id, keepSessionId), isNull(sessions.revokedAt)));
+}
+
+export interface ActiveSessionInfo {
+    id: string;
+    ip: string | null;
+    userAgent: string | null;
+    lastSeenAt: Date;
+    createdAt: Date;
+}
+
+/**
+ * 사용자의 활성(revokedAt IS NULL·미만료) 세션 목록을 최근 활동 순으로 반환한다.
+ * 셀프서비스 세션 관리 화면에서 사용한다.
+ */
+export async function listActiveSessions(db: DB, userId: string): Promise<ActiveSessionInfo[]> {
+    const now = new Date();
+    return db
+        .select({
+            id: sessions.id,
+            ip: sessions.ip,
+            userAgent: sessions.userAgent,
+            lastSeenAt: sessions.lastSeenAt,
+            createdAt: sessions.createdAt,
+        })
+        .from(sessions)
+        .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt), gt(sessions.expiresAt, now)))
+        .orderBy(desc(sessions.lastSeenAt));
+}
+
+/**
+ * `sessionId` + `userId` 가 **동시에 일치**하는 활성 세션만 폐기한다.
+ *
+ * IDOR 방지: userId 조건이 select·update 양쪽에 걸려 있어 다른 사용자의 sessionId 를
+ * 넘겨도 어떤 행도 폐기되지 않는다. 이미 폐기된 세션은 건드리지 않는다(멱등).
+ *
+ * 반환값: 실제로 한 행을 폐기했으면 `true`, 대상이 없거나(타 사용자/미존재/이미 폐기) `false`.
+ */
+export async function revokeSessionById(db: DB, sessionId: string, userId: string, revokedAt = new Date()): Promise<boolean> {
+    // 방언 독립적으로 "영향 행 존재" 를 판정하기 위해 소유·활성 가드를 건 select 로 먼저 확인한다.
+    const [target] = await db
+        .select({ id: sessions.id })
+        .from(sessions)
+        .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.revokedAt)))
+        .limit(1);
+    if (!target) return false;
+
+    await db
+        .update(sessions)
+        .set({ revokedAt })
+        .where(and(eq(sessions.id, sessionId), eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+    return true;
 }
 
 export async function getSessionContext(db: DB, sessionToken: string) {

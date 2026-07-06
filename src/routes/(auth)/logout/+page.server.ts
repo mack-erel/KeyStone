@@ -43,11 +43,11 @@ async function performLogout(event: RequestEvent): Promise<string | null> {
 
     // OIDC back-channel 로그아웃 발송 (waitUntil)
     const issuerUrl = resolveIssuerUrl(event.locals.runtimeConfig, event.url.origin);
-    const signingKeySecret = event.locals.runtimeConfig.signingKeySecret;
-    if (signingKeySecret) {
+    const signingKeySecrets = event.locals.runtimeConfig.signingKeySecrets;
+    if (signingKeySecrets.length > 0) {
         const bcTargets = await getOidcBackchannelTargets(db, tenant.id, sessionId);
         if (bcTargets.length > 0) {
-            const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+            const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
             if (signingKey) {
                 const bcPromises = bcTargets.map((t) => sendOneBackchannelLogout(t, userId, idpSessionId, issuerUrl, signingKey.privateKey, signingKey.kid).catch(() => undefined));
                 const wait = event.platform?.ctx?.waitUntil?.bind(event.platform.ctx);

@@ -1,11 +1,23 @@
 <script lang="ts">
+import { enhance } from "$app/forms";
 import { resolve } from "$app/paths";
 import { onMount } from "svelte";
+import type { SubmitFunction } from "@sveltejs/kit";
 import { t } from "$lib/i18n.svelte";
+import FormError from "$lib/components/FormError.svelte";
 import type { ActionData, PageData } from "./$types";
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const result = $derived(form as { sent?: boolean; maskedUsername?: string | null; error?: string } | null);
+
+let submitting = $state(false);
+const enhanceSubmit: SubmitFunction = () => {
+    submitting = true;
+    return async ({ update }) => {
+        await update({ reset: false });
+        submitting = false;
+    };
+};
 
 onMount(() => {
     if (!data.skinHtml && !(form as { skinHtml?: string } | null)?.skinHtml) return;
@@ -38,9 +50,7 @@ const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.sk
                 <p class="mt-1 text-sm text-gray-500">{t("find_id.subtitle")}</p>
             </div>
 
-            {#if result?.error}
-                <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{result.error}</div>
-            {/if}
+            <FormError message={result?.error} />
 
             {#if result?.sent}
                 <div class="space-y-3 rounded-lg border border-green-200 bg-green-50 p-4">
@@ -53,7 +63,7 @@ const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.sk
                     {/if}
                 </div>
             {:else}
-                <form method="POST" class="space-y-4">
+                <form method="POST" use:enhance={enhanceSubmit} class="space-y-4">
                     <div>
                         <label for="email" class="block text-sm font-medium text-gray-700">{t("find_id.email_label")}</label>
                         <input
@@ -64,8 +74,19 @@ const authLinkSuffix = $derived(buildAuthSuffix(data.redirectTo ?? null, data.sk
                             autocomplete="email"
                             class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none" />
                     </div>
-                    <button type="submit" class="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
-                        {t("find_id.submit")}
+                    <button
+                        type="submit"
+                        disabled={submitting}
+                        class="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+                        {#if submitting}
+                            <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            {t("common.processing")}
+                        {:else}
+                            {t("find_id.submit")}
+                        {/if}
                     </button>
                 </form>
             {/if}

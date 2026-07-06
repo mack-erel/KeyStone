@@ -16,7 +16,8 @@ import { getRequestMetadata } from "$lib/server/audit";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { authenticateOidcClient } from "$lib/server/oidc/client";
 import { findActiveRefreshToken } from "$lib/server/oidc/refresh";
-import { verifyAccessToken } from "$lib/server/crypto/keys";
+import { verifyAccessToken, tryWithSecretsNullable } from "$lib/server/crypto/keys";
+import { translate } from "$lib/i18n/server";
 
 function errorResponse(code: string, description: string, status: number): Response {
     return new Response(JSON.stringify({ error: code, error_description: description }), {
@@ -33,13 +34,13 @@ function inactive(): Response {
 
 export const POST: RequestHandler = async (event) => {
     const { locals, request } = event;
-    const { db, tenant } = requireDbContext(locals);
-    const { signingKeySecret } = locals.runtimeConfig;
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
+    const { signingKeySecrets } = locals.runtimeConfig;
 
     const { ipKey } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `oidc-introspect:${ipKey}`, { windowMs: 60 * 1000, limit: 60 });
+    const rl = await checkRateLimit(rateLimitStore, `oidc-introspect:${ipKey}`, { windowMs: 60 * 1000, limit: 60 });
     if (!rl.allowed) {
-        return new Response(JSON.stringify({ error: "rate_limit_exceeded", error_description: "요청이 너무 많습니다." }), {
+        return new Response(JSON.stringify({ error: "rate_limit_exceeded", error_description: translate(locals.locale, "oidc.errors.rate_limited_short") }), {
             status: 429,
             headers: { "Content-Type": "application/json", "Retry-After": String(Math.ceil(rl.retryAfterMs / 1000)) },
         });
@@ -50,14 +51,14 @@ export const POST: RequestHandler = async (event) => {
     if (!auth.ok) return errorResponse(auth.code, auth.description, auth.status);
 
     const token = String(body.get("token") ?? "");
-    if (!token) return errorResponse("invalid_request", "token 파라미터가 필요합니다.", 400);
+    if (!token) return errorResponse("invalid_request", translate(locals.locale, "oidc.errors.token_param_required"), 400);
 
     const hint = String(body.get("token_type_hint") ?? "");
     const clientId = auth.client.clientId;
 
     // 1) access token 시도 (refresh_token 힌트가 명시된 경우는 건너뜀).
-    if (hint !== "refresh_token" && signingKeySecret) {
-        const claims = await verifyAccessToken(token, signingKeySecret, tenant.id, clientId);
+    if (hint !== "refresh_token" && signingKeySecrets.length > 0) {
+        const claims = await tryWithSecretsNullable(signingKeySecrets, (s) => verifyAccessToken(token, s, tenant.id, clientId));
         if (claims) {
             return json(
                 {

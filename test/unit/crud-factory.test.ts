@@ -44,7 +44,7 @@ function makeEvent(db: unknown, form: Record<string, string>): RequestEvent {
     const fd = new FormData();
     for (const [k, v] of Object.entries(form)) fd.set(k, v);
     return {
-        locals: { db, tenant: { id: "tenant-1" }, user: { id: "user-1", role: "admin" } },
+        locals: { db, tenant: { id: "tenant-1" }, user: { id: "user-1", role: "admin" }, locale: "ko" },
         request: { formData: async () => fd, headers: new Headers() },
     } as unknown as RequestEvent;
 }

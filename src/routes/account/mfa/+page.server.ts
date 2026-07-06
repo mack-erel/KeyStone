@@ -4,9 +4,11 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { generateTotpSecret, buildOtpAuthUri, verifyTotp, encryptTotpSecret, decryptTotpSecret, generateBackupCodes, hashBackupCode } from "$lib/server/auth/totp";
+import { tryWithSecrets, tryWithSecretsNullable } from "$lib/server/crypto/keys";
 import { TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { credentials } from "$lib/server/db/schema";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
+import { dispatchSecurityAlert } from "$lib/server/security-notify";
 
 const TOTP_SETUP_COOKIE = "idp_totp_setup";
 const TOTP_SETUP_TTL_MS = 10 * 60 * 1000; // 10분
@@ -82,7 +84,7 @@ export const load: PageServerLoad = async ({ locals, cookies, platform, url }) =
     if (!totpCred && config.signingKeySecret) {
         const setupToken = cookies.get(TOTP_SETUP_COOKIE);
         if (setupToken) {
-            const secret = await verifySetupToken(setupToken, config.signingKeySecret);
+            const secret = await tryWithSecretsNullable(config.signingKeySecrets, (s) => verifySetupToken(setupToken, s));
             if (secret) {
                 const issuer = config.issuerUrl ? new URL(config.issuerUrl).hostname : "IdP";
                 pendingUri = buildOtpAuthUri(secret, locals.user.email, issuer);
@@ -150,7 +152,7 @@ export const actions: Actions = {
             });
         }
 
-        const plainSecret = await verifySetupToken(setupToken, config.signingKeySecret);
+        const plainSecret = await tryWithSecretsNullable(config.signingKeySecrets, (s) => verifySetupToken(setupToken, s));
         if (!plainSecret) {
             cookies.delete(TOTP_SETUP_COOKIE, { path: "/" });
             return fail(400, {
@@ -224,6 +226,8 @@ export const actions: Actions = {
             userAgent: requestMetadata.userAgent,
         });
 
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "mfa_enrolled", platform: event.platform });
+
         return { confirm: true, backupCodes: codes };
     },
 
@@ -258,7 +262,7 @@ export const actions: Actions = {
             return fail(400, { delete: true, error: "TOTP 인증기가 등록되어 있지 않습니다." });
         }
 
-        const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret, locals.user.id);
+        const plainSecret = await tryWithSecrets(config.signingKeySecrets, (s) => decryptTotpSecret(totpCred.secret!, s, locals.user!.id));
         const matchedStep = await verifyTotp(code, plainSecret);
         if (matchedStep === null) {
             return fail(400, { delete: true, error: "인증 코드가 올바르지 않습니다." });
@@ -278,6 +282,8 @@ export const actions: Actions = {
             ip: requestMetadata.ip,
             userAgent: requestMetadata.userAgent,
         });
+
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "mfa_disabled", platform: event.platform });
 
         return { deleted: true };
     },
@@ -314,7 +320,7 @@ export const actions: Actions = {
             return fail(400, { regenerate: true, error: "TOTP 인증기가 등록되어 있지 않습니다." });
         }
 
-        const plainSecret = await decryptTotpSecret(totpCred.secret, config.signingKeySecret, locals.user.id);
+        const plainSecret = await tryWithSecrets(config.signingKeySecrets, (s) => decryptTotpSecret(totpCred.secret!, s, locals.user!.id));
         const matchedStep = await verifyTotp(code, plainSecret);
         if (matchedStep === null) {
             return fail(400, { regenerate: true, error: "인증 코드가 올바르지 않습니다." });
@@ -346,6 +352,8 @@ export const actions: Actions = {
             ip: requestMetadata.ip,
             userAgent: requestMetadata.userAgent,
         });
+
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "backup_codes_regenerated", platform: event.platform });
 
         return { regenerate: true, backupCodes: codes };
     },

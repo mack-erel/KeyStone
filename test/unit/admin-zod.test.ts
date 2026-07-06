@@ -38,7 +38,7 @@ describe("teamCreateSchema", () => {
     it("name 이 비면 실패 + 친화적 메시지", () => {
         const res = teamCreateSchema.safeParse({ name: "   " });
         expect(res.success).toBe(false);
-        if (!res.success) expect(res.error.issues[0]?.message).toBe("팀명을 입력해 주세요.");
+        if (!res.success) expect(res.error.issues[0]?.message).toBe("admin.errors.team_name_required");
     });
 
     it("departmentId 가 지정되면 trim 값 유지", () => {
@@ -51,7 +51,7 @@ describe("teamUpdateSchema", () => {
     it("id/name 없으면 실패 (잘못된 요청)", () => {
         const res = teamUpdateSchema.safeParse({ name: "팀", status: "active" });
         expect(res.success).toBe(false);
-        if (!res.success) expect(res.error.issues[0]?.message).toBe("잘못된 요청입니다.");
+        if (!res.success) expect(res.error.issues[0]?.message).toBe("admin.errors.invalid_request");
     });
 
     it("status 는 active/inactive 만 허용 (잘못된 enum 거부)", () => {
@@ -82,7 +82,7 @@ describe("positionCreateSchema / positionUpdateSchema (level 정수 coerce)", ()
     it("level 이 숫자가 아니면 실패", () => {
         const res = positionCreateSchema.safeParse({ name: "과장", level: "abc" });
         expect(res.success).toBe(false);
-        if (!res.success) expect(res.error.issues[0]?.message).toBe("레벨은 숫자여야 합니다.");
+        if (!res.success) expect(res.error.issues[0]?.message).toBe("admin.errors.level_must_be_number");
     });
 
     it("update 도 id/name 필수 + level coerce", () => {

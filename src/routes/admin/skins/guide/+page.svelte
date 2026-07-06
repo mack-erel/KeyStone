@@ -51,7 +51,7 @@ import { t } from "$lib/i18n.svelte";
                 </tr>
             </thead>
             <tbody class="divide-y divide-gray-50">
-                {#each [{ key: "IDP_FORM_ACTION", desc: t("skins.placeholder_form_action") }, { key: "IDP_REDIRECT_TO", desc: t("skins.placeholder_redirect_to") }, { key: "IDP_SKIN_HINT", desc: t("skins.placeholder_skin_hint") }] as row (row.key)}
+                {#each [{ key: "IDP_FORM_ACTION", desc: t("skins.placeholder_form_action") }, { key: "IDP_REDIRECT_TO", desc: t("skins.placeholder_redirect_to") }, { key: "IDP_SKIN_HINT", desc: t("skins.placeholder_skin_hint") }, { key: "IDP_REGISTERED", desc: t("skins.placeholder_registered") }, { key: "IDP_PASSWORD_RESET", desc: t("skins.placeholder_password_reset") }, { key: "IDP_FLASH_MSG", desc: t("skins.placeholder_flash_msg") }] as row (row.key)}
                     <tr>
                         <td class="py-2.5 pr-4">
                             <code class="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-blue-700">&#123;&#123;{row.key}&#125;&#125;</code>

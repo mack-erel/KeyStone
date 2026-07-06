@@ -5,6 +5,8 @@ import { requireAdminContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import type { DB } from "$lib/server/db";
 import { oidcClients, serviceRoles } from "$lib/server/db/schema";
+import { adminError, requireFormId } from "$lib/server/admin/errors";
+import { ORGANIZATION_CLAIM_FIELDS, type OrganizationClaimConfig } from "$lib/server/oidc/claims";
 
 const ROLE_KEY_RE = /^[A-Za-z0-9_.-]{1,64}$/;
 
@@ -16,7 +18,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         .from(oidcClients)
         .where(and(eq(oidcClients.id, params.id), eq(oidcClients.tenantId, tenant.id)))
         .limit(1);
-    if (!client) error(404, "클라이언트를 찾을 수 없습니다.");
+    if (!client) error(404, adminError(locals.locale, "client_not_found"));
 
     const roles = await db
         .select()
@@ -40,6 +42,7 @@ export const actions: Actions = {
     addRole: async (event) => {
         const { locals, params } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
         const fd = await event.request.formData();
 
         const key = String(fd.get("key") ?? "").trim();
@@ -48,11 +51,11 @@ export const actions: Actions = {
         const isDefault = fd.get("isDefault") === "true";
         const displayOrder = Number(fd.get("displayOrder") ?? "0") | 0;
 
-        if (!ROLE_KEY_RE.test(key)) return fail(400, { error: "key 는 영숫자/._- 만 허용 (1~64자)." });
-        if (!label) return fail(400, { error: "label 은 필수입니다." });
+        if (!ROLE_KEY_RE.test(key)) return fail(400, { error: adminError(locale, "invalid_role_key") });
+        if (!label) return fail(400, { error: adminError(locale, "label_required") });
 
         const c = await clientForTenant(db, tenant.id, params.id);
-        if (!c) return fail(404, { error: "클라이언트를 찾을 수 없습니다." });
+        if (!c) return fail(404, { error: adminError(locale, "client_not_found") });
 
         try {
             await db.insert(serviceRoles).values({
@@ -68,7 +71,7 @@ export const actions: Actions = {
             });
         } catch {
             // unique (serviceType, serviceRefId, key)
-            return fail(409, { error: "이미 존재하는 role key 입니다." });
+            return fail(409, { error: adminError(locale, "role_key_exists") });
         }
 
         const meta = getRequestMetadata(event);
@@ -89,6 +92,7 @@ export const actions: Actions = {
     updateRole: async (event) => {
         const { locals, params } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
         const fd = await event.request.formData();
 
         const id = String(fd.get("roleId") ?? "");
@@ -97,7 +101,7 @@ export const actions: Actions = {
         const isDefault = fd.get("isDefault") === "true";
         const displayOrder = Number(fd.get("displayOrder") ?? "0") | 0;
 
-        if (!id || !label) return fail(400, { error: "필수 항목 누락." });
+        if (!id || !label) return fail(400, { error: adminError(locale, "required_field_missing") });
 
         await db
             .update(serviceRoles)
@@ -107,12 +111,55 @@ export const actions: Actions = {
         return { updated: true };
     },
 
+    // organization scope 클레임의 클라이언트별 노출 토글 저장.
+    // 네 필드가 모두 켜져 있으면 null(=미설정=전량 노출, 하위호환)로 저장해 DB 를 깨끗이 유지하고,
+    // 하나라도 꺼져 있으면 명시적 JSON config 를 저장한다. token/userinfo 양쪽이 동일 config 를 적용한다.
+    updateOrganizationClaims: async (event) => {
+        const { locals, params } = event;
+        const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
+        const fd = await event.request.formData();
+
+        const c = await clientForTenant(db, tenant.id, params.id);
+        if (!c) return fail(404, { error: adminError(locale, "client_not_found") });
+
+        const config: OrganizationClaimConfig = {};
+        let allEnabled = true;
+        for (const field of ORGANIZATION_CLAIM_FIELDS) {
+            const enabled = fd.get(field) === "true";
+            config[field] = enabled;
+            if (!enabled) allEnabled = false;
+        }
+
+        const value = allEnabled ? null : JSON.stringify(config);
+        await db
+            .update(oidcClients)
+            .set({ organizationClaimConfig: value, updatedAt: new Date() })
+            .where(and(eq(oidcClients.id, c.id), eq(oidcClients.tenantId, tenant.id)));
+
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            actorId: locals.user!.id,
+            spOrClientId: params.id,
+            kind: "oidc_client_updated",
+            outcome: "success",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { organizationClaimConfig: value },
+        });
+
+        return { organizationClaimsUpdated: true };
+    },
+
     deleteRole: async (event) => {
         const { locals, params } = event;
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
         const fd = await event.request.formData();
-        const id = String(fd.get("roleId") ?? "");
-        if (!id) return fail(400, { error: "잘못된 요청." });
+        const idr = requireFormId(fd, locale, { field: "roleId" });
+        if (!idr.ok) return idr.failure;
+        const id = idr.id;
 
         await db.delete(serviceRoles).where(and(eq(serviceRoles.id, id), eq(serviceRoles.tenantId, tenant.id), eq(serviceRoles.serviceType, "oidc"), eq(serviceRoles.serviceRefId, params.id)));
 

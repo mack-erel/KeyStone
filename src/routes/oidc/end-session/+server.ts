@@ -7,6 +7,8 @@ import { getActiveSigningKey, verifyIdToken } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, getOidcFrontchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
 import { matchesRedirectUri } from "$lib/server/oidc/client";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
+import { translate } from "$lib/i18n/server";
+import type { Locale } from "$lib/i18n/core";
 
 function htmlEscape(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
@@ -25,7 +27,7 @@ function isSafeRedirectScheme(url: string): boolean {
     }
 }
 
-function renderFrontchannelLogoutHtml(iframeUris: string[], redirectTo: string): string {
+function renderFrontchannelLogoutHtml(iframeUris: string[], redirectTo: string, locale: Locale): string {
     // ctrls H-OIDC-6: iframe sandbox 강화.
     // - sandbox="" (모든 권한 제거) → RP iframe 안에서 script/popup/topnav 전부 차단.
     //   기존 allow-scripts 는 RP frontchannel logout 표준 (script 로 RP 측 세션 정리)
@@ -37,11 +39,11 @@ function renderFrontchannelLogoutHtml(iframeUris: string[], redirectTo: string):
     const safeRedirect = isSafeRedirectScheme(redirectTo) ? redirectTo : "/";
     // CSP 는 hash 모드이므로 inline JS 를 피하고 meta refresh 를 사용한다.
     return (
-        `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">` +
+        `<!DOCTYPE html><html lang="${htmlEscape(locale)}"><head><meta charset="utf-8">` +
         `<title>Logging out...</title>` +
         `<meta http-equiv="refresh" content="3;url=${htmlEscape(safeRedirect)}">` +
         `</head><body>` +
-        `<p>로그아웃 중...</p>` +
+        `<p>${htmlEscape(translate(locale, "oidc.errors.logging_out"))}</p>` +
         iframes +
         `</body></html>`
     );
@@ -84,7 +86,7 @@ export const GET: RequestHandler = async (event) => {
 
     // ctrls M-10: id_token_hint 가 없으면 거부 (CSRF / drive-by logout 방지)
     if (!idTokenHint) {
-        return new Response(JSON.stringify({ error: "invalid_request", error_description: "id_token_hint 가 필요합니다." }), {
+        return new Response(JSON.stringify({ error: "invalid_request", error_description: translate(locals.locale, "oidc.errors.id_token_hint_required") }), {
             status: 400,
             headers: { "Content-Type": "application/json" },
         });
@@ -117,7 +119,7 @@ export const GET: RequestHandler = async (event) => {
         const aud = claims.aud;
         const audMatches = typeof aud === "string" ? aud === clientId : Array.isArray(aud) ? aud.includes(clientId) : false;
         if (!audMatches) {
-            return new Response(JSON.stringify({ error: "invalid_id_token_hint", error_description: "aud mismatch" }), {
+            return new Response(JSON.stringify({ error: "invalid_id_token_hint", error_description: translate(locals.locale, "oidc.errors.aud_mismatch") }), {
                 status: 400,
                 headers: { "Content-Type": "application/json" },
             });
@@ -166,13 +168,13 @@ async function executeLogout(event: Parameters<RequestHandler>[0], postLogoutRed
         const userId = locals.user.id;
 
         const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
-        const signingKeySecret = locals.runtimeConfig.signingKeySecret;
+        const signingKeySecrets = locals.runtimeConfig.signingKeySecrets;
 
         const bcTargets = await getOidcBackchannelTargets(db, tenantId, sessionId);
         const fcTargets = await getOidcFrontchannelTargets(db, tenantId, sessionId, idpSessionId, issuerUrl);
 
-        if (bcTargets.length > 0 && signingKeySecret) {
-            const signingKey = await getActiveSigningKey(db, tenantId, signingKeySecret);
+        if (bcTargets.length > 0 && signingKeySecrets.length > 0) {
+            const signingKey = await getActiveSigningKey(db, tenantId, signingKeySecrets);
             if (signingKey) {
                 const bcPromises = bcTargets.map((t) => sendOneBackchannelLogout(t, userId, idpSessionId, issuerUrl, signingKey.privateKey, signingKey.kid).catch(() => undefined));
                 const wait = platform?.ctx?.waitUntil?.bind(platform.ctx);
@@ -192,6 +194,7 @@ async function executeLogout(event: Parameters<RequestHandler>[0], postLogoutRed
             const html = renderFrontchannelLogoutHtml(
                 fcTargets.map((t) => t.uri),
                 redirectTo,
+                locals.locale,
             );
             return new Response(html, {
                 status: 200,
@@ -224,7 +227,7 @@ export const POST: RequestHandler = async (event) => {
         }
     };
     if (!sameOrigin(origin) && !sameOrigin(referer)) {
-        return new Response(JSON.stringify({ error: "invalid_request", error_description: "cross-origin POST 차단" }), {
+        return new Response(JSON.stringify({ error: "invalid_request", error_description: translate(locals.locale, "oidc.errors.cross_origin_post_blocked") }), {
             status: 403,
             headers: { "Content-Type": "application/json" },
         });
@@ -259,7 +262,7 @@ export const POST: RequestHandler = async (event) => {
         const aud = claims.aud;
         const audMatches = typeof aud === "string" ? aud === clientId : Array.isArray(aud) ? aud.includes(clientId) : false;
         if (!audMatches) {
-            return new Response(JSON.stringify({ error: "invalid_id_token_hint", error_description: "aud mismatch" }), {
+            return new Response(JSON.stringify({ error: "invalid_id_token_hint", error_description: translate(locals.locale, "oidc.errors.aud_mismatch") }), {
                 status: 400,
                 headers: { "Content-Type": "application/json" },
             });

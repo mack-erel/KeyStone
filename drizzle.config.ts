@@ -6,7 +6,8 @@ import { defineConfig } from "drizzle-kit";
 const DB_DIALECT: string = process.env.DB_DIALECT || "d1";
 
 // 방언별 스키마 파일과 마이그레이션 출력 디렉터리를 분리한다.
-// (drizzle/ 는 .gitignore 대상 — 로컬 생성물)
+// (drizzle*/ 마이그레이션 트랙은 커밋 대상 — 4방언 스냅샷/journal 을 형상 관리한다.
+//  db:generate 는 로컬 스냅샷 기준으로 diff 하며 자격증명 없이 동작한다.)
 function pgConfig() {
     return defineConfig({
         schema: "./src/lib/server/db/schema.pg.ts",

@@ -2,6 +2,7 @@ import { fail } from "@sveltejs/kit";
 import { desc, eq, and } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireAdminContext } from "$lib/server/auth/guards";
+import { adminError } from "$lib/server/admin/errors";
 import { clientSkins, oidcClients, samlSps } from "$lib/server/db/schema";
 import { invalidateSkinCache } from "$lib/server/skin/resolver";
 import { isLinkLocalHost, isLoopbackHost } from "$lib/server/validation";
@@ -13,17 +14,17 @@ function validateSkinFetchUrl(raw: string): { ok: true; url: URL } | { ok: false
     try {
         url = new URL(raw);
     } catch {
-        return { ok: false, reason: "유효한 URL을 입력해 주세요." };
+        return { ok: false, reason: "invalid_url" };
     }
     if (url.protocol !== "https:") {
-        return { ok: false, reason: "https URL만 허용됩니다." };
+        return { ok: false, reason: "https_only" };
     }
     const host = url.hostname.toLowerCase();
     if (isLoopbackHost(host)) {
-        return { ok: false, reason: "loopback 주소는 사용할 수 없습니다." };
+        return { ok: false, reason: "loopback_forbidden" };
     }
     if (/^127\./.test(host) || isLinkLocalHost(host)) {
-        return { ok: false, reason: "내부망/메타데이터 주소는 사용할 수 없습니다." };
+        return { ok: false, reason: "internal_addr_forbidden" };
     }
     return { ok: true, url };
 }
@@ -43,6 +44,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 export const actions: Actions = {
     create: async ({ request, locals }) => {
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
         const fd = await request.formData();
 
         const clientType = fd.get("clientType") as "oidc" | "saml";
@@ -53,19 +55,19 @@ export const actions: Actions = {
         const cacheTtlSeconds = Number(fd.get("cacheTtlSeconds") ?? 3600);
 
         if (!clientType || !clientRefId || !fetchUrl) {
-            return fail(400, { create: true, error: "필수 항목을 입력해 주세요." });
+            return fail(400, { create: true, error: adminError(locale, "required_fields") });
         }
         if (clientType !== "oidc" && clientType !== "saml") {
-            return fail(400, { create: true, error: "clientType이 올바르지 않습니다." });
+            return fail(400, { create: true, error: adminError(locale, "invalid_client_type") });
         }
 
         const v = validateSkinFetchUrl(fetchUrl);
-        if (!v.ok) return fail(400, { create: true, error: v.reason });
+        if (!v.ok) return fail(400, { create: true, error: adminError(locale, v.reason) });
 
         const ttl = isNaN(cacheTtlSeconds) ? 3600 : cacheTtlSeconds;
-        if (ttl < 0) return fail(400, { create: true, error: "cacheTtlSeconds 는 0 이상이어야 합니다." });
+        if (ttl < 0) return fail(400, { create: true, error: adminError(locale, "cache_ttl_negative") });
         if (ttl > MAX_SKIN_CACHE_TTL_SECONDS) {
-            return fail(400, { create: true, error: `cacheTtlSeconds 는 ${MAX_SKIN_CACHE_TTL_SECONDS} 초(1일) 를 초과할 수 없습니다.` });
+            return fail(400, { create: true, error: adminError(locale, "cache_ttl_max", { max: MAX_SKIN_CACHE_TTL_SECONDS }) });
         }
 
         try {
@@ -80,7 +82,7 @@ export const actions: Actions = {
                 enabled: true,
             });
         } catch {
-            return fail(409, { create: true, error: "이미 동일한 클라이언트/스킨 타입 설정이 있습니다." });
+            return fail(409, { create: true, error: adminError(locale, "skin_config_exists") });
         }
 
         return { created: true };
@@ -88,6 +90,7 @@ export const actions: Actions = {
 
     delete: async ({ request, locals, platform }) => {
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
         const fd = await request.formData();
         const id = String(fd.get("id") ?? "");
 
@@ -97,7 +100,7 @@ export const actions: Actions = {
             .where(and(eq(clientSkins.id, id), eq(clientSkins.tenantId, tenant.id)))
             .limit(1);
 
-        if (!skin) return fail(404, { error: "스킨을 찾을 수 없습니다." });
+        if (!skin) return fail(404, { error: adminError(locale, "skin_not_found") });
 
         await invalidateSkinCache(platform, tenant.id, skin.clientType, skin.clientRefId, skin.skinType);
         await db.delete(clientSkins).where(eq(clientSkins.id, id));
@@ -107,6 +110,7 @@ export const actions: Actions = {
 
     toggleEnabled: async ({ request, locals }) => {
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
         const fd = await request.formData();
         const id = String(fd.get("id") ?? "");
 
@@ -116,7 +120,7 @@ export const actions: Actions = {
             .where(and(eq(clientSkins.id, id), eq(clientSkins.tenantId, tenant.id)))
             .limit(1);
 
-        if (!skin) return fail(404, { error: "스킨을 찾을 수 없습니다." });
+        if (!skin) return fail(404, { error: adminError(locale, "skin_not_found") });
 
         await db.update(clientSkins).set({ enabled: !skin.enabled }).where(eq(clientSkins.id, id));
 
@@ -125,6 +129,7 @@ export const actions: Actions = {
 
     invalidateCache: async ({ request, locals, platform }) => {
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
         const fd = await request.formData();
         const id = String(fd.get("id") ?? "");
 
@@ -134,7 +139,7 @@ export const actions: Actions = {
             .where(and(eq(clientSkins.id, id), eq(clientSkins.tenantId, tenant.id)))
             .limit(1);
 
-        if (!skin) return fail(404, { error: "스킨을 찾을 수 없습니다." });
+        if (!skin) return fail(404, { error: adminError(locale, "skin_not_found") });
 
         await invalidateSkinCache(platform, tenant.id, skin.clientType, skin.clientRefId, skin.skinType);
 
@@ -143,21 +148,22 @@ export const actions: Actions = {
 
     update: async ({ request, locals, platform }) => {
         const { db, tenant } = requireAdminContext(locals);
+        const locale = locals.locale;
         const fd = await request.formData();
         const id = String(fd.get("id") ?? "").trim();
         const fetchUrl = String(fd.get("fetchUrl") ?? "").trim();
         const fetchSecret = String(fd.get("fetchSecret") ?? "").trim() || null;
         const cacheTtlSeconds = Number(fd.get("cacheTtlSeconds") ?? 3600);
 
-        if (!fetchUrl) return fail(400, { update: true, updateId: id, error: "URL을 입력해 주세요." });
+        if (!fetchUrl) return fail(400, { update: true, updateId: id, error: adminError(locale, "url_required") });
 
         const v = validateSkinFetchUrl(fetchUrl);
-        if (!v.ok) return fail(400, { update: true, updateId: id, error: v.reason });
+        if (!v.ok) return fail(400, { update: true, updateId: id, error: adminError(locale, v.reason) });
 
         const ttl = isNaN(cacheTtlSeconds) ? 3600 : cacheTtlSeconds;
-        if (ttl < 0) return fail(400, { update: true, updateId: id, error: "cacheTtlSeconds 는 0 이상이어야 합니다." });
+        if (ttl < 0) return fail(400, { update: true, updateId: id, error: adminError(locale, "cache_ttl_negative") });
         if (ttl > MAX_SKIN_CACHE_TTL_SECONDS) {
-            return fail(400, { update: true, updateId: id, error: `cacheTtlSeconds 는 ${MAX_SKIN_CACHE_TTL_SECONDS} 초(1일) 를 초과할 수 없습니다.` });
+            return fail(400, { update: true, updateId: id, error: adminError(locale, "cache_ttl_max", { max: MAX_SKIN_CACHE_TTL_SECONDS }) });
         }
 
         const [skin] = await db
@@ -166,7 +172,7 @@ export const actions: Actions = {
             .where(and(eq(clientSkins.id, id), eq(clientSkins.tenantId, tenant.id)))
             .limit(1);
 
-        if (!skin) return fail(404, { update: true, updateId: id, error: "스킨을 찾을 수 없습니다." });
+        if (!skin) return fail(404, { update: true, updateId: id, error: adminError(locale, "skin_not_found") });
 
         await db
             .update(clientSkins)

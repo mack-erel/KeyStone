@@ -32,6 +32,8 @@ import { buildSignedSamlErrorResponse, buildSignedSamlResponse } from "$lib/serv
 import { findSp, recordSamlSession, type SamlSpRecord } from "$lib/server/saml/sp";
 import { getUserMembership } from "$lib/server/org/membership";
 import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
+import { translate } from "$lib/i18n/server";
+import type { Locale } from "$lib/i18n/core";
 
 const SAML_AUTHN_REQUEST_TTL_MS = 10 * 60 * 1000; // 10분
 
@@ -40,10 +42,10 @@ function htmlEscape(s: string): string {
 }
 
 /** ACS 로 SAMLResponse 를 실어 보내는 HTTP-POST auto-submit 폼 응답. */
-function renderAutoSubmitForm(acsUrl: string, samlResponseB64: string, relayState: string | null): Response {
+function renderAutoSubmitForm(acsUrl: string, samlResponseB64: string, relayState: string | null, locale: Locale): Response {
     const relayStateInput = relayState ? `<input type="hidden" name="RelayState" value="${htmlEscape(relayState)}">` : "";
     const html =
-        `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>SSO 리다이렉트 중...</title></head>` +
+        `<!DOCTYPE html><html lang="${htmlEscape(locale)}"><head><meta charset="UTF-8"><title>${htmlEscape(translate(locale, "saml.errors.sso_redirecting"))}</title></head>` +
         `<body onload="document.getElementById('samlForm').submit()">` +
         `<form id="samlForm" method="POST" action="${htmlEscape(acsUrl)}">` +
         `<input type="hidden" name="SAMLResponse" value="${samlResponseB64}">${relayStateInput}` +
@@ -60,6 +62,7 @@ async function buildAndRenderSamlError(params: {
     certPem: string;
     privateKey: CryptoKey;
     relayState: string | null;
+    locale: Locale;
 }): Promise<Response> {
     const errorB64 = await buildSignedSamlErrorResponse({
         inResponseTo: params.inResponseTo ?? "",
@@ -69,7 +72,7 @@ async function buildAndRenderSamlError(params: {
         certPem: params.certPem,
         privateKey: params.privateKey,
     });
-    return renderAutoSubmitForm(params.acsUrl, errorB64, params.relayState);
+    return renderAutoSubmitForm(params.acsUrl, errorB64, params.relayState, params.locale);
 }
 
 interface GateAndIssueParams {
@@ -121,7 +124,7 @@ async function gateAndIssueSamlAssertion(event: Parameters<RequestHandler>[0], p
             userAgent: meta.userAgent,
             detail: { error: "access_denied", reason: "no_service_assignment" },
         });
-        throw error(403, "이 SP에 대한 권한이 없습니다.");
+        throw error(403, translate(event.locals.locale, "saml.errors.access_denied"));
     }
 
     // Replay 가드 (SP-initiated 한정). Assertion 발급 직전에 동일 AuthnRequest ID 의
@@ -134,7 +137,7 @@ async function gateAndIssueSamlAssertion(event: Parameters<RequestHandler>[0], p
             .where(and(eq(samlAuthnRequestIds.tenantId, tenant.id), eq(samlAuthnRequestIds.requestId, p.inResponseTo), gt(samlAuthnRequestIds.expiresAt, now)))
             .limit(1);
         if (seen) {
-            throw error(400, "AuthnRequest ID 가 이미 사용되었습니다 (replay)");
+            throw error(400, translate(event.locals.locale, "saml.errors.authn_request_replay"));
         }
         try {
             await db.insert(samlAuthnRequestIds).values({
@@ -145,7 +148,7 @@ async function gateAndIssueSamlAssertion(event: Parameters<RequestHandler>[0], p
             });
         } catch {
             // unique constraint 충돌 → replay 와 동일하게 거부
-            throw error(400, "AuthnRequest ID 가 이미 사용되었습니다 (replay)");
+            throw error(400, translate(event.locals.locale, "saml.errors.authn_request_replay"));
         }
     }
 
@@ -265,7 +268,7 @@ async function gateAndIssueSamlAssertion(event: Parameters<RequestHandler>[0], p
         detail: { spEntityId: sp.entityId, nameId, initiatedBy: p.inResponseTo ? "sp" : "idp" },
     });
 
-    return renderAutoSubmitForm(p.acsUrl, samlResponseB64, p.relayState);
+    return renderAutoSubmitForm(p.acsUrl, samlResponseB64, p.relayState, event.locals.locale);
 }
 
 interface ProcessAuthnRequestParams {
@@ -303,6 +306,7 @@ async function processSpInitiatedAuthnRequest(event: Parameters<RequestHandler>[
             certPem: p.certPem,
             privateKey: p.privateKey,
             relayState: authnRequest.relayState,
+            locale: event.locals.locale,
         });
     }
 
@@ -352,6 +356,7 @@ async function processSpInitiatedAuthnRequest(event: Parameters<RequestHandler>[
                 certPem: p.certPem,
                 privateKey: p.privateKey,
                 relayState: authnRequest.relayState,
+                locale: event.locals.locale,
             });
         }
         // 첫 시도: 재인증(MFA 포함)을 강제한다.
@@ -382,13 +387,13 @@ async function processSpInitiatedAuthnRequest(event: Parameters<RequestHandler>[
  * 로그인된 사용자가 `?sp=<entityId>` 로 SP 를 지정하면, 대응되는 AuthnRequest 없이
  * IdP 가 먼저 Assertion 을 SP 의 등록된 ACS 로 밀어 준다. InResponseTo 없음.
  */
-async function handleIdpInitiated(event: Parameters<RequestHandler>[0], ctx: { db: DB; tenant: Tenant; issuerUrl: string; signingKeySecret: string; spEntityId: string }): Promise<Response> {
+async function handleIdpInitiated(event: Parameters<RequestHandler>[0], ctx: { db: DB; tenant: Tenant; issuerUrl: string; signingKeySecrets: string[]; spEntityId: string }): Promise<Response> {
     const { locals, url } = event;
     const { db, tenant } = ctx;
 
     const sp = await findSp(db, tenant.id, ctx.spEntityId);
     if (!sp) {
-        throw error(403, `등록되지 않은 SP 입니다: ${ctx.spEntityId}`);
+        throw error(403, translate(locals.locale, "saml.errors.unknown_sp", { entityId: ctx.spEntityId }));
     }
 
     // 미로그인 시 로그인 페이지로 (로그인 후 동일 IdP-initiated URL 로 복귀)
@@ -399,9 +404,9 @@ async function handleIdpInitiated(event: Parameters<RequestHandler>[0], ctx: { d
         throw redirect(302, loginUrl.toString());
     }
 
-    const signingKey = await getActiveSigningKey(db, tenant.id, ctx.signingKeySecret);
+    const signingKey = await getActiveSigningKey(db, tenant.id, ctx.signingKeySecrets);
     if (!signingKey || !signingKey.certPem) {
-        throw error(503, "서명 키가 없습니다. 서버를 재시작하여 키를 생성하세요.");
+        throw error(503, translate(locals.locale, "saml.errors.signing_key_missing"));
     }
 
     const relayState = url.searchParams.get("RelayState");
@@ -427,37 +432,37 @@ async function handleIdpInitiated(event: Parameters<RequestHandler>[0], ctx: { d
  */
 async function ssoPreflight(event: Parameters<RequestHandler>[0]) {
     const { locals, platform } = event;
-    const { db, tenant } = requireDbContext(locals);
+    const { db, tenant, rateLimitStore } = requireDbContext(locals);
     const config = getRuntimeConfig(platform);
 
     const { ipKey } = getRequestMetadata(event);
-    const rl = await checkRateLimit(db, `saml-sso:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
+    const rl = await checkRateLimit(rateLimitStore, `saml-sso:${ipKey}`, { windowMs: 60 * 1000, limit: 30 });
     if (!rl.allowed) {
-        throw error(429, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+        throw error(429, translate(locals.locale, "saml.errors.rate_limited"));
     }
 
-    if (!config.issuerUrl) throw error(503, "IDP_ISSUER_URL 미설정");
-    if (!config.signingKeySecret) throw error(503, "IDP_SIGNING_KEY_SECRET 미설정");
+    if (!config.issuerUrl) throw error(503, translate(locals.locale, "saml.errors.issuer_not_set"));
+    if (config.signingKeySecrets.length === 0) throw error(503, translate(locals.locale, "saml.errors.signing_key_not_set"));
 
-    return { db, tenant, issuerUrl: config.issuerUrl, signingKeySecret: config.signingKeySecret };
+    return { db, tenant, issuerUrl: config.issuerUrl, signingKeySecrets: config.signingKeySecrets };
 }
 
 /** AuthnRequest Destination 이 IdP SSO endpoint 와 일치하는지 검증 (명시된 경우만). */
-function assertDestination(authnRequest: ParsedAuthnRequest, issuerUrl: string): void {
+function assertDestination(authnRequest: ParsedAuthnRequest, issuerUrl: string, locale: Locale): void {
     if (authnRequest.destination) {
         const expectedDestination = `${issuerUrl.replace(/\/+$/, "")}/saml/sso`;
         if (authnRequest.destination !== expectedDestination) {
-            throw error(400, "AuthnRequest Destination 이 IdP 의 SSO endpoint 와 일치하지 않습니다.");
+            throw error(400, translate(locale, "saml.errors.destination_mismatch"));
         }
     }
 }
 
 /** AuthnRequest 의 ACS URL 이 등록된 SP ACS 와 일치하는지 검증하고 최종 ACS 를 반환. */
-function resolveAcsUrl(authnRequest: ParsedAuthnRequest, sp: SamlSpRecord): string {
+function resolveAcsUrl(authnRequest: ParsedAuthnRequest, sp: SamlSpRecord, locale: Locale): string {
     // AuthnRequest 에 ACS 가 명시된 경우 반드시 등록된 SP ACS 와 일치해야 한다.
     // 다른 URL 을 허용하면 공격자가 서명된 Assertion 을 자신의 서버로 가로챌 수 있다.
     if (authnRequest.acsUrl && authnRequest.acsUrl !== sp.acsUrl) {
-        throw error(400, "AuthnRequest의 ACS URL이 등록된 SP ACS URL과 일치하지 않습니다.");
+        throw error(400, translate(locale, "saml.errors.acs_url_mismatch"));
     }
     return sp.acsUrl;
 }
@@ -469,7 +474,7 @@ function resolveAcsUrl(authnRequest: ParsedAuthnRequest, sp: SamlSpRecord): stri
  */
 export const GET: RequestHandler = async (event) => {
     const { url } = event;
-    const { db, tenant, issuerUrl, signingKeySecret } = await ssoPreflight(event);
+    const { db, tenant, issuerUrl, signingKeySecrets } = await ssoPreflight(event);
 
     const samlRequestB64 = url.searchParams.get("SAMLRequest");
     const relayState = url.searchParams.get("RelayState");
@@ -478,9 +483,9 @@ export const GET: RequestHandler = async (event) => {
     if (!samlRequestB64) {
         const spParam = url.searchParams.get("sp");
         if (spParam) {
-            return await handleIdpInitiated(event, { db, tenant, issuerUrl, signingKeySecret, spEntityId: spParam });
+            return await handleIdpInitiated(event, { db, tenant, issuerUrl, signingKeySecrets, spEntityId: spParam });
         }
-        throw error(400, "SAMLRequest 파라미터가 없습니다.");
+        throw error(400, translate(event.locals.locale, "saml.errors.saml_request_missing"));
     }
 
     // ── SP-initiated / HTTP-Redirect 바인딩 ────────────────────────────────────
@@ -488,14 +493,14 @@ export const GET: RequestHandler = async (event) => {
     try {
         authnRequest = await parseAuthnRequest(samlRequestB64, relayState);
     } catch {
-        throw error(400, "SAMLRequest 파싱 실패");
+        throw error(400, translate(event.locals.locale, "saml.errors.saml_request_parse_failed"));
     }
 
-    assertDestination(authnRequest, issuerUrl);
+    assertDestination(authnRequest, issuerUrl, event.locals.locale);
 
     const sp = await findSp(db, tenant.id, authnRequest.issuer);
     if (!sp) {
-        throw error(403, `등록되지 않은 SP 입니다: ${authnRequest.issuer}`);
+        throw error(403, translate(event.locals.locale, "saml.errors.unknown_sp", { entityId: authnRequest.issuer }));
     }
 
     // AuthnRequest 서명 검증: SP 가 서명을 요구하거나 Signature 파라미터가 있는 경우.
@@ -503,20 +508,20 @@ export const GET: RequestHandler = async (event) => {
     const hasSig = url.searchParams.has("Signature");
     if (sp.wantAuthnRequestsSigned || hasSig) {
         if (!sp.cert) {
-            throw error(400, "SP 인증서가 등록되지 않아 AuthnRequest 서명을 검증할 수 없습니다.");
+            throw error(400, translate(event.locals.locale, "saml.errors.sp_cert_missing_for_authn_sig"));
         }
         const rawQuery = url.search.slice(1);
         const sigValid = await verifySamlRedirectSignature(rawQuery, sp.cert);
         if (!sigValid) {
-            throw error(400, "AuthnRequest 서명 검증에 실패했습니다.");
+            throw error(400, translate(event.locals.locale, "saml.errors.authn_signature_invalid"));
         }
     }
 
-    const acsUrl = resolveAcsUrl(authnRequest, sp);
+    const acsUrl = resolveAcsUrl(authnRequest, sp, event.locals.locale);
 
-    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
     if (!signingKey || !signingKey.certPem) {
-        throw error(503, "서명 키가 없습니다. 서버를 재시작하여 키를 생성하세요.");
+        throw error(503, translate(event.locals.locale, "saml.errors.signing_key_missing"));
     }
 
     return await processSpInitiatedAuthnRequest(event, {
@@ -538,14 +543,14 @@ export const GET: RequestHandler = async (event) => {
  */
 export const POST: RequestHandler = async (event) => {
     const { url } = event;
-    const { db, tenant, issuerUrl, signingKeySecret } = await ssoPreflight(event);
+    const { db, tenant, issuerUrl, signingKeySecrets } = await ssoPreflight(event);
 
     const form = await event.request.formData();
     const samlRequestB64 = typeof form.get("SAMLRequest") === "string" ? (form.get("SAMLRequest") as string) : null;
     const relayState = typeof form.get("RelayState") === "string" ? (form.get("RelayState") as string) : null;
 
     if (!samlRequestB64) {
-        throw error(400, "SAMLRequest 파라미터가 없습니다.");
+        throw error(400, translate(event.locals.locale, "saml.errors.saml_request_missing"));
     }
 
     // HTTP-POST 바인딩: base64(XML), deflate 없음. 서명 검증·resume 재인코딩에 재사용하도록
@@ -558,21 +563,21 @@ export const POST: RequestHandler = async (event) => {
         for (let i = 0; i < raw.length; i++) bin[i] = raw.charCodeAt(i);
         xml = new TextDecoder().decode(bin);
     } catch {
-        throw error(400, "SAMLRequest 파싱 실패");
+        throw error(400, translate(event.locals.locale, "saml.errors.saml_request_parse_failed"));
     }
 
     let authnRequest: ParsedAuthnRequest;
     try {
         authnRequest = await parseAuthnRequestPost(samlRequestB64, relayState);
     } catch {
-        throw error(400, "SAMLRequest 파싱 실패");
+        throw error(400, translate(event.locals.locale, "saml.errors.saml_request_parse_failed"));
     }
 
-    assertDestination(authnRequest, issuerUrl);
+    assertDestination(authnRequest, issuerUrl, event.locals.locale);
 
     const sp = await findSp(db, tenant.id, authnRequest.issuer);
     if (!sp) {
-        throw error(403, `등록되지 않은 SP 입니다: ${authnRequest.issuer}`);
+        throw error(403, translate(event.locals.locale, "saml.errors.unknown_sp", { entityId: authnRequest.issuer }));
     }
 
     // ── 서명 검증 (HTTP-POST 바인딩) ───────────────────────────────────────────
@@ -583,19 +588,19 @@ export const POST: RequestHandler = async (event) => {
     if (sp.wantAuthnRequestsSigned || authnRequest.hasSignature) {
         if (!sp.cert) {
             // 검증에 쓸 SP 인증서가 없으면 서명을 검증할 방법이 없다 → 거부.
-            throw error(400, "SP 인증서가 등록되지 않아 AuthnRequest 서명을 검증할 수 없습니다.");
+            throw error(400, translate(event.locals.locale, "saml.errors.sp_cert_missing_for_authn_sig"));
         }
         const sigValid = await verifyEnvelopedXmlSignature(xml, sp.cert);
         if (!sigValid) {
-            throw error(400, "AuthnRequest 서명 검증에 실패했습니다.");
+            throw error(400, translate(event.locals.locale, "saml.errors.authn_signature_invalid"));
         }
     }
 
-    const acsUrl = resolveAcsUrl(authnRequest, sp);
+    const acsUrl = resolveAcsUrl(authnRequest, sp, event.locals.locale);
 
-    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecret);
+    const signingKey = await getActiveSigningKey(db, tenant.id, signingKeySecrets);
     if (!signingKey || !signingKey.certPem) {
-        throw error(503, "서명 키가 없습니다. 서버를 재시작하여 키를 생성하세요.");
+        throw error(503, translate(event.locals.locale, "saml.errors.signing_key_missing"));
     }
 
     // 로그인/재인증 후 복귀 URL: POST body 는 GET 리다이렉트로 보존되지 않으므로, 동일
