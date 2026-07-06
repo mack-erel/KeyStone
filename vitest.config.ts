@@ -22,5 +22,12 @@ export default defineConfig({
     test: {
         environment: "node",
         include: ["test/**/*.test.ts", "src/**/*.test.ts"],
+        coverage: {
+            // @vitest/coverage-v8 기반. 게이트(threshold)는 강제하지 않고 리포트만 산출한다.
+            provider: "v8",
+            reporter: ["text", "html"],
+            reportsDirectory: "./coverage",
+            include: ["src/lib/**/*.ts"],
+        },
     },
 });
