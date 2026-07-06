@@ -12,7 +12,8 @@ export type SecurityEventKind =
     | "mfa_disabled"
     | "backup_codes_regenerated"
     | "passkey_added"
-    | "passkey_removed";
+    | "passkey_removed"
+    | "account_deletion_requested";
 
 // users.locale ("ko-KR"/"en-US"/"ja-JP" 등) → i18n Locale. en* 만 en, 그 외(미상 포함)는 ko 기본.
 // 근거: 지원 Locale 은 ko|en 뿐이며(core.ts), 알림 미발송보다 ko 기본 발송이 안전.

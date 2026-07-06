@@ -84,6 +84,44 @@ export async function authenticateLocalUser(db: DB, tenantId: string, username: 
     return user;
 }
 
+/**
+ * 탈퇴 신청(soft-delete) 상태 계정의 복구용 재인증.
+ *
+ * `authenticateLocalUser` 는 status='active' 만 통과시키므로 deletion_pending 계정은 항상 null 을
+ * 반환한다. 로그인 액션에서 그 null 경로 뒤에 이 함수를 호출해 "비밀번호는 맞지만 탈퇴 예정" 인
+ * 계정을 식별하고 복구 확인 흐름으로 분기한다.
+ *
+ * 타이밍/열거 방어: status 가 deletion_pending 이 아니거나 credential 이 없으면 실제 검증 대신
+ * 동일 비용의 더미 scrypt 1회를 태운다. 따라서 이 함수는 어느 경로에서도 정확히 scrypt 1회를
+ * 수행하며, authenticateLocalUser 의 null 경로(역시 scrypt 1회)와 합쳐 실패 로그인의 총 비용이
+ * 계정 상태와 무관하게 균등해진다(deletion_pending 존재를 타이밍으로 노출하지 않음).
+ *
+ * status='deletion_pending' 이고 비밀번호가 일치할 때만 해당 User 를 반환한다.
+ */
+export async function authenticatePendingDeletionUser(db: DB, tenantId: string, username: string, password: string): Promise<User | null> {
+    const user = await findUserByUsername(db, tenantId, username);
+
+    if (!user || user.status !== "deletion_pending") {
+        await equalizeAuthTiming(password);
+        return null;
+    }
+
+    const credential = await findPasswordCredential(db, user.id);
+
+    if (!credential?.secret) {
+        await equalizeAuthTiming(password);
+        return null;
+    }
+
+    const result = await verifyPassword(password, credential.secret);
+
+    if (!result.valid) {
+        return null;
+    }
+
+    return user;
+}
+
 export async function findActiveUserById(db: DB, userId: string): Promise<User | null> {
     const [user] = await db
         .select()

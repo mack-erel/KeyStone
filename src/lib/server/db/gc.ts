@@ -21,9 +21,9 @@
  * GC 실패는 요청 처리에 절대 영향을 주지 않는다(전부 try/catch + waitUntil 격리).
  */
 
-import { lt, or } from "drizzle-orm";
+import { and, eq, lt, or } from "drizzle-orm";
 import { getDb, DB_DIALECT, type DB } from "./index";
-import { sessions, oidcGrants, passwordResetTokens, emailVerificationTokens, samlSloStates, samlAuthnRequestIds, samlSessions } from "./schema";
+import { sessions, oidcGrants, passwordResetTokens, emailVerificationTokens, samlSloStates, samlAuthnRequestIds, samlSessions, users } from "./schema";
 import { purgeExpiredChallenges } from "$lib/server/auth/webauthn";
 import { purgeExpiredRefreshTokens, REFRESH_TOKEN_TTL_MS } from "$lib/server/oidc/refresh";
 import { purgeExpiredRateLimits } from "$lib/server/ratelimit";
@@ -178,6 +178,14 @@ export async function runExpiredDataGc(db: DB): Promise<GcResult> {
     //   주석의 근거대로, 이 시점엔 세션에 묶인 모든 refresh token 이 만료(및 purge)돼 있어
     //   FK set-null 로 인한 세션 검사 우회가 발생하지 않는다.
     await runDelete("sessions", () => db.delete(sessions).where(lt(sessions.expiresAt, sessionCutoff)));
+
+    // users: 셀프서비스 탈퇴(soft-delete)로 status='deletion_pending' + deletionScheduledAt(유예 만료
+    //   30일) 이 지난 계정만 하드 삭제한다. FK onDelete:cascade 가 자식 행(credentials/sessions/…)을
+    //   정리하고, audit_events.userId 는 onDelete:set null 로 감사 로그를 보존한다.
+    //   **보수적 조건**: (a) status 가 정확히 deletion_pending 이고 (b) deletionScheduledAt < now 인
+    //   행만 대상이다. deletionScheduledAt 이 NULL 인 활성/일반 계정은 `<` 비교에서 참이 되지 않아
+    //   절대 매칭되지 않으며(활성 계정 오삭제 불가), 유예 미경과 계정도 삭제되지 않는다.
+    await runDelete("users", () => db.delete(users).where(and(eq(users.status, "deletion_pending"), lt(users.deletionScheduledAt, now))));
 
     const result: GcResult = { startedAt, durationMs: Date.now() - startedAt, tables };
 

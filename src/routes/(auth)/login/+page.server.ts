@@ -3,14 +3,14 @@ import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { createSessionRecord, revokeOtherSessions, setSessionCookie } from "$lib/server/auth/session";
-import { authenticateLocalUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
+import { authenticateLocalUser, authenticatePendingDeletionUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
 import { AMR_PASSWORD, amrToAcr } from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { and, eq } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
-import { identityProviders, rateLimits } from "$lib/server/db/schema";
+import { identityProviders, rateLimits, users } from "$lib/server/db/schema";
 import { authenticateLdap } from "$lib/server/ldap/auth";
 import { provisionLdapUser } from "$lib/server/ldap/provision";
 import type { LdapProviderConfig } from "$lib/server/ldap/types";
@@ -113,6 +113,7 @@ export const load: PageServerLoad = async ({ locals, url, platform }) => {
         runtimeError: locals.runtimeError,
         registered: url.searchParams.get("registered") === "1",
         passwordReset: url.searchParams.get("passwordReset") === "1",
+        deletionRequested: url.searchParams.get("deletionRequested") === "1",
         // OIDC login_hint 전달 시 아이디 입력란 프리필용.
         loginHint: url.searchParams.get("loginHint")?.trim() || null,
     };
@@ -124,6 +125,8 @@ export const actions: Actions = {
         const username = normalizeUsername(String(formData.get("username") ?? ""));
         const password = String(formData.get("password") ?? "");
         const redirectTo = sanitizeRedirectTarget(String(formData.get("redirectTo") ?? ""));
+        // 탈퇴 예정 계정 복구 확인 흐름의 2단계 제출 표식(1=복구 확정).
+        const recover = String(formData.get("recover") ?? "") === "1";
         const locale = event.locals.locale;
 
         if (!username || !password) {
@@ -238,6 +241,54 @@ export const actions: Actions = {
         // LDAP 미설정 또는 LDAP 인증 실패 시 로컬 인증 시도
         if (!user) {
             user = await authenticateLocalUser(db, tenant.id, username, password);
+        }
+
+        if (!user) {
+            // 탈퇴 예정(soft-delete) 계정 복구 흐름. authenticateLocalUser 는 active 만 통과시키므로
+            // deletion_pending 계정은 위에서 null 이 된다. 비밀번호가 맞으면(=본인) 복구 확인으로 분기한다.
+            const pendingUser = await authenticatePendingDeletionUser(db, tenant.id, username, password);
+            if (pendingUser) {
+                const nowMs = Date.now();
+                const scheduledMs = pendingUser.deletionScheduledAt ? new Date(pendingUser.deletionScheduledAt).getTime() : null;
+                const withinGrace = scheduledMs !== null && scheduledMs > nowMs;
+
+                if (!withinGrace) {
+                    // 유예 경과 — GC 하드삭제 대상. 복구 불가, 로그인 거부.
+                    await recordAuditEvent(db, {
+                        tenantId: tenant.id,
+                        userId: pendingUser.id,
+                        kind: "login",
+                        outcome: "failure",
+                        ip: requestMetadata.ip,
+                        userAgent: requestMetadata.userAgent,
+                        detail: { username, reason: "deletion_grace_elapsed" },
+                    });
+                    const msg = translate(locale, "login.err_account_deleting");
+                    return fail(400, { username, redirectTo, error: msg, skinHtml: await resolveSkinForAction(event, msg, redirectTo) });
+                }
+
+                if (!recover) {
+                    // 1단계: 복구 확인 프롬프트를 띄운다(세션 생성/복구 없음). 사용자가 비밀번호를
+                    // 다시 입력하고 recover=1 로 재제출하면 아래 2단계에서 실제 복구+로그인이 진행된다.
+                    return { recovery: true as const, username, redirectTo };
+                }
+
+                // 2단계: 복구 확정 — 계정을 활성으로 환원하고 삭제 예정을 해제한 뒤 정상 로그인으로 진행.
+                await db
+                    .update(users)
+                    .set({ status: "active", deletionScheduledAt: null, updatedAt: new Date() })
+                    .where(and(eq(users.id, pendingUser.id), eq(users.tenantId, tenant.id)));
+                await recordAuditEvent(db, {
+                    tenantId: tenant.id,
+                    userId: pendingUser.id,
+                    actorId: pendingUser.id,
+                    kind: "user_deletion_cancelled",
+                    outcome: "success",
+                    ip: requestMetadata.ip,
+                    userAgent: requestMetadata.userAgent,
+                });
+                user = { ...pendingUser, status: "active", deletionScheduledAt: null };
+            }
         }
 
         if (!user) {

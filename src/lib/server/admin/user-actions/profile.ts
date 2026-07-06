@@ -48,7 +48,10 @@ export async function updateProfile(event: UserActionEvent) {
     // 차단해야 race 우회 가능성을 없앤다 (다른 admin 에게 요청해야 함).
     // 또한 폼이 전송한 role/status 를 무시하고 DB 현재 값을 그대로 유지한다.
     let effectiveRole = role;
-    let effectiveStatus = status;
+    // status enum 에 deletion_pending(셀프서비스 탈퇴)이 추가되어 users.status 추론 타입이 넓어졌다.
+    // 자기-자신 편집 시 DB 현재 값(before.status)을 그대로 유지하는데, 그 값이 deletion_pending 일
+    // 수도 있으므로 넓은 유니온으로 선언한다(관리자 폼 입력은 위에서 좁게 검증됨).
+    let effectiveStatus: "active" | "disabled" | "locked" | "deletion_pending" = status;
     if (userId === locals.user!.id) {
         if (before && (before.role !== role || before.status !== status)) {
             return fail(400, { error: adminError(uiLocale, "cannot_change_own_role_status") });

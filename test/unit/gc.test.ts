@@ -68,6 +68,7 @@ const ALL_TABLES = [
     "saml_authn_request_ids",
     "saml_sessions",
     "sessions",
+    "users",
 ];
 
 describe("runExpiredDataGc — 보수적 만료 조건", () => {
@@ -144,6 +145,28 @@ describe("runExpiredDataGc — 보수적 만료 조건", () => {
         expect(c1).toBe(c2);
         expect(c1).toBeLessThanOrEqual(end - SESSION_TTL_MS);
         expect(c1).toBeGreaterThanOrEqual(start - SESSION_TTL_MS - 5_000);
+    });
+
+    it("users: status=deletion_pending 이고 deletionScheduledAt 경과분만 삭제한다(활성/미경과 보존)", async () => {
+        const start = Date.now();
+        const { db, deletes } = makeDb();
+        await runExpiredDataGc(db);
+        const end = Date.now();
+
+        const { sql, params } = whereFor(deletes, "users");
+        // 두 조건(AND): status = 'deletion_pending' 그리고 deletion_scheduled_at < now.
+        expect(sql).toContain('"users"."status" = ?');
+        expect(sql).toContain('"users"."deletion_scheduled_at" < ?');
+        expect(sql).toContain(" and ");
+        // deletionScheduledAt 은 오직 `<` 비교로만 쓰인다 → NULL(활성/일반 계정)은 절대 매칭되지 않는다.
+        expect(sql).not.toContain('"users"."deletion_scheduled_at" is');
+
+        const [statusParam, cutoff] = params as [string, number];
+        expect(statusParam).toBe("deletion_pending");
+        // 유예 없이 즉시(now) cutoff — 실제 30일 유예는 신청 시 deletionScheduledAt 에 반영되어 있으므로
+        // GC 는 예정 시각 경과분만 지운다.
+        expect(cutoff).toBeGreaterThanOrEqual(start - 5_000);
+        expect(cutoff).toBeLessThanOrEqual(end);
     });
 
     it("oidc_grants / password_reset_tokens / saml_slo_states: expiresAt 경과분만 삭제한다", async () => {

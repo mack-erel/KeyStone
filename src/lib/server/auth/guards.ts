@@ -75,7 +75,7 @@ export async function assertUserInTenant(
     db: DB,
     tenantId: string,
     userId: string,
-): Promise<{ ok: true; user: { id: string; role: "admin" | "user"; status: "active" | "disabled" | "locked" } } | { ok: false; error: ReturnType<typeof fail> }> {
+): Promise<{ ok: true; user: { id: string; role: "admin" | "user"; status: "active" | "disabled" | "locked" | "deletion_pending" } } | { ok: false; error: ReturnType<typeof fail> }> {
     const [row] = await db
         .select({ id: users.id, role: users.role, status: users.status, tenantId: users.tenantId })
         .from(users)
@@ -84,5 +84,5 @@ export async function assertUserInTenant(
     if (!row) {
         return { ok: false, error: fail(404, { error: "사용자를 찾을 수 없습니다." }) };
     }
-    return { ok: true, user: { id: row.id, role: row.role as "admin" | "user", status: row.status as "active" | "disabled" | "locked" } };
+    return { ok: true, user: { id: row.id, role: row.role as "admin" | "user", status: row.status as "active" | "disabled" | "locked" | "deletion_pending" } };
 }
