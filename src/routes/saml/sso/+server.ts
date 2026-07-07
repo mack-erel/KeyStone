@@ -105,13 +105,15 @@ async function gateAndIssueSamlAssertion(event: Parameters<RequestHandler>[0], p
     const { db, tenant, sp, user, session } = p;
 
     // 서비스 권한 게이트 (기본 deny). 매핑 없으면 SSO 거부.
+    // 단, allowAllUsers SP 는 매핑 없이도 테넌트의 모든 사용자를 허용한다
+    // (assignment 는 role/추가 attribute 부여용으로만 사용).
     const spAssignment = await getActiveAssignment(db, {
         tenantId: tenant.id,
         userId: user.id,
         serviceType: "saml",
         serviceRefId: sp.id,
     });
-    if (!spAssignment) {
+    if (!spAssignment && !sp.allowAllUsers) {
         const meta = getRequestMetadata(event);
         await recordAuditEvent(db, {
             tenantId: tenant.id,
@@ -193,11 +195,12 @@ async function gateAndIssueSamlAssertion(event: Parameters<RequestHandler>[0], p
     setAttr("phoneNumber", user.phoneNumber);
 
     // 서비스 role / 추가 attributes — allowedSet 검사를 동일하게 적용.
-    if (spAssignment.role) {
+    // allowAllUsers 경로에서는 assignment 가 없을 수 있다 → role/추가 attribute 생략.
+    if (spAssignment?.role) {
         setAttr("Role", spAssignment.role.key);
         setAttr("RoleLabel", spAssignment.role.label);
     }
-    const extraAttrs = parseAssignmentAttributes(spAssignment.attributesJson);
+    const extraAttrs = spAssignment ? parseAssignmentAttributes(spAssignment.attributesJson) : {};
     for (const [k, v] of Object.entries(extraAttrs)) {
         if (typeof v === "string") {
             setAttr(k, v);

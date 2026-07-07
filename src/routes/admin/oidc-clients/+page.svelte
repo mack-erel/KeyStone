@@ -162,6 +162,13 @@ function urisToText(json: string | null): string {
                         <span class="block text-gray-500">{t("oidc.allow_wildcard_redirect_uri_hint")}</span>
                     </label>
                 </div>
+                <div class="flex items-start gap-2 pt-1 sm:col-span-2">
+                    <input id="c-allowAll" type="checkbox" name="allowAllUsers" value="true" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600" />
+                    <label for="c-allowAll" class="text-xs text-gray-700">
+                        <span class="font-medium">{t("oidc.allow_all_users")}</span>
+                        <span class="block text-gray-500">{t("oidc.allow_all_users_hint")}</span>
+                    </label>
+                </div>
                 <div class="flex justify-end sm:col-span-2">
                     <button type="submit" class="rounded-md bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700">{t("common.add")}</button>
                 </div>
@@ -346,6 +353,19 @@ function urisToText(json: string | null): string {
                                             <label for="e-wildcard-{client.id}" class="text-xs text-gray-700">
                                                 <span class="font-medium text-amber-800">{t("oidc.allow_wildcard_redirect_uri")}</span>
                                                 <span class="block text-gray-500">{t("oidc.allow_wildcard_redirect_uri_hint")}</span>
+                                            </label>
+                                        </div>
+                                        <div class="flex items-start gap-2">
+                                            <input
+                                                id="e-allowAll-{client.id}"
+                                                type="checkbox"
+                                                name="allowAllUsers"
+                                                value="true"
+                                                checked={client.allowAllUsers}
+                                                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600" />
+                                            <label for="e-allowAll-{client.id}" class="text-xs text-gray-700">
+                                                <span class="font-medium">{t("oidc.allow_all_users")}</span>
+                                                <span class="block text-gray-500">{t("oidc.allow_all_users_hint")}</span>
                                             </label>
                                         </div>
                                         <div class="flex justify-end gap-2">

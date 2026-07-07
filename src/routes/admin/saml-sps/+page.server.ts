@@ -24,6 +24,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             encryptAssertion: samlSps.encryptAssertion,
             wantAuthnRequestsSigned: samlSps.wantAuthnRequestsSigned,
             allowedAttributes: samlSps.allowedAttributes,
+            allowAllUsers: samlSps.allowAllUsers,
             enabled: samlSps.enabled,
             createdAt: samlSps.createdAt,
         })
@@ -76,6 +77,8 @@ export const actions: Actions = {
         const wantAuthnRequestsSigned = fd.get("wantAuthnRequestsSigned") === "true";
         const encryptAssertion = fd.get("encryptAssertion") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
+        // 서비스 권한 게이트 우회 opt-in — 사용자별 매핑 없이 전체 허용.
+        const allowAllUsers = fd.get("allowAllUsers") === "true";
 
         if (!name) return fail(400, { create: true, error: adminError(locale, "name_required") });
         if (!entityId) return fail(400, { create: true, error: adminError(locale, "entity_id_required") });
@@ -114,6 +117,7 @@ export const actions: Actions = {
             wantAuthnRequestsSigned,
             encryptAssertion,
             allowedAttributes,
+            allowAllUsers,
             enabled: true,
         });
 
@@ -152,6 +156,8 @@ export const actions: Actions = {
         const encryptAssertion = fd.get("encryptAssertion") === "true";
         const enabled = fd.get("enabled") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
+        // 서비스 권한 게이트 우회 opt-in — 사용자별 매핑 없이 전체 허용.
+        const allowAllUsers = fd.get("allowAllUsers") === "true";
 
         if (!id || !name || !acsUrl) return fail(400, { error: adminError(locale, "required_field_missing") });
         // Assertion 암호화는 SP 공개키가 있어야 가능하다.
@@ -189,6 +195,7 @@ export const actions: Actions = {
                 wantAuthnRequestsSigned,
                 encryptAssertion,
                 allowedAttributes,
+                allowAllUsers,
                 enabled,
                 updatedAt: new Date(),
             })
@@ -214,6 +221,8 @@ export const actions: Actions = {
                     signAssertion: before?.signAssertion !== signAssertion,
                     signResponse: before?.signResponse !== signResponse,
                     wantAuthnRequestsSigned: before?.wantAuthnRequestsSigned !== wantAuthnRequestsSigned,
+                    // 권한 표면 확대 플래그 — 침해 forensics 를 위해 변경 여부 기록.
+                    allowAllUsers: before?.allowAllUsers !== allowAllUsers,
                     enabled: before?.enabled !== enabled,
                 },
                 newAcsUrl: acsUrl,

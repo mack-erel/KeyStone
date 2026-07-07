@@ -190,4 +190,36 @@ describe("OIDC 풀플로우 (authorize → token → userinfo)", () => {
         expect(dest.searchParams.get("error")).toBe("access_denied");
         expect(dest.searchParams.get("code")).toBeNull();
     });
+
+    it("allowAllUsers 클라이언트는 서비스 매핑 없는 사용자도 SSO 를 허용한다", async () => {
+        await seedOidcClient(mem.db, {
+            tenantId: tenant.id,
+            clientId: "open-client",
+            secret: CLIENT_SECRET,
+            redirectUris: [REDIRECT_URI],
+            allowAllUsers: true,
+        });
+        // 매핑 없는 별도 유저 + 세션으로 authorize → allowAllUsers 게이트 통과, code 발급.
+        const other = await seedUser(mem.db, { tenantId: tenant.id, email: "bob@test.example", username: "bob", password: "pw" });
+        const otherSession = (await seedSession(mem.db, { tenantId: tenant.id, userId: other.id })).session;
+        const challenge = await pkceChallengeS256("verifier-allow-all-users-2222333344445555bbbb");
+        const params = new URLSearchParams({
+            client_id: "open-client",
+            redirect_uri: REDIRECT_URI,
+            response_type: "code",
+            scope: "openid",
+            code_challenge: challenge,
+            code_challenge_method: "S256",
+        });
+        const event = makeEvent({
+            method: "GET",
+            url: `${TEST_ISSUER_URL}/oidc/authorize?${params.toString()}`,
+            locals: { db: mem.db, tenant, user: other, session: otherSession, env: mem.env },
+        });
+        const { status, location } = await catchRedirect(() => authorizeGET(event));
+        expect(status).toBe(302);
+        const dest = new URL(location);
+        expect(dest.searchParams.get("error")).toBeNull();
+        expect(dest.searchParams.get("code")).toBeTruthy();
+    });
 });

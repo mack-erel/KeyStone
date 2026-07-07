@@ -127,6 +127,7 @@ export const load: PageServerLoad = async ({ locals, cookies, url }) => {
             tokenEndpointAuthMethod: oidcClients.tokenEndpointAuthMethod,
             requirePkce: oidcClients.requirePkce,
             allowWildcardRedirectUri: oidcClients.allowWildcardRedirectUri,
+            allowAllUsers: oidcClients.allowAllUsers,
             enabled: oidcClients.enabled,
             createdAt: oidcClients.createdAt,
         })
@@ -163,6 +164,8 @@ export const actions: Actions = {
         const requirePkce = tokenMethod === "none" ? true : fd.get("requirePkce") === "true";
         // ctrls H-OIDC-4: 와일드카드 redirect_uri 매칭은 명시적 opt-in.
         const allowWildcardRedirectUri = fd.get("allowWildcardRedirectUri") === "true";
+        // 서비스 권한 게이트 우회 opt-in — 사용자별 매핑 없이 전체 허용.
+        const allowAllUsers = fd.get("allowAllUsers") === "true";
 
         if (!name) return fail(400, { create: true, error: adminError(locale, "name_required") });
         if (!redirectUrisRaw) return fail(400, { create: true, error: adminError(locale, "redirect_uri_required") });
@@ -200,6 +203,7 @@ export const actions: Actions = {
             tokenEndpointAuthMethod: tokenMethod,
             requirePkce,
             allowWildcardRedirectUri,
+            allowAllUsers,
             enabled: true,
         });
 
@@ -260,6 +264,8 @@ export const actions: Actions = {
         const requirePkce = existingClient?.tokenEndpointAuthMethod === "none" ? true : fd.get("requirePkce") === "true";
         // ctrls H-OIDC-4: wildcard redirect_uri opt-in 플래그.
         const allowWildcardRedirectUri = fd.get("allowWildcardRedirectUri") === "true";
+        // 서비스 권한 게이트 우회 opt-in — 사용자별 매핑 없이 전체 허용.
+        const allowAllUsers = fd.get("allowAllUsers") === "true";
 
         await db
             .update(oidcClients)
@@ -274,6 +280,7 @@ export const actions: Actions = {
                 scopes: scopesV.value,
                 requirePkce,
                 allowWildcardRedirectUri,
+                allowAllUsers,
                 enabled,
                 updatedAt: new Date(),
             })
@@ -287,7 +294,7 @@ export const actions: Actions = {
             outcome: "success",
             ip: requestMetadata.ip,
             userAgent: requestMetadata.userAgent,
-            detail: { clientDbId: id, name, enabled },
+            detail: { clientDbId: id, name, enabled, allowAllUsers },
         });
 
         return { update: true };
