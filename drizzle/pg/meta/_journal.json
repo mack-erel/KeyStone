@@ -78,6 +78,13 @@
       "when": 1783323957626,
       "tag": "0010_cooing_invaders",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783414015731,
+      "tag": "0011_zippy_sugar_man",
+      "breakpoints": true
     }
   ]
 }

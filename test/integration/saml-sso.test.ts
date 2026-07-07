@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { eq } from "drizzle-orm";
 import { POST as ssoPOST } from "../../src/routes/saml/sso/+server";
-import { samlSessions } from "../../src/lib/server/db/schema";
+import { samlSessions, samlSps } from "../../src/lib/server/db/schema";
 import {
     openMemoryDb,
     seedTenantAndSigningKey,
@@ -150,6 +150,23 @@ describe("SAML SP-initiated POST 바인딩", () => {
         // Assertion 이 발급되지 않았으므로 saml_sessions 기록도 없어야 한다.
         const sessions = await mem.db.select().from(samlSessions).where(eq(samlSessions.userId, user.id));
         expect(sessions.length).toBe(0);
+    });
+
+    it("allowAllUsers SP 는 서비스 매핑 없이도 Assertion 을 발급한다(Role 속성은 미포함)", async () => {
+        await mem.db.update(samlSps).set({ allowAllUsers: true }).where(eq(samlSps.id, sp.id));
+
+        // seedServiceAssignment 없이 접근 → allowAllUsers 게이트 통과.
+        const res = await postAuthnRequest({ id: "_authnreq_allow_all", loggedIn: true, assignUser: false });
+        expect(res.status).toBe(200);
+
+        const responseXml = decodeSamlResponse(extractSamlResponseFromForm(await res.text()));
+        expect(responseXml).toContain("urn:oasis:names:tc:SAML:2.0:status:Success");
+        expect(responseXml).toContain(`>${user.email}</saml:NameID>`);
+        // assignment 가 없으므로 role 기반 속성은 포함되지 않아야 한다.
+        expect(responseXml).not.toContain(`Name="Role"`);
+
+        const sessions = await mem.db.select().from(samlSessions).where(eq(samlSessions.userId, user.id));
+        expect(sessions.length).toBe(1);
     });
 
     it("동일 AuthnRequest ID 로 두 번째 Assertion 발급을 시도하면 replay 가드가 400 으로 거부한다", async () => {

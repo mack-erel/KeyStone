@@ -267,6 +267,7 @@ export interface SeedOidcClientOptions {
     grantTypes?: string;
     tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post" | "none";
     requirePkce?: boolean;
+    allowAllUsers?: boolean;
 }
 
 export async function seedOidcClient(db: DB, opts: SeedOidcClientOptions): Promise<typeof oidcClients.$inferSelect> {
@@ -282,6 +283,7 @@ export async function seedOidcClient(db: DB, opts: SeedOidcClientOptions): Promi
         grantTypes: opts.grantTypes ?? "authorization_code,refresh_token",
         tokenEndpointAuthMethod: opts.tokenEndpointAuthMethod ?? "client_secret_basic",
         requirePkce: opts.requirePkce ?? true,
+        allowAllUsers: opts.allowAllUsers ?? false,
         enabled: true,
     });
     const [row] = await db.select().from(oidcClients).where(eq(oidcClients.id, id)).limit(1);
@@ -533,6 +535,7 @@ export interface SeedSamlSpOptions {
     wantAuthnRequestsSigned?: boolean;
     allowedAttributes?: string[] | null;
     attributeMappingJson?: string | null;
+    allowAllUsers?: boolean;
     enabled?: boolean;
 }
 
@@ -553,6 +556,7 @@ export async function seedSamlSp(db: DB, opts: SeedSamlSpOptions): Promise<SamlS
         wantAuthnRequestsSigned: opts.wantAuthnRequestsSigned ?? false,
         allowedAttributes: opts.allowedAttributes === undefined ? null : opts.allowedAttributes ? JSON.stringify(opts.allowedAttributes) : null,
         attributeMappingJson: opts.attributeMappingJson ?? null,
+        allowAllUsers: opts.allowAllUsers ?? false,
         enabled: opts.enabled ?? true,
     });
     const [row] = await db.select().from(samlSps).where(eq(samlSps.id, id)).limit(1);

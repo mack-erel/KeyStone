@@ -192,12 +192,15 @@ export const GET: RequestHandler = async (event) => {
     }
 
     // 서비스 권한 게이트 (기본 deny). 매핑 없으면 SSO 거부.
-    const allowed = await hasServiceAccess(db, {
-        tenantId: tenant.id,
-        userId: locals.user.id,
-        serviceType: "oidc",
-        serviceRefId: client.id,
-    });
+    // 단, allowAllUsers 클라이언트는 매핑 없이도 테넌트의 모든 사용자를 허용한다.
+    const allowed =
+        client.allowAllUsers ||
+        (await hasServiceAccess(db, {
+            tenantId: tenant.id,
+            userId: locals.user.id,
+            serviceType: "oidc",
+            serviceRefId: client.id,
+        }));
     if (!allowed) {
         await recordAuditEvent(db, {
             tenantId: tenant.id,

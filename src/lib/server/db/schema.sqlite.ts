@@ -264,6 +264,8 @@ export const oidcClients = sqliteTable(
         // organization scope 클레임의 클라이언트별 노출 토글(JSON). null=미설정=전량 노출(하위호환).
         // 예: {"department":true,"team":true,"position":false,"jobTitle":true}
         organizationClaimConfig: text("organization_claim_config"),
+        // true 면 user_service_assignments 매핑 없이도 테넌트의 모든 사용자가 SSO 가능 (기본 deny 게이트 우회 opt-in).
+        allowAllUsers: integer("allow_all_users", { mode: "boolean" }).notNull().default(false),
         enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
         createdAt: integer("created_at", { mode: "timestamp_ms" })
             .notNull()
@@ -365,6 +367,8 @@ export const samlSps = sqliteTable(
         attributeMappingJson: text("attribute_mapping_json"),
         // JSON 배열 문자열 (예: ["email","department"]). NULL 이면 기본 최소 집합만 허용.
         allowedAttributes: text("allowed_attributes"),
+        // true 면 user_service_assignments 매핑 없이도 테넌트의 모든 사용자가 SSO 가능 (기본 deny 게이트 우회 opt-in).
+        allowAllUsers: integer("allow_all_users", { mode: "boolean" }).notNull().default(false),
         enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
         createdAt: integer("created_at", { mode: "timestamp_ms" })
             .notNull()

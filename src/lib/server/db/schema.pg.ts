@@ -244,6 +244,8 @@ export const oidcClients = pgTable(
         // organization scope 클레임의 클라이언트별 노출 토글(JSON). null=미설정=전량 노출(하위호환).
         // 예: {"department":true,"team":true,"position":false,"jobTitle":true}
         organizationClaimConfig: text("organization_claim_config"),
+        // true 면 user_service_assignments 매핑 없이도 테넌트의 모든 사용자가 SSO 가능 (기본 deny 게이트 우회 opt-in).
+        allowAllUsers: boolean("allow_all_users").notNull().default(false),
         enabled: boolean("enabled").notNull().default(true),
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
         updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
@@ -337,6 +339,8 @@ export const samlSps = pgTable(
         attributeMappingJson: text("attribute_mapping_json"),
         // JSON 배열 문자열 (예: ["email","department"]). NULL 이면 기본 최소 집합만 허용.
         allowedAttributes: text("allowed_attributes"),
+        // true 면 user_service_assignments 매핑 없이도 테넌트의 모든 사용자가 SSO 가능 (기본 deny 게이트 우회 opt-in).
+        allowAllUsers: boolean("allow_all_users").notNull().default(false),
         enabled: boolean("enabled").notNull().default(true),
         createdAt: timestamp("created_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
         updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true, precision: 3 }).notNull().defaultNow(),
