@@ -107,7 +107,9 @@ export const GET: RequestHandler = async (event) => {
     }
 
     const issuer = resolveIssuerUrl(locals.runtimeConfig, url.origin);
-    const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint, { expectedIssuer: issuer });
+    // RP-Initiated Logout: id_token_hint 는 만료돼도 유효한 힌트다(OIDC RP-Initiated Logout §2).
+    // 만료 외 검증(서명/issuer/sub/aud)은 유지 — 세션 식별 목적이라 만료만 무시.
+    const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint, { expectedIssuer: issuer, ignoreExpiry: true });
     if (!claims) {
         return new Response(JSON.stringify({ error: "invalid_id_token_hint" }), {
             status: 400,
@@ -251,7 +253,9 @@ export const POST: RequestHandler = async (event) => {
     }
 
     const issuer = resolveIssuerUrl(locals.runtimeConfig, url.origin);
-    const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint, { expectedIssuer: issuer });
+    // RP-Initiated Logout: id_token_hint 는 만료돼도 유효한 힌트다(OIDC RP-Initiated Logout §2).
+    // 만료 외 검증(서명/issuer/sub/aud)은 유지 — 세션 식별 목적이라 만료만 무시.
+    const claims = await verifyIdToken(locals.db, locals.tenant.id, idTokenHint, { expectedIssuer: issuer, ignoreExpiry: true });
     if (!claims) {
         return new Response(JSON.stringify({ error: "invalid_id_token_hint" }), {
             status: 400,
