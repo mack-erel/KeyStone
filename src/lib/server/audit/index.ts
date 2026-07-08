@@ -15,14 +15,29 @@ export interface AuditEventInput {
     detail?: Record<string, unknown>;
 }
 
-// ctrls H-ADMIN-3: X-Forwarded-For fallback 제거.
-// Cloudflare Workers 환경에서는 cf-connecting-ip 가 신뢰 가능한 단일 소스이며,
-// 외부 요청이 임의로 설정 가능한 X-Forwarded-For 를 fallback 으로 두면 dev
-// 환경 또는 잘못된 reverse proxy 구성 하에서 IP 위조로 audit log 오염 / IP 기반
-// rate-limit 우회가 가능해진다. dev 환경에서는 IP 가 null 로 기록되며, 이는
-// 의도된 동작이다 (운영 = CF 뒤에서 동작).
+// ctrls H-ADMIN-3 / H-API-1: 신뢰 가능한 클라이언트 IP 결정.
+// Cloudflare Workers 환경에서만 cf-connecting-ip 를 신뢰한다 — 이 헤더는 CF 엣지가
+// 설정하며 클라이언트가 위조할 수 없다. Node/기타(adapter-node) 배포에서는 동일
+// 헤더를 외부 요청이 임의로 주입할 수 있으므로 절대 신뢰하지 않고, 어댑터가 제공하는
+// 실제 소켓 주소(event.getClientAddress())를 사용한다. 이를 신뢰하면 요청마다 IP 를
+// 회전시켜 IP 기반 rate-limit 을 우회하고 audit log 에 위조 IP 를 주입할 수 있다.
+//
+// Workers/Node 판별은 hooks.server.ts 의 GC 스케줄러 분기와 동일한 시그널
+// (platform.ctx.waitUntil 존재 여부)을 사용한다.
 export function getRequestMetadata(event: RequestEvent) {
-    const ip = event.request.headers.get("cf-connecting-ip");
+    const isWorkers = typeof event.platform?.ctx?.waitUntil === "function";
+    let ip: string | null;
+    if (isWorkers) {
+        ip = event.request.headers.get("cf-connecting-ip");
+    } else {
+        // adapter-node: 실제 peer 주소. 신뢰된 프록시가 앞단에 있고 forwarded 헤더를
+        // 존중해야 한다면 SvelteKit ADDRESS_HEADER 환경변수로 명시적으로 구성해야 한다.
+        try {
+            ip = event.getClientAddress();
+        } catch {
+            ip = null;
+        }
+    }
 
     return {
         ip: ip ?? null,
