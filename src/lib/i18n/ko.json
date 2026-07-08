@@ -748,6 +748,7 @@
     },
     "errors": {
         "rate_limit": "요청이 너무 많습니다. {{minutes}}분 후 다시 시도해 주세요.",
+        "password_too_long": "비밀번호는 최대 {{max}}자까지 가능합니다.",
         "db_not_ready": "D1 binding \"DB\" 가 준비되지 않았습니다. Wrangler preview/dev 환경에서 실행해 주세요."
     },
     "email": {

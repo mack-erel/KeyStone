@@ -748,6 +748,7 @@
     },
     "errors": {
         "rate_limit": "Too many requests. Please try again in {{minutes}} minute(s).",
+        "password_too_long": "Password must be at most {{max}} characters.",
         "db_not_ready": "The D1 binding \"DB\" is not ready. Please run in a Wrangler preview/dev environment."
     },
     "email": {
