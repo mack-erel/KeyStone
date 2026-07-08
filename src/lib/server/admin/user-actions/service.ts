@@ -10,6 +10,7 @@ import { getActiveAssignment } from "$lib/server/access/service-permissions";
 import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 import { getRoleChangeTarget, sendRoleChangeSet } from "$lib/server/oidc/role-change";
+import { revokeRefreshTokenFamily } from "$lib/server/oidc/refresh";
 
 // 사용자 상세 페이지의 서비스 권한(assignment) 액션.
 type UserActionEvent = RequestEvent<{ id: string }, "/admin/users/[id]">;
@@ -218,6 +219,21 @@ export async function revokeAssignment(event: UserActionEvent) {
 
     // 회수 → RP 에 roles: [] push (oidc + role_change_uri 설정 시). 삭제 후이므로 active role 없음.
     if (target) {
+        // ctrls M-3: 탈권한(assignment 회수) 시 해당 OIDC 클라이언트에 대한 이 사용자의 활성
+        // refresh token 을 폐기한다. role-change SET 은 계약상 세션을 끊지 않으므로, 이것이
+        // 없으면 탈권한 사용자가 보유 중인 refresh token 으로 최대 30일간 access/id token 을
+        // 계속 재발급받을 수 있었다. (access token 은 자체완결형 5분 TTL — 최대 5분 내 만료.
+        //  refresh grant 의 hasServiceAccess 재검증(token/+server.ts)이 이중 방어.)
+        if (target.serviceType === "oidc") {
+            const [oc] = await db
+                .select({ clientId: oidcClients.clientId })
+                .from(oidcClients)
+                .where(and(eq(oidcClients.id, target.serviceRefId), eq(oidcClients.tenantId, tenant.id)))
+                .limit(1);
+            if (oc) {
+                await revokeRefreshTokenFamily(db, tenant.id, params.id, oc.clientId);
+            }
+        }
         await emitRoleChangeSet(event, db, tenant.id, params.id, target.serviceType, target.serviceRefId);
     }
 

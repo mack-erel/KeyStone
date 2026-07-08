@@ -110,7 +110,10 @@ export function createAdminCrudRoute<TCreateSchema extends z.ZodTypeAny, TUpdate
             if (hookError) return fail(400, { create: true, error: hookError });
         }
 
-        await db.insert(config.table).values({ tenantId: tenant.id, ...(values as Record<string, unknown>) } as typeof config.table.$inferInsert);
+        // ctrls LOW: tenantId 를 spread 뒤에 두어 form 이 주입한 tenantId 가 서버 값을 덮어쓰지
+        // 못하게 한다(cross-tenant write 방지). 현재 zod 스키마가 unknown 키를 strip 하지만
+        // 방어를 명시적으로 보장한다.
+        await db.insert(config.table).values({ ...(values as Record<string, unknown>), tenantId: tenant.id } as typeof config.table.$inferInsert);
 
         const meta = getRequestMetadata(event);
         await recordAuditEvent(db, {

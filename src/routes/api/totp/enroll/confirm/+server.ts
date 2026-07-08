@@ -17,7 +17,7 @@ import { translate } from "$lib/i18n/server";
  * 검증 후 영구 저장. 백업 코드 10개 생성 후 plaintext 로 응답 (한 번만 보임).
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
-    requireServiceToken(request, locals.runtimeConfig);
+    await requireServiceToken(request, locals.runtimeConfig);
     const { db, rateLimitStore } = requireDbContext(locals);
 
     const config = locals.runtimeConfig;

@@ -6,7 +6,7 @@ import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { oidcClients } from "$lib/server/db/schema";
 import { hashClientSecret } from "$lib/server/oidc/client";
 import { ensureCsrfToken, isValidCsrf } from "$lib/server/auth/csrf";
-import { isLoopbackHost } from "$lib/server/validation";
+import { isLoopbackHost, validateWebhookUrl } from "$lib/server/validation";
 import { adminError, requireFormId } from "$lib/server/admin/errors";
 import type { Locale } from "$lib/i18n/core";
 
@@ -80,10 +80,12 @@ function validateUriList(raw: string, label: string, locale: Locale, opts: { all
     return { ok: true, json: JSON.stringify(list) };
 }
 
+// frontchannel/backchannel logout·role-change URI 검증. 이 세 URI 는 IdP 가 서버측에서
+// 직접 fetch 하는 아웃바운드 웹훅이므로(브라우저 redirect_uri 와 다름) https 강제 +
+// SSRF 호스트 차단(loopback/사설망/메타데이터)을 적용한다. ctrls M-1(SSRF).
 function validateSingleUri(value: string, label: string, locale: Locale): { ok: true } | { ok: false; reason: string } {
-    if (!value) return { ok: true };
-    const r = validateClientUri(value, locale);
-    if (!r.ok) return { ok: false, reason: `${label}: ${r.reason}` };
+    const r = validateWebhookUrl(value, label);
+    if (!r.ok) return { ok: false, reason: adminError(locale, r.reason.key, r.reason.params) };
     return { ok: true };
 }
 

@@ -19,6 +19,10 @@ import { verifyEncoded } from "@hicaru/argon2-pure.js";
 
 // ── scrypt ────────────────────────────────────────────────────────────────────
 
+// ctrls LOW: 서버측 비밀번호 최대 길이. 극단적으로 긴 입력이 KDF/HMAC 자원을 낭비하는 것을
+// 막는다(클라이언트는 64 로 제한하지만 API/curl 직접 호출 방어). 신규 가입/재설정/초대 수락 공용.
+export const MAX_PASSWORD_LENGTH = 128;
+
 const SCRYPT_N = 32768; // 2^15
 const SCRYPT_R = 8;
 const SCRYPT_P = 3;

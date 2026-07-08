@@ -3,7 +3,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { users, passwordResetTokens } from "$lib/server/db/schema";
-import { hashPassword } from "$lib/server/auth/password";
+import { hashPassword, MAX_PASSWORD_LENGTH } from "$lib/server/auth/password";
 import { hashToken } from "$lib/server/email";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
 import { revokeAllUserRefreshTokens } from "$lib/server/oidc/refresh";
@@ -89,6 +89,7 @@ export const actions: Actions = {
 
         if (!token) return failWithSkin(translate(locale, "reset_password.err_invalid_request"));
         if (password.length < 8) return failWithSkin(translate(locale, "reset_password.err_password_short"));
+        if (password.length > MAX_PASSWORD_LENGTH) return failWithSkin(translate(locale, "errors.password_too_long", { max: MAX_PASSWORD_LENGTH }));
         if (password !== confirmPassword) return failWithSkin(translate(locale, "reset_password.err_password_mismatch"));
 
         const tokenHash = await hashToken(token);

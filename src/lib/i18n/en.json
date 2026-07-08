@@ -153,6 +153,7 @@
             "login_mfa_config": "MFA configuration error: IDP_SIGNING_KEY_SECRET is not configured.",
             "login_mfa_required": "Administrator accounts must have MFA (OTP) configured. Please register MFA first.",
             "login_rate_limit": "Too many login attempts. Please try again in {{minutes}} minute(s).",
+            "login_account_locked": "This account is temporarily locked due to repeated failures. Please try again in {{minutes}} minute(s).",
             "team_name_required": "Please enter a team name.",
             "part_name_required": "Please enter a part name.",
             "position_name_required": "Please enter a position name.",
@@ -168,6 +169,8 @@
             "saml_url_invalid_format": "{{label}}: The URL format is invalid.",
             "saml_url_http_loopback_only": "{{label}}: http URLs are only allowed for localhost/127.0.0.1.",
             "saml_url_https_only": "{{label}}: Only https URLs are allowed.",
+            "webhook_url_https_only": "{{label}}: Only https URLs are allowed.",
+            "webhook_url_ssrf_host_forbidden": "{{label}}: Internal/loopback/metadata hosts are not allowed.",
             "ldap_metadata_host_forbidden": "Cloud metadata hosts are not allowed.",
             "ldap_linklocal_forbidden": "link-local (169.254/16) addresses are not allowed.",
             "ldap_port_invalid": "The port number is invalid.",
@@ -745,6 +748,7 @@
     },
     "errors": {
         "rate_limit": "Too many requests. Please try again in {{minutes}} minute(s).",
+        "password_too_long": "Password must be at most {{max}} characters.",
         "db_not_ready": "The D1 binding \"DB\" is not ready. Please run in a Wrangler preview/dev environment."
     },
     "email": {

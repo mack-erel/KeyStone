@@ -139,30 +139,21 @@ export const actions: Actions = {
             });
         }
 
-        // 계정 단위 잠금(S2): 인증 시도 전에 잠금 여부를 증가 없이 조회해 조기 차단한다.
-        // (LDAP/로컬 인증 이전이라 두 경로 모두 보호되고, 잠긴 계정은 올바른 비밀번호로도
-        //  진입할 수 없어 scrypt 비용 낭비와 열거 오라클을 함께 차단한다.)
-        // peekRateLimit: 증가 없이 조회만. checkRateLimit 은 호출 시 선증가시켜 "성공 미카운트 +
-        // 실패 시에만 기록" 요건과 충돌하므로, 잠금 판정은 peek 로 하고 실제 기록은 실패 분기에서만 한다.
+        // 계정 단위 잠금(S2, ctrls M-2): 동일 계정에 대한 연속 실패를 제한하되, 무인증
+        // 공격자가 임의 username 으로 실패를 유발해 "올바른 비밀번호를 가진 피해자"를
+        // 로그인 불가로 만드는 DoS 를 막는다.
+        //
+        // 핵심 원칙 — "올바른 비밀번호는 항상 통과": 잠금 상태여도 인증을 건너뛰지 않고,
+        // 인증까지 실패한 경우에만 잠금 응답(429)으로 전환한다. 정상 사용자는 아래에서
+        // user 가 채워져 실패 분기에 도달하지 않으므로 절대 차단되지 않는다. (기존엔 인증
+        // 전에 하드 차단해 올바른 비밀번호도 거부됐다.)
+        //
+        // trade-off: 잠긴 계정의 오답 시도는 이제 인증(scrypt/LDAP)을 한 번 수행한다.
+        // 이 비용은 이미 IP당 10회/15분(login:${ipKey}) 제한으로 상한이 걸려 있다.
+        // peekRateLimit 은 증가 없이 조회만 한다(성공 미카운트, 실패 분기에서만 기록).
         const userLockKey = `login:user:${username}`;
         const lock = await peekRateLimit(rateLimitStore, userLockKey, { windowMs: USER_LOCK_WINDOW_MS, limit: USER_LOCK_LIMIT });
-        if (!lock.allowed) {
-            await recordAuditEvent(db, {
-                tenantId: tenant.id,
-                kind: "login",
-                outcome: "failure",
-                ip: requestMetadata.ip,
-                userAgent: requestMetadata.userAgent,
-                detail: { username, reason: "account_locked" },
-            });
-            const msg = translate(locale, "login.err_account_locked", { minutes: Math.ceil(lock.retryAfterMs / 60000) });
-            return fail(429, {
-                username,
-                redirectTo,
-                error: msg,
-                skinHtml: await resolveSkinForAction(event, msg, redirectTo),
-            });
-        }
+        const accountLocked = !lock.allowed;
 
         // LDAP 프로바이더가 설정된 경우 먼저 시도
         const [ldapProvider] = await db
@@ -270,8 +261,7 @@ export const actions: Actions = {
 
         if (!user) {
             // 실패 시에만 카운트(성공은 미카운트). 미존재/존재-오답 모두 이 분기를 타므로
-            // 동일하게 기록되어 열거 오라클을 만들지 않는다. 임계 초과는 다음 요청의
-            // accountLockStatus 조기 차단에서 반영된다.
+            // 동일하게 기록되어 열거 오라클을 만들지 않는다.
             await checkRateLimit(rateLimitStore, userLockKey, { windowMs: USER_LOCK_WINDOW_MS, limit: USER_LOCK_LIMIT });
 
             await recordAuditEvent(db, {
@@ -280,8 +270,20 @@ export const actions: Actions = {
                 outcome: "failure",
                 ip: requestMetadata.ip,
                 userAgent: requestMetadata.userAgent,
-                detail: { username },
+                detail: accountLocked ? { username, reason: "account_locked" } : { username },
             });
+
+            // 잠금 상태에서 인증까지 실패한 경우에만 잠금 응답. 올바른 비밀번호였다면 위에서
+            // user 가 채워져 이 분기에 오지 않으므로 정상 사용자는 절대 차단되지 않는다(DoS 방지).
+            if (accountLocked) {
+                const msg = translate(locale, "login.err_account_locked", { minutes: Math.ceil(lock.retryAfterMs / 60000) });
+                return fail(429, {
+                    username,
+                    redirectTo,
+                    error: msg,
+                    skinHtml: await resolveSkinForAction(event, msg, redirectTo),
+                });
+            }
 
             const msg = translate(locale, "login.err_invalid_credentials");
             return fail(400, {

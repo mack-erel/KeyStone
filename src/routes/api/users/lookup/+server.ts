@@ -4,6 +4,14 @@ import { requireServiceToken } from "$lib/server/auth/service-token";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { users, tenants } from "$lib/server/db/schema";
 import { DEFAULT_TENANT_SLUG } from "$lib/server/auth/constants";
+import { checkRateLimit } from "$lib/server/ratelimit";
+import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
+
+// ctrls M-9: service-to-service lookup 의 대량 열거 상한 + 흔적.
+// 정상 dispatcher 매핑 조회는 통과하되, service token 유출 시 무제한 PII 디렉터리 덤프를
+// 막는다. 초과 시 429 + 감사 로그(kind: service_lookup_throttled)로 abuse 를 탐지 가능하게 한다.
+const LOOKUP_WINDOW_MS = 60 * 1000;
+const LOOKUP_LIMIT = 120; // IP당 분당 120회
 
 /**
  * Service-to-service user lookup.
@@ -23,9 +31,10 @@ import { DEFAULT_TENANT_SLUG } from "$lib/server/auth/constants";
  * 응답: `{ id, tenantId, username, email, displayName, role, status }`
  *       또는 404.
  */
-export const GET: RequestHandler = async ({ request, url, locals }) => {
-    requireServiceToken(request, locals.runtimeConfig);
-    const { db } = requireDbContext(locals);
+export const GET: RequestHandler = async (event) => {
+    const { request, url, locals } = event;
+    await requireServiceToken(request, locals.runtimeConfig);
+    const { db, rateLimitStore } = requireDbContext(locals);
 
     const id = url.searchParams.get("id")?.trim();
     const username = url.searchParams.get("username")?.trim();
@@ -38,6 +47,21 @@ export const GET: RequestHandler = async ({ request, url, locals }) => {
 
     const [tenant] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, tenantSlug)).limit(1);
     if (!tenant) throw error(404, `tenant not found: ${tenantSlug}`);
+
+    // ctrls M-9: IP당 분당 상한 — 유출된 토큰으로 무제한 열거하는 것을 막고 abuse 를 남긴다.
+    const meta = getRequestMetadata(event);
+    const rl = await checkRateLimit(rateLimitStore, `svc-lookup:${meta.ipKey}`, { windowMs: LOOKUP_WINDOW_MS, limit: LOOKUP_LIMIT });
+    if (!rl.allowed) {
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            kind: "service_lookup_throttled",
+            outcome: "failure",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { by: id ? "id" : username ? "username" : "email" },
+        });
+        throw error(429, "rate limited");
+    }
 
     if (id) {
         const [row] = await db

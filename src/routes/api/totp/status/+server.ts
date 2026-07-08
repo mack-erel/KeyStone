@@ -9,7 +9,7 @@ import { credentials } from "$lib/server/db/schema";
  * Phase 7.3 — TOTP enroll 여부 + last-used 조회.
  */
 export const GET: RequestHandler = async ({ request, url, locals }) => {
-    requireServiceToken(request, locals.runtimeConfig);
+    await requireServiceToken(request, locals.runtimeConfig);
     const { db } = requireDbContext(locals);
 
     const userId = url.searchParams.get("userId")?.trim();

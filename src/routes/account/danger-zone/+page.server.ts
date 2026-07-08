@@ -14,6 +14,12 @@ import { TOTP_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { dispatchSecurityAlert } from "$lib/server/security-notify";
 import { credentials, users } from "$lib/server/db/schema";
 import { translate } from "$lib/i18n/server";
+import { checkRateLimit } from "$lib/server/ratelimit";
+
+// ctrls M-5: 계정 삭제 step-up(비밀번호/TOTP) 브루트포스 방어. account/mfa 와 동일한
+// mfa-stepup:<userId> 키를 공유해 공격자가 엔드포인트를 옮겨가며 시도횟수를 우회하지 못하게 한다.
+const STEPUP_WINDOW_MS = 5 * 60 * 1000;
+const STEPUP_LIMIT = 10;
 
 // 소프트 삭제 유예기간 = 30일. 이 기간 내 로그인하면 계정을 복구할 수 있고, 경과하면 GC 가
 // 하드 삭제한다. (login 복구 흐름·gc.ts 하드삭제 조건과 짝을 이룬다.)
@@ -47,17 +53,23 @@ export const actions: Actions = {
         const { locals } = event;
         if (!locals.user) throw redirect(303, "/login");
 
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant, rateLimitStore } = requireDbContext(locals);
         const locale = locals.locale;
         const user = locals.user;
+
+        const requestMetadata = getRequestMetadata(event);
+
+        // ctrls M-5: step-up 브루트포스 방어 (5분/10회, 사용자 단위)
+        const rl = await checkRateLimit(rateLimitStore, `mfa-stepup:${user.id}`, { windowMs: STEPUP_WINDOW_MS, limit: STEPUP_LIMIT });
+        if (!rl.allowed) {
+            return fail(429, { error: translate(locale, "errors.rate_limit", { minutes: Math.ceil(rl.retryAfterMs / 60000) }) });
+        }
 
         const formData = await event.request.formData();
         const password = String(formData.get("password") ?? "");
         const totpCode = String(formData.get("totp") ?? "")
             .trim()
             .replace(/\s/g, "");
-
-        const requestMetadata = getRequestMetadata(event);
 
         // ── step-up 재인증 (비밀번호 또는 TOTP) ─────────────────────────────────
         // 세션 탈취 공격자가 정당 소유자의 계정을 삭제하지 못하도록 재인증을 강제한다.

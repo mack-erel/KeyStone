@@ -79,6 +79,16 @@ async function resolvePostLogoutRedirect(locals: App.Locals, postLogoutRedirectU
 
 export const GET: RequestHandler = async (event) => {
     const { locals, url } = event;
+
+    // ctrls LOW: drive-by 로그아웃(CSRF) 완화. RP-Initiated Logout 은 최상위 네비게이션이라
+    // Sec-Fetch-Dest=document 다. <img>/<iframe>/fetch 로 임베드된 요청(image/iframe/empty 등)은
+    // 유출된 id_token_hint 만으로 강제 로그아웃을 유발할 수 있으므로 거부한다. Sec-Fetch 헤더를
+    // 보내지 않는 구형 브라우저는 통과(id_token_hint 소유 증명 + sub 일치가 1차 방어).
+    const fetchDest = event.request.headers.get("sec-fetch-dest");
+    if (fetchDest && fetchDest !== "document") {
+        return new Response(null, { status: 204 });
+    }
+
     const postLogoutRedirectUri = url.searchParams.get("post_logout_redirect_uri");
     const clientId = url.searchParams.get("client_id");
     const idTokenHint = url.searchParams.get("id_token_hint");

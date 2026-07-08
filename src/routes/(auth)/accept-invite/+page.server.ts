@@ -4,7 +4,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { users, inviteTokens, credentials } from "$lib/server/db/schema";
 import { hashToken } from "$lib/server/email";
-import { hashPassword } from "$lib/server/auth/password";
+import { hashPassword, MAX_PASSWORD_LENGTH } from "$lib/server/auth/password";
 import { PASSWORD_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { runAtomic } from "$lib/server/db/atomic";
 import { checkRateLimit } from "$lib/server/ratelimit";
@@ -58,6 +58,7 @@ export const actions: Actions = {
         if (!token) return fail(400, { error: translate(locale, "accept_invite.invalid_link") });
         // 비밀번호 정책 재사용 — reset_password 와 동일(8자 이상, 확인 일치).
         if (password.length < 8) return fail(400, { error: translate(locale, "accept_invite.err_password_short") });
+        if (password.length > MAX_PASSWORD_LENGTH) return fail(400, { error: translate(locale, "errors.password_too_long", { max: MAX_PASSWORD_LENGTH }) });
         if (password !== confirmPassword) return fail(400, { error: translate(locale, "accept_invite.err_password_mismatch") });
 
         const record = await lookupToken(db, tenant.id, token);

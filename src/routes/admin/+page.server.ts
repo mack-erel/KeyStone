@@ -1,10 +1,12 @@
 import { count, eq } from "drizzle-orm";
 import type { PageServerLoad } from "./$types";
-import { requireDbContext } from "$lib/server/auth/guards";
+import { requireAdminContext } from "$lib/server/auth/guards";
 import { auditEvents, departments, oidcClients, positions, samlSps, signingKeys, teams, users } from "$lib/server/db/schema";
 
 export const load: PageServerLoad = async ({ locals }) => {
-    const { db, tenant } = requireDbContext(locals);
+    // ctrls LOW: 다른 admin load 와 동일하게 role==="admin" 을 직접 재확인한다.
+    // 기존엔 requireDbContext(db/tenant 존재만 확인)라 layout 게이트에만 의존했다.
+    const { db, tenant } = requireAdminContext(locals);
     const [userCount, oidcClientCount, samlSpCount, signingKeyCount, auditEventCount, deptCount, teamCount, positionCount] = await Promise.all([
         db.select({ count: count() }).from(users).where(eq(users.tenantId, tenant.id)),
         db.select({ count: count() }).from(oidcClients).where(eq(oidcClients.tenantId, tenant.id)),

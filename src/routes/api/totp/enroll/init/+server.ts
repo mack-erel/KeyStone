@@ -17,7 +17,7 @@ import { credentials, users } from "$lib/server/db/schema";
  * 이미 등록된 사용자는 409 (운영자가 의도적으로 reset 하려면 별도 admin API).
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
-    requireServiceToken(request, locals.runtimeConfig);
+    await requireServiceToken(request, locals.runtimeConfig);
     const { db } = requireDbContext(locals);
 
     const body = (await request.json().catch(() => null)) as { userId?: string } | null;

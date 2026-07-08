@@ -324,7 +324,11 @@ async function processSpInitiatedAuthnRequest(event: Parameters<RequestHandler>[
     // forceAuthn: SP 가 강제 재인증을 요구하면, 현재 세션 상태와 무관하게 /login 으로 보낸다.
     // 무한 루프 방지: AuthnRequest ID 를 쿠키에 기록해 두고, 동일 요청에 대한 재진입이면 통과시킨다.
     if (authnRequest.forceAuthn) {
-        const reauthCookieName = `saml_reauth_${authnRequest.id}`;
+        // ctrls LOW: AuthnRequest.id 는 공격자 제어 XML 값이라 그대로 쿠키명에 쓰면 space/;/제어문자
+        // 등으로 cookie.serialize 가 throw → 500 DoS. 안전 문자만 남겨 결정론적으로 정규화한다
+        // (동일 요청 재진입 시 같은 이름이 되어 loop 가드는 그대로 동작, 보안 영향 없음).
+        const safeId = authnRequest.id.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 128);
+        const reauthCookieName = `saml_reauth_${safeId}`;
         const alreadyReauthed = event.cookies.get(reauthCookieName) === "1";
         if (!alreadyReauthed) {
             // 다음 요청에서 동일 AuthnRequest 가 들어오면 통과되도록 짧은 TTL 쿠키를 설정.

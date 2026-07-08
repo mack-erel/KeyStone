@@ -9,9 +9,16 @@ import { TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/a
 import { credentials } from "$lib/server/db/schema";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
 import { dispatchSecurityAlert } from "$lib/server/security-notify";
+import { checkRateLimit } from "$lib/server/ratelimit";
 
 const TOTP_SETUP_COOKIE = "idp_totp_setup";
 const TOTP_SETUP_TTL_MS = 10 * 60 * 1000; // 10분
+
+// ctrls M-5: 계정 self-service MFA step-up(confirm/delete/regenerate) 브루트포스/replay 방어.
+// 세션 탈취자가 스로틀 없는 6자리 TOTP 를 무제한 시도해 MFA 를 제거/회전하는 것을 막는다.
+// 로그인 /mfa·/api/totp/* 와 동일한 5분/10회 상한.
+const MFA_STEPUP_WINDOW_MS = 5 * 60 * 1000;
+const MFA_STEPUP_LIMIT = 10;
 
 // ── 등록 중 시크릿 임시 저장용 서명 쿠키 ────────────────────────────────────
 
@@ -168,6 +175,14 @@ export const actions: Actions = {
             return fail(400, { confirm: true, error: "인증 코드를 입력해 주세요." });
         }
 
+        const { db, tenant, rateLimitStore } = requireDbContext(locals);
+
+        // ctrls M-5: step-up 브루트포스 방어 (5분/10회, 사용자 단위)
+        const rl = await checkRateLimit(rateLimitStore, `mfa-stepup:${locals.user.id}`, { windowMs: MFA_STEPUP_WINDOW_MS, limit: MFA_STEPUP_LIMIT });
+        if (!rl.allowed) {
+            return fail(429, { confirm: true, error: `시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.` });
+        }
+
         const valid = await verifyTotp(code, plainSecret);
         if (!valid) {
             return fail(400, {
@@ -175,8 +190,6 @@ export const actions: Actions = {
                 error: "코드가 올바르지 않습니다. 다시 확인해 주세요.",
             });
         }
-
-        const { db, tenant } = requireDbContext(locals);
 
         // 이미 등록된 경우 방지
         const [existing] = await db
@@ -250,7 +263,13 @@ export const actions: Actions = {
             return fail(400, { delete: true, error: "현재 TOTP 코드를 입력해 주세요." });
         }
 
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant, rateLimitStore } = requireDbContext(locals);
+
+        // ctrls M-5: step-up 브루트포스 방어 (5분/10회, 사용자 단위)
+        const rl = await checkRateLimit(rateLimitStore, `mfa-stepup:${locals.user.id}`, { windowMs: MFA_STEPUP_WINDOW_MS, limit: MFA_STEPUP_LIMIT });
+        if (!rl.allowed) {
+            return fail(429, { delete: true, error: `시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.` });
+        }
 
         const [totpCred] = await db
             .select()
@@ -263,7 +282,8 @@ export const actions: Actions = {
         }
 
         const plainSecret = await tryWithSecrets(config.signingKeySecrets, (s) => decryptTotpSecret(totpCred.secret!, s, locals.user!.id));
-        const matchedStep = await verifyTotp(code, plainSecret);
+        // ctrls M-5: lastUsedStep 바인딩으로 코드 replay(다른 엔드포인트에서 이미 쓴 코드 재사용) 차단.
+        const matchedStep = await verifyTotp(code, plainSecret, totpCred.counter ?? undefined);
         if (matchedStep === null) {
             return fail(400, { delete: true, error: "인증 코드가 올바르지 않습니다." });
         }
@@ -307,7 +327,13 @@ export const actions: Actions = {
             return fail(400, { regenerate: true, error: "현재 TOTP 코드를 입력해 주세요." });
         }
 
-        const { db, tenant } = requireDbContext(locals);
+        const { db, tenant, rateLimitStore } = requireDbContext(locals);
+
+        // ctrls M-5: step-up 브루트포스 방어 (5분/10회, 사용자 단위)
+        const rl = await checkRateLimit(rateLimitStore, `mfa-stepup:${locals.user.id}`, { windowMs: MFA_STEPUP_WINDOW_MS, limit: MFA_STEPUP_LIMIT });
+        if (!rl.allowed) {
+            return fail(429, { regenerate: true, error: `시도가 너무 많습니다. ${Math.ceil(rl.retryAfterMs / 60000)}분 후 다시 시도해 주세요.` });
+        }
 
         // TOTP 등록 여부 확인 및 코드 검증
         const [totpCred] = await db
@@ -321,10 +347,12 @@ export const actions: Actions = {
         }
 
         const plainSecret = await tryWithSecrets(config.signingKeySecrets, (s) => decryptTotpSecret(totpCred.secret!, s, locals.user!.id));
-        const matchedStep = await verifyTotp(code, plainSecret);
+        // ctrls M-5: lastUsedStep 바인딩으로 코드 replay 차단. credential 이 유지되므로 성공 시 counter 갱신.
+        const matchedStep = await verifyTotp(code, plainSecret, totpCred.counter ?? undefined);
         if (matchedStep === null) {
             return fail(400, { regenerate: true, error: "인증 코드가 올바르지 않습니다." });
         }
+        await db.update(credentials).set({ counter: matchedStep }).where(eq(credentials.id, totpCred.id));
 
         // 기존 백업 코드 전체 삭제
         await db.delete(credentials).where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE)));

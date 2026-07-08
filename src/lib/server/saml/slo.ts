@@ -261,6 +261,28 @@ export async function parseSamlLogoutRequest(samlRequestB64: string): Promise<Pa
     return { id, issuer, sessionIndexes, nameId, nameIdFormat, destination, issueInstant };
 }
 
+/**
+ * LogoutResponse(HTTP-Redirect 바인딩, base64+deflate) 에서 InResponseTo 속성만 추출한다.
+ * ctrls M-6: IdP-initiated SLO 체인에서 응답이 직전에 보낸 LogoutRequest 에 대응하는지
+ * (InResponseTo 일치) 확인하는 데 사용한다. XXE/DTD 는 LogoutRequest 파서와 동일하게 차단.
+ */
+export async function parseSamlLogoutResponseInResponseTo(samlResponseB64: string): Promise<string | null> {
+    const raw = atob(samlResponseB64);
+    const binary = new Uint8Array(raw.length) as Uint8Array<ArrayBuffer>;
+    for (let i = 0; i < raw.length; i++) binary[i] = raw.charCodeAt(i);
+    const xml = await inflateRaw(binary);
+
+    if (/<!DOCTYPE/i.test(xml) || /<!ENTITY/i.test(xml)) {
+        throw new Error("LogoutResponse 에 DOCTYPE/ENTITY 선언이 포함되어 있습니다.");
+    }
+
+    const parser = new DOMParser({ onError: onErrorStopParsing });
+    const doc = parser.parseFromString(xml, "text/xml");
+    const root = doc.documentElement;
+    if (!root) throw new Error("LogoutResponse XML 파싱 실패: documentElement 없음");
+    return root.getAttribute("InResponseTo");
+}
+
 // ── DB ───────────────────────────────────────────────────────────────────────
 
 export interface ActiveSamlSessionRow {
