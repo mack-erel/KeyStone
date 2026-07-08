@@ -23,7 +23,15 @@ import { SESSION_COOKIE_NAME } from "$lib/server/auth/constants";
 import { getActiveSigningKey } from "$lib/server/crypto/keys";
 import { getOidcBackchannelTargets, sendOneBackchannelLogout } from "$lib/server/oidc/logout";
 import { revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
-import { buildSamlLogoutRequest, buildSamlLogoutResponse, buildSamlSloRedirectUrl, collectPendingSpData, parseSamlLogoutRequest, type PendingSpData } from "$lib/server/saml/slo";
+import {
+    buildSamlLogoutRequest,
+    buildSamlLogoutResponse,
+    buildSamlSloRedirectUrl,
+    collectPendingSpData,
+    parseSamlLogoutRequest,
+    parseSamlLogoutResponseInResponseTo,
+    type PendingSpData,
+} from "$lib/server/saml/slo";
 import { verifySamlRedirectSignature } from "$lib/server/saml/parse-authn-request";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 import { translate } from "$lib/i18n/server";
@@ -68,7 +76,7 @@ async function fireOidcBackchannelLogout(event: RequestEvent, idpSession: typeof
  * pendingSpDataJson 을 먼저 업데이트한 뒤(처리할 SP 를 맨 앞에서 제거) 리다이렉트한다.
  * 이렇게 해야 사용자가 새로 고침해도 같은 SP 가 중복 처리되지 않는다.
  */
-async function redirectToNextSp(event: RequestEvent, stateId: string, remaining: PendingSpData[]): Promise<never> {
+async function redirectToNextSp(event: RequestEvent, stateId: string, remaining: PendingSpData[], opts: { trackInResponseTo?: boolean } = {}): Promise<never> {
     const { locals, url } = event;
     const { db, tenant } = requireDbContext(locals);
 
@@ -79,10 +87,17 @@ async function redirectToNextSp(event: RequestEvent, stateId: string, remaining:
     const next = remaining[0];
     const rest = remaining.slice(1);
 
+    // 이번 hop 에 보낼 LogoutRequest ID — 반환 LogoutResponse 의 InResponseTo 와 매칭되어야 한다.
+    const requestId = `_l${crypto.randomUUID().replace(/-/g, "")}`;
+
     // 먼저 DB 를 업데이트한다 (next SP 를 pending 에서 제거).
+    // ctrls M-6: IdP-initiated 체인은 서명 검증이 없으므로(SP-initiated 는 Case A 에서
+    // cert 서명 검증됨), 이번 hop 의 requestId 를 inResponseTo 컬럼에 저장해 두고 응답의
+    // InResponseTo 와 대조한다. SP-initiated 체인에서는 inResponseTo 가 최초 SP 응답용으로
+    // 쓰이므로 덮어쓰지 않는다(trackInResponseTo=false).
     await db
         .update(samlSloStates)
-        .set({ pendingSpDataJson: JSON.stringify(rest) })
+        .set(opts.trackInResponseTo ? { pendingSpDataJson: JSON.stringify(rest), inResponseTo: requestId } : { pendingSpDataJson: JSON.stringify(rest) })
         .where(eq(samlSloStates.id, stateId));
 
     const signingKeySecrets = locals.runtimeConfig.signingKeySecrets;
@@ -96,7 +111,7 @@ async function redirectToNextSp(event: RequestEvent, stateId: string, remaining:
 
     const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
     const lrXml = buildSamlLogoutRequest({
-        id: `_l${crypto.randomUUID().replace(/-/g, "")}`,
+        id: requestId,
         issuerUrl,
         destination: next.sloUrl,
         nameId: next.nameId,
@@ -175,8 +190,7 @@ export const GET: RequestHandler = async (event) => {
 
         // ctrls C-9: SP-initiated 흐름의 LogoutResponse 는 반드시 initiatingSp 의 cert
         // 로 서명 검증되어야 한다. cert 미등록이거나 Signature 파라미터 누락이면 응답을
-        // 신뢰할 수 없으므로 거부. (IdP-initiated 체인 — initiatingSpEntityId NULL —
-        // 은 stateId UUIDv4 122-bit 엔트로피 + TTL 로 보호된다.)
+        // 신뢰할 수 없으므로 거부.
         if (state.initiatingSpEntityId) {
             const [initiatingSp] = await db
                 .select({ cert: samlSps.cert })
@@ -194,6 +208,21 @@ export const GET: RequestHandler = async (event) => {
             if (!valid) {
                 throw error(400, translate(locals.locale, "saml.errors.slo_logout_response_sig_invalid"));
             }
+        } else if (state.inResponseTo) {
+            // ctrls M-6: IdP-initiated 체인은 SP cert 서명 검증이 없다. 대신 응답의 InResponseTo 가
+            // 직전에 이 SP 에게 보낸 LogoutRequest ID(state.inResponseTo)와 일치해야 한다.
+            // stateId(RelayState)만 아는 제3자(체인 내 악성 SP 포함)가 임의 SAMLResponse 로
+            // 체인을 순서 밖에서 구동/조기 종료(로그아웃 DoS)하는 것을 막는다. requestId 는
+            // 122-bit 랜덤이며 해당 SP 에게만 전달된다.
+            let respInResponseTo: string | null;
+            try {
+                respInResponseTo = await parseSamlLogoutResponseInResponseTo(samlResponse);
+            } catch {
+                throw error(400, translate(locals.locale, "saml.errors.slo_state_invalid"));
+            }
+            if (respInResponseTo !== state.inResponseTo) {
+                throw error(400, translate(locals.locale, "saml.errors.slo_state_invalid"));
+            }
         }
 
         // pendingSpDataJson 에 남아 있는 SP 목록 (현재 응답을 보낸 SP 는 이미 제거된 상태)
@@ -201,7 +230,7 @@ export const GET: RequestHandler = async (event) => {
 
         // 다음 SP 가 있으면 이어서 진행
         if (remaining.length > 0) {
-            await redirectToNextSp(event, state.id, remaining);
+            await redirectToNextSp(event, state.id, remaining, { trackInResponseTo: !state.initiatingSpEntityId });
             // 위에서 redirect throw
         }
 
@@ -256,7 +285,7 @@ export const GET: RequestHandler = async (event) => {
             throw redirect(302, state.completionUri);
         }
 
-        await redirectToNextSp(event, state.id, pending);
+        await redirectToNextSp(event, state.id, pending, { trackInResponseTo: !state.initiatingSpEntityId });
         // redirect throw
     }
 
