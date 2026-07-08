@@ -14,6 +14,28 @@ import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
 import { oidcClients, oidcGrants, oidcRefreshTokens } from "$lib/server/db/schema";
 import { signJwt } from "$lib/server/crypto/keys";
+import { isForbiddenWebhookHost } from "$lib/server/validation";
+
+/**
+ * ctrls M-1(SSRF): IdP 가 서버측에서 직접 fetch 하는 아웃바운드 웹훅(backchannel logout,
+ * role-change) URL 이 https 이고 내부/loopback/메타데이터 호스트가 아닌지 fetch 직전에
+ * 재검증한다. 등록 시 검증을 우회했거나 이전에 저장된 행을 방어하는 최종 게이트.
+ * 위반 시 throw — 호출자는 개별 콜백 오류를 swallow 하므로 해당 타깃만 스킵된다.
+ */
+export function assertPublicWebhookUrl(raw: string): void {
+    let parsed: URL;
+    try {
+        parsed = new URL(raw);
+    } catch {
+        throw new Error(`webhook URL invalid: ${raw}`);
+    }
+    if (parsed.protocol !== "https:") {
+        throw new Error(`webhook URL must be https: ${raw}`);
+    }
+    if (isForbiddenWebhookHost(parsed.hostname)) {
+        throw new Error(`webhook URL host is forbidden (SSRF guard): ${parsed.hostname}`);
+    }
+}
 
 export interface BackchannelTarget {
     clientId: string;
@@ -124,6 +146,9 @@ export async function sendOneBackchannelLogout(target: BackchannelTarget, userId
     // BC logout JWT 는 일반 ID Token 과 구별되어야 하므로 typ=logout+jwt (RFC: OpenID BC logout 1.0)
     const jwt = await signJwt(payload, privateKey, kid, { typ: "logout+jwt" });
     const body = new URLSearchParams({ logout_token: jwt });
+
+    // ctrls M-1(SSRF): fetch 직전 재검증(fail-closed).
+    assertPublicWebhookUrl(target.backchannelLogoutUri);
 
     await fetch(target.backchannelLogoutUri, {
         method: "POST",

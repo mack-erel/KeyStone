@@ -168,6 +168,8 @@
             "saml_url_invalid_format": "{{label}}: The URL format is invalid.",
             "saml_url_http_loopback_only": "{{label}}: http URLs are only allowed for localhost/127.0.0.1.",
             "saml_url_https_only": "{{label}}: Only https URLs are allowed.",
+            "webhook_url_https_only": "{{label}}: Only https URLs are allowed.",
+            "webhook_url_ssrf_host_forbidden": "{{label}}: Internal/loopback/metadata hosts are not allowed.",
             "ldap_metadata_host_forbidden": "Cloud metadata hosts are not allowed.",
             "ldap_linklocal_forbidden": "link-local (169.254/16) addresses are not allowed.",
             "ldap_port_invalid": "The port number is invalid.",

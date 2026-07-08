@@ -168,6 +168,8 @@
             "saml_url_invalid_format": "{{label}}: URL 형식이 올바르지 않습니다.",
             "saml_url_http_loopback_only": "{{label}}: http URL 은 localhost/127.0.0.1 만 허용됩니다.",
             "saml_url_https_only": "{{label}}: https URL 만 허용됩니다.",
+            "webhook_url_https_only": "{{label}}: https URL 만 허용됩니다.",
+            "webhook_url_ssrf_host_forbidden": "{{label}}: 내부/loopback/메타데이터 호스트는 사용할 수 없습니다.",
             "ldap_metadata_host_forbidden": "클라우드 메타데이터 호스트는 사용할 수 없습니다.",
             "ldap_linklocal_forbidden": "link-local(169.254/16) 주소는 사용할 수 없습니다.",
             "ldap_port_invalid": "포트 번호가 올바르지 않습니다.",

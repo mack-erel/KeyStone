@@ -18,6 +18,7 @@
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
 import { oidcClients } from "$lib/server/db/schema";
+import { assertPublicWebhookUrl } from "$lib/server/oidc/logout";
 import { signJwt } from "$lib/server/crypto/keys";
 
 /**
@@ -71,6 +72,10 @@ export async function sendRoleChangeSet(target: RoleChangeTarget, userId: string
     // SET 관례상 typ=secevent+jwt. id_token 오용을 막기 위해 nonce 는 절대 넣지 않는다.
     const jwt = await signJwt(payload, privateKey, kid, { typ: "secevent+jwt" });
     const body = new URLSearchParams({ role_change_token: jwt });
+
+    // ctrls M-1(SSRF): 등록 시 검증을 하더라도, 이전에 저장된 행이나 검증 우회 경로가
+    // 내부 호스트로 서명된 SET 을 흘리지 않도록 fetch 직전 재검증(fail-closed).
+    assertPublicWebhookUrl(target.roleChangeUri);
 
     await fetch(target.roleChangeUri, {
         method: "POST",
