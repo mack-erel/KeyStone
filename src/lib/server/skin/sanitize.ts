@@ -33,6 +33,22 @@ const FORBIDDEN_ATTRIBUTES = new Set([
 // on* 이벤트 핸들러 패턴
 const EVENT_HANDLER_RE = /^on[a-z]/i;
 
+// ctrls M-7: 인라인 style 속성에서 리드레싱/오버레이(가짜 로그인 필드로 실제 폼을 덮는
+// 자격증명 피싱)에 악용되는 위치/레이어링 속성만 제거한다. <style>/<link> 태그는 이미
+// FORBIDDEN_TAGS 로 제거되므로 정상 skin 은 인라인 style 로 색상/폰트/여백을 주는데,
+// 이는 보존하고 position/z-index/transform/inset 계열만 무력화한다(피싱 벡터 차단).
+// 완벽한 CSS 리드레싱 방지는 아니지만(음수 margin 등 잔여), JS 는 CSP 로 이미 차단된
+// 상태에서 주된 오버레이 수단을 제거하는 심층 방어다.
+const DANGEROUS_STYLE_PROP_RE = /(^|;)\s*(position|top|left|right|bottom|inset(?:-[a-z]+)?|z-index|transform(?:-origin)?|perspective|float|clip|clip-path)\s*:[^;]*/gi;
+
+function sanitizeStyleAttr(value: string): string {
+    return value
+        .replace(DANGEROUS_STYLE_PROP_RE, "$1")
+        .replace(/(?:\s*;\s*)+/g, ";") // 세미콜론 런 정리
+        .replace(/^;|;$/g, "")
+        .trim();
+}
+
 // URI 허용 prefix — http(s), data:image/font, mailto, tel, relative(/), fragment(#)
 const ALLOWED_URI_RE = /^(?:https?:|data:image\/|data:font\/|mailto:|tel:|\/|#)/i;
 
@@ -71,6 +87,13 @@ export async function sanitizeSkinHtml(dirty: string): Promise<string> {
                     }
                     if (URI_ATTRIBUTES.has(name) && isDangerousUri(value)) {
                         el.removeAttribute(rawName);
+                        continue;
+                    }
+                    // ctrls M-7: 인라인 style 의 오버레이/리드레싱 속성 무력화.
+                    if (name === "style") {
+                        const cleaned = sanitizeStyleAttr(value);
+                        if (cleaned) el.setAttribute(rawName, cleaned);
+                        else el.removeAttribute(rawName);
                     }
                 }
             },
