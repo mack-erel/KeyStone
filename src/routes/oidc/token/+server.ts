@@ -12,7 +12,7 @@ import { findAndConsumeGrant } from "$lib/server/oidc/grant";
 import { verifyPkce } from "$lib/server/oidc/pkce";
 import { issueRefreshToken, rotateRefreshToken, revokeRefreshTokenFamily } from "$lib/server/oidc/refresh";
 import { generateAccessToken, getActiveSigningKey, signJwt } from "$lib/server/crypto/keys";
-import { getActiveAssignment, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
+import { getActiveAssignment, hasServiceAccess, parseAssignmentAttributes } from "$lib/server/access/service-permissions";
 import { getUserMembership, membershipToGroups } from "$lib/server/org/membership";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 import type { DB } from "$lib/server/db";
@@ -367,6 +367,24 @@ export const POST: RequestHandler = async (event) => {
         if (!user) {
             await recordTokenFailure(clientId, "invalid_grant", "사용자 조회 실패");
             return tokenError("invalid_grant", "사용자를 찾을 수 없습니다.");
+        }
+
+        // ctrls M-3: 매 refresh 마다 서비스 접근 권한을 재확인한다(authorize 와 동일 게이트).
+        // assignment 회수 시 refresh token 을 직접 폐기하지만(service.ts), 놓친 폐기 경로가
+        // 있어도 access token TTL(5분) 안에 fail-closed 되도록 이중 방어한다. allowAllUsers
+        // 클라이언트는 매핑 없이 전체 허용이므로 예외.
+        if (!client.allowAllUsers) {
+            const stillAllowed = await hasServiceAccess(db, {
+                tenantId: tenant.id,
+                userId: user.id,
+                serviceType: "oidc",
+                serviceRefId: client.id,
+            });
+            if (!stillAllowed) {
+                await revokeRefreshTokenFamily(db, tenant.id, user.id, clientId);
+                await recordTokenFailure(clientId, "invalid_grant", "서비스 접근 권한이 회수됨");
+                return tokenError("invalid_grant", "서비스 접근 권한이 없습니다. 다시 로그인해 주세요.");
+            }
         }
 
         const authTimeSec = sessionRow ? Math.floor(sessionRow.createdAt.getTime() / 1000) : Math.floor(record.createdAt.getTime() / 1000);
