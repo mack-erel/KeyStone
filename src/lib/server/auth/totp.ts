@@ -3,8 +3,11 @@
  *
  * - TOTP: WebCrypto HMAC-SHA-1, 30초 스텝, 6자리, ±1 윈도우
  * - 시크릿 암호화: AES-256-GCM + HKDF (IDP_SIGNING_KEY_SECRET 재사용)
- * - 백업 코드: 10개 × 8자리 alphanumeric, SHA-256 단방향 해시
+ * - 백업 코드: 10개 × 8자리 alphanumeric, scrypt(salted, memory-hard) 단방향 해시
+ *   (레거시 무염 SHA-256 해시는 검증 시 하위호환 처리)
  */
+
+import { hashPassword, verifyPassword } from "$lib/server/auth/password";
 
 // ── Base32 (RFC 4648) ─────────────────────────────────────────────────────────
 
@@ -220,25 +223,35 @@ export function generateBackupCodes(): string[] {
 }
 
 /**
- * 백업 코드를 SHA-256 해시로 저장용 변환.
- * 코드 자체가 충분한 엔트로피를 가지므로 salt 없이 사용.
+ * 백업 코드를 저장용 해시로 변환한다. ctrls M-4.
+ *
+ * 무염 SHA-256(fast hash)은 DB 유출 시 ~2^40 엔트로피의 코드를 전 사용자에 걸쳐 병렬로
+ * GPU 크랙할 수 있어(오프라인 MFA 우회), 패스워드와 동일한 scrypt(salted, memory-hard)
+ * KDF 를 재사용한다. 코드는 대문자 정규화 후 해싱한다.
  */
 export async function hashBackupCode(code: string): Promise<string> {
-    const enc = new TextEncoder();
-    const digest = await crypto.subtle.digest("SHA-256", enc.encode(code.toUpperCase()));
-    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+    return hashPassword(code.toUpperCase());
 }
 
 /**
- * 입력한 코드가 저장된 해시와 일치하는지 검증.
- * XOR 기반 상수 시간 비교로 타이밍 공격을 방지한다.
+ * 입력한 코드가 저장된 해시와 일치하는지 검증한다.
+ * - scrypt/argon2/pbkdf2 형식: 패스워드 KDF(verifyPassword)로 상수시간 검증.
+ * - 레거시 무염 SHA-256 hex: 하위호환을 위해 상수시간 비교(이미 저장된 코드 대상).
+ *   백업 코드는 일회성이라 사용 즉시 소진되므로 레거시 해시는 자연 소멸한다.
  */
 export async function verifyBackupCode(code: string, storedHash: string): Promise<boolean> {
-    const hash = await hashBackupCode(code);
-    if (hash.length !== storedHash.length) return false;
+    if (storedHash.startsWith("scrypt$") || storedHash.startsWith("$argon2") || storedHash.startsWith("pbkdf2$")) {
+        const { valid } = await verifyPassword(code.toUpperCase(), storedHash);
+        return valid;
+    }
+    // 레거시 무염 SHA-256 hex.
+    const enc = new TextEncoder();
+    const digest = await crypto.subtle.digest("SHA-256", enc.encode(code.toUpperCase()));
+    const legacy = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+    if (legacy.length !== storedHash.length) return false;
     let diff = 0;
-    for (let i = 0; i < hash.length; i++) {
-        diff |= hash.charCodeAt(i) ^ storedHash.charCodeAt(i);
+    for (let i = 0; i < legacy.length; i++) {
+        diff |= legacy.charCodeAt(i) ^ storedHash.charCodeAt(i);
     }
     return diff === 0;
 }
