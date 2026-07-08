@@ -15,7 +15,7 @@ import { translate } from "$lib/i18n/server";
  * 검증 통과 시 credential 의 lastUsedAt 갱신.
  */
 export const POST: RequestHandler = async ({ request, locals }) => {
-    requireServiceToken(request, locals.runtimeConfig);
+    await requireServiceToken(request, locals.runtimeConfig);
     const { db, rateLimitStore } = requireDbContext(locals);
 
     const config = locals.runtimeConfig;
