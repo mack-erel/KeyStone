@@ -15,6 +15,46 @@ function createLdapClient(config: LdapProviderConfig): ldap.Client {
     });
 }
 
+// ctrls H-API-2: starttls 모드는 반드시 bind 전에 STARTTLS extended operation 을
+// 실제로 협상해야 한다. 예전에는 buildUrl 이 ldap://(평문) 을 반환하고 tlsOptions 만
+// 설정한 채 STARTTLS 를 호출하지 않아, 관리자가 "암호화(starttls)"를 선택했음에도
+// bind 자격증명·사용자 비밀번호가 평문 소켓으로 전송됐다. 업그레이드가 실패하면
+// 평문 bind 로 진행하지 않고 fail-closed 한다 (다운그레이드 방지).
+function connectLdapClient(config: LdapProviderConfig): Promise<ldap.Client> {
+    const client = createLdapClient(config);
+    if (config.tlsMode !== "starttls") return Promise.resolve(client);
+
+    // 일부 타입 정의에 starttls/destroy 가 노출되지 않아 명시 캐스팅.
+    const tlsClient = client as unknown as {
+        starttls: (options: Record<string, unknown>, controls: unknown[], callback: (err: Error | null) => void) => void;
+        destroy?: () => void;
+    };
+
+    return new Promise<ldap.Client>((resolve, reject) => {
+        let settled = false;
+        const failClosed = (err: Error) => {
+            if (settled) return;
+            settled = true;
+            try {
+                tlsClient.destroy?.();
+            } catch {
+                /* noop */
+            }
+            reject(err);
+        };
+        client.on("error", failClosed);
+        tlsClient.starttls({ rejectUnauthorized: true }, [], (err: Error | null) => {
+            if (settled) return;
+            if (err) {
+                failClosed(err);
+                return;
+            }
+            settled = true; // 성공 — 이후 lingering error 핸들러는 outer 함수가 처리한다.
+            resolve(client);
+        });
+    });
+}
+
 /** DN + 패스워드로 LDAP bind. 실패 시 throw. 빈 패스워드는 anonymous bind 가 되므로 거부. */
 export async function ldapBind(config: LdapProviderConfig, dn: string, password: string): Promise<void> {
     if (!password) {
@@ -24,9 +64,8 @@ export async function ldapBind(config: LdapProviderConfig, dn: string, password:
     if (!dn) {
         throw new Error("LDAP bind: empty DN is not allowed");
     }
+    const client = await connectLdapClient(config);
     return new Promise((resolve, reject) => {
-        const client = createLdapClient(config);
-
         client.on("error", (err: Error) => {
             reject(err);
         });
@@ -44,9 +83,8 @@ export async function ldapBind(config: LdapProviderConfig, dn: string, password:
  * ou 가 여러 개인 서버에서 유저 DN 을 찾을 때 사용.
  */
 export async function ldapSearchDn(config: LdapProviderConfig, bindDn: string, bindPassword: string, filter: string): Promise<string | null> {
+    const client = await connectLdapClient(config);
     return new Promise((resolve, reject) => {
-        const client = createLdapClient(config);
-
         client.on("error", (err: Error) => {
             reject(err);
         });
@@ -87,9 +125,8 @@ export async function ldapSearchDn(config: LdapProviderConfig, bindDn: string, b
 
 /** bind 후 단일 엔트리의 속성을 조회한다. */
 export async function ldapFetchEntry(config: LdapProviderConfig, bindDn: string, bindPassword: string, entryDn: string, attributes: string[]): Promise<Record<string, string> | null> {
+    const client = await connectLdapClient(config);
     return new Promise((resolve, reject) => {
-        const client = createLdapClient(config);
-
         client.on("error", (err: Error) => {
             reject(err);
         });
