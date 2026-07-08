@@ -475,7 +475,15 @@ export const GET: RequestHandler = async (event) => {
     }
 
     // ── Case D: 그 외 fallback — 세션만 폐기하고 / 로 ───────────────────────────
-    if (locals.session) {
+    // ctrls LOW: 이 fallback 은 state-changing GET(세션 폐기)이라 <img src=".../saml/slo">
+    // 같은 cross-site 임베드로 강제 로그아웃(CSRF)이 가능했다. 진짜 SAML 로그아웃은 Case C
+    // (서명 검증된 SAMLRequest)로 처리되므로, 파라미터 없는 fallback 은 same-site 최상위
+    // 네비게이션(로그아웃 링크 클릭)에서만 세션을 폐기한다. Sec-Fetch 미지원 구형 브라우저는
+    // 통과. cross-site 임베드(image/iframe/empty 등)는 세션을 건드리지 않고 홈으로만 보낸다.
+    const fetchSite = event.request.headers.get("sec-fetch-site");
+    const fetchDest = event.request.headers.get("sec-fetch-dest");
+    const embeddedCrossSite = (fetchSite && fetchSite !== "same-origin" && fetchSite !== "same-site" && fetchSite !== "none") || (fetchDest && fetchDest !== "document");
+    if (locals.session && !embeddedCrossSite) {
         await db.update(sessions).set({ revokedAt: new Date() }).where(eq(sessions.id, locals.session.id));
         cookies.delete(SESSION_COOKIE_NAME, { path: "/" });
     }
