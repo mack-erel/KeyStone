@@ -5,9 +5,15 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { authenticateLocalUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
-import { checkRateLimit } from "$lib/server/ratelimit";
+import { checkRateLimit, peekRateLimit } from "$lib/server/ratelimit";
 import { translate } from "$lib/i18n/server";
 import { adminError } from "$lib/server/admin/errors";
+
+// ctrls M-8: admin 로그인도 사용자 로그인과 동일하게 계정 단위 잠금을 둔다(15분/10회).
+// 다수 IP 에서의 admin 계정 패스워드 스프레이를 차단한다. 사용자 로그인(M-2)과 동일한
+// "올바른 비밀번호는 항상 통과" 모델 — 잠금 상태여도 인증을 수행하고 실패한 경우에만 잠금 응답.
+const ADMIN_LOCK_WINDOW_MS = 15 * 60 * 1000;
+const ADMIN_LOCK_LIMIT = 10;
 
 function sanitizeRedirectTarget(target: string | null): string | null {
     if (!target) return null;
@@ -73,17 +79,32 @@ export const actions: Actions = {
             });
         }
 
+        // 계정 단위 잠금(M-8). 증가 없이 조회만 하고(성공 미카운트), 실패 분기에서만 기록한다.
+        const userLockKey = `admin-login:user:${username}`;
+        const lock = await peekRateLimit(rateLimitStore, userLockKey, { windowMs: ADMIN_LOCK_WINDOW_MS, limit: ADMIN_LOCK_LIMIT });
+        const accountLocked = !lock.allowed;
+
         const user = await authenticateLocalUser(db, tenant.id, username, password);
 
         if (!user) {
+            await checkRateLimit(rateLimitStore, userLockKey, { windowMs: ADMIN_LOCK_WINDOW_MS, limit: ADMIN_LOCK_LIMIT });
             await recordAuditEvent(db, {
                 tenantId: tenant.id,
                 kind: "login",
                 outcome: "failure",
                 ip: requestMetadata.ip,
                 userAgent: requestMetadata.userAgent,
-                detail: { username, via: "admin-login" },
+                detail: accountLocked ? { username, via: "admin-login", reason: "account_locked" } : { username, via: "admin-login" },
             });
+
+            // 올바른 비밀번호였다면 user 가 채워져 이 분기에 오지 않으므로 정상 관리자는 차단되지 않는다.
+            if (accountLocked) {
+                return fail(429, {
+                    username,
+                    redirectTo,
+                    error: adminError(locale, "login_account_locked", { minutes: Math.ceil(lock.retryAfterMs / 60000) }),
+                });
+            }
 
             return fail(400, {
                 username,
