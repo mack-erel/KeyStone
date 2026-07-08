@@ -224,6 +224,9 @@ export const oidcClients = pgTable(
         frontchannelLogoutSessionRequired: boolean("frontchannel_logout_session_required").notNull().default(false),
         backchannelLogoutUri: text("backchannel_logout_uri"),
         backchannelLogoutSessionRequired: boolean("backchannel_logout_session_required").notNull().default(false),
+        // role 변경 시 서명된 Security Event Token(SET)을 POST 할 RP 엔드포인트.
+        // null 이면 이 클라이언트는 role-change SET 을 받지 않는다 (back-channel logout 과 동일한 서명/봉투).
+        roleChangeUri: text("role_change_uri"),
         scopes: text("scopes").notNull().default("openid"),
         grantTypes: text("grant_types").notNull().default("authorization_code,refresh_token"),
         responseTypes: text("response_types").notNull().default("code"),

@@ -5,9 +5,87 @@ import { requireAdminContext, assertUserInTenant } from "$lib/server/auth/guards
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
 import { oidcClients, samlSps, serviceRoles, userServiceAssignments } from "$lib/server/db/schema";
 import { adminError, requireFormId } from "$lib/server/admin/errors";
+import type { DB } from "$lib/server/db";
+import { getActiveAssignment } from "$lib/server/access/service-permissions";
+import { getActiveSigningKey } from "$lib/server/crypto/keys";
+import { resolveIssuerUrl } from "$lib/server/auth/runtime";
+import { getRoleChangeTarget, sendRoleChangeSet } from "$lib/server/oidc/role-change";
 
 // 사용자 상세 페이지의 서비스 권한(assignment) 액션.
 type UserActionEvent = RequestEvent<{ id: string }, "/admin/users/[id]">;
+
+/**
+ * OIDC role 변경 SET 을 대상 클라이언트로 fire-and-forget 발행한다.
+ *
+ * DB 변경(부여/회수) **직후** 호출한다. 변경 후의 권위 있는 최종 roles 를 `getActiveAssignment`
+ * 로 다시 읽어(로그인 시 token/userinfo 가 쓰는 것과 동일 경로) 스냅샷으로 담는다:
+ *   - 부여/역할변경 후 active role 존재 → `[role.key]`
+ *   - 회수 후(또는 role 없음) → `[]`  → RP 가 user 로 강등
+ *
+ * serviceType !== 'oidc' 이거나, role_change_uri 미설정 클라이언트, 서명키/issuer 미비 등에서는
+ * 조용히 skip 한다. 전송/조립 오류는 삼킨다(재시도 없음, back-channel logout 과 동일).
+ */
+async function emitRoleChangeSet(event: UserActionEvent, db: DB, tenantId: string, userId: string, serviceType: string, serviceRefId: string): Promise<void> {
+    if (serviceType !== "oidc") return;
+    try {
+        const { locals, url, platform } = event;
+        const signingKeySecrets = locals.runtimeConfig.signingKeySecrets;
+        if (signingKeySecrets.length === 0) return;
+
+        const target = await getRoleChangeTarget(db, tenantId, serviceRefId);
+        if (!target) return; // role_change_uri 미설정/비활성 클라이언트 → skip
+
+        // 변경 후 권위 있는 최종 roles (로그인 roles 클레임과 동일 값).
+        const assignment = await getActiveAssignment(db, { tenantId, userId, serviceType: "oidc", serviceRefId });
+        const roles = assignment?.role ? [assignment.role.key] : [];
+
+        const issuerUrl = resolveIssuerUrl(locals.runtimeConfig, url.origin);
+        const signingKey = await getActiveSigningKey(db, tenantId, signingKeySecrets);
+        if (!signingKey) return;
+
+        const actorId = locals.user?.id ?? null;
+        const meta = getRequestMetadata(event);
+        const auditDetail = { clientId: target.clientId, roleChangeUri: target.roleChangeUri, roles };
+        // 전송 + 결과 audit 를 한 묶음으로 처리한다 — 응답 이후 실행(waitUntil)이므로 여기서 완결한다.
+        // 성공/실패를 kind="role_change_set_sent" + outcome 으로 남긴다(발행 실패도 추적 가능).
+        const task = sendRoleChangeSet(target, userId, roles, issuerUrl, signingKey.privateKey, signingKey.kid)
+            .then(() =>
+                recordAuditEvent(db, {
+                    tenantId,
+                    userId,
+                    actorId,
+                    spOrClientId: serviceRefId,
+                    kind: "role_change_set_sent",
+                    outcome: "success",
+                    ip: meta.ip,
+                    userAgent: meta.userAgent,
+                    detail: auditDetail,
+                }),
+            )
+            .catch(() =>
+                recordAuditEvent(db, {
+                    tenantId,
+                    userId,
+                    actorId,
+                    spOrClientId: serviceRefId,
+                    kind: "role_change_set_sent",
+                    outcome: "failure",
+                    ip: meta.ip,
+                    userAgent: meta.userAgent,
+                    detail: auditDetail,
+                }).catch(() => undefined),
+            );
+
+        const wait = platform?.ctx?.waitUntil?.bind(platform.ctx);
+        if (wait) {
+            wait(task);
+        } else {
+            await task;
+        }
+    } catch {
+        // 발행/기록 실패는 삼킨다 — role 변경 자체(및 granted/revoked audit)는 이미 커밋됐다.
+    }
+}
 
 // ── 서비스 권한 부여 ──────────────────────────────────────────────────────
 export async function addAssignment(event: UserActionEvent) {
@@ -114,6 +192,9 @@ export async function addAssignment(event: UserActionEvent) {
         detail: { serviceType, serviceRefId, serviceRoleId, expiresAt },
     });
 
+    // role 변경을 대상 RP 에 push (oidc + role_change_uri 설정 시). 변경 후 active role 스냅샷.
+    await emitRoleChangeSet(event, db, tenant.id, userId, serviceType, serviceRefId);
+
     return { addedAssignment: true };
 }
 
@@ -125,8 +206,20 @@ export async function revokeAssignment(event: UserActionEvent) {
     if (!idr.ok) return idr.failure;
     const assignmentId = idr.id;
 
+    // 삭제 전 대상 서비스를 읽어 둔다 — 회수 후 role-change SET(roles: []) 발행에 필요.
+    const [target] = await db
+        .select({ serviceType: userServiceAssignments.serviceType, serviceRefId: userServiceAssignments.serviceRefId })
+        .from(userServiceAssignments)
+        .where(and(eq(userServiceAssignments.id, assignmentId), eq(userServiceAssignments.userId, params.id), eq(userServiceAssignments.tenantId, tenant.id)))
+        .limit(1);
+
     // IDOR 가드: 본 페이지 user 의 assignment 만 영향
     await db.delete(userServiceAssignments).where(and(eq(userServiceAssignments.id, assignmentId), eq(userServiceAssignments.userId, params.id), eq(userServiceAssignments.tenantId, tenant.id)));
+
+    // 회수 → RP 에 roles: [] push (oidc + role_change_uri 설정 시). 삭제 후이므로 active role 없음.
+    if (target) {
+        await emitRoleChangeSet(event, db, tenant.id, params.id, target.serviceType, target.serviceRefId);
+    }
 
     const meta = getRequestMetadata(event);
     await recordAuditEvent(db, {

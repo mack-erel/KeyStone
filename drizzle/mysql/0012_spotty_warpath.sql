@@ -1,0 +1,1 @@
+ALTER TABLE `oidc_clients` ADD `role_change_uri` text;

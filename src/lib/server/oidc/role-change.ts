@@ -1,0 +1,80 @@
+/**
+ * OIDC Role-Change Security Event Token (SET) 발행.
+ *
+ * KeyStone(IdP)에서 관리자가 사용자의 서비스 role 을 변경(부여/회수)하면, back-channel
+ * logout 과 **동일한 서명키·JWKS·SET 봉투**로 서명된 토큰을 대상 RP 의 `role_change_uri` 로
+ * POST 한다. RP 는 세션을 끊지 않고 members.role 만 갱신하므로 재로그인 없이 다음 요청부터 반영된다.
+ *
+ * 계약(수신 RP 와 바이트 단위 일치):
+ *   - 전송: Content-Type: application/x-www-form-urlencoded, body `role_change_token=<JWT>`
+ *   - 서명: 테넌트 서명키 RS256 (RP 가 KeyStone JWKS 로 검증), typ=secevent+jwt
+ *   - 클레임: iss / aud(=clientId) / iat / sub(=userId) / jti / events
+ *   - events = { "https://idp.hyochan.site/event/role-change": { roles: string[] } }
+ *   - nonce 금지 (RP 가 있으면 거부 — id_token 오용 방지)
+ *
+ * back-channel logout 발행(`logout.ts`)을 그대로 본떠 만든다 — 새 서명 스킴/시크릿 불필요.
+ */
+
+import { and, eq, isNotNull } from "drizzle-orm";
+import type { DB } from "$lib/server/db";
+import { oidcClients } from "$lib/server/db/schema";
+import { signJwt } from "$lib/server/crypto/keys";
+
+/**
+ * role-change SET 의 event 식별자. RP 상수(`ROLE_CHANGE_EVENT`)와 **바이트 단위로 일치**해야 한다.
+ * 변경 시 RP 검증이 즉시 깨진다.
+ */
+export const ROLE_CHANGE_EVENT = "https://idp.hyochan.site/event/role-change";
+
+export interface RoleChangeTarget {
+    clientId: string;
+    roleChangeUri: string;
+}
+
+/**
+ * 배정 대상 OIDC 클라이언트(=assignment.serviceRefId = oidcClients.id) 1곳을 조회해,
+ * enabled 이고 role_change_uri 가 설정돼 있으면 SET 발행 타깃을 반환한다. 아니면 null.
+ *
+ * logout 은 세션에 묶인 전 클라이언트가 대상이지만, role 변경은 **그 배정의 대상 클라이언트 1곳**만 통지한다.
+ */
+export async function getRoleChangeTarget(db: DB, tenantId: string, oidcClientDbId: string): Promise<RoleChangeTarget | null> {
+    const [row] = await db
+        .select({
+            clientId: oidcClients.clientId,
+            roleChangeUri: oidcClients.roleChangeUri,
+        })
+        .from(oidcClients)
+        .where(and(eq(oidcClients.id, oidcClientDbId), eq(oidcClients.tenantId, tenantId), eq(oidcClients.enabled, true), isNotNull(oidcClients.roleChangeUri)))
+        .limit(1);
+
+    if (!row?.roleChangeUri) return null;
+    return { clientId: row.clientId, roleChangeUri: row.roleChangeUri };
+}
+
+/**
+ * 단일 role-change 타깃에 서명된 SET 을 POST 한다.
+ * 네트워크/비정상 상태 코드는 호출자에서 swallow 하도록 래핑한다(logout 과 동일 — 재시도 없음).
+ *
+ * @param roles 변경 후의 **권위 있는 최종 roles** (부여→[role.key], 회수→[]).
+ *              로그인 시 내려주는 roles 클레임과 완전히 동일한 값이어야 한다.
+ */
+export async function sendRoleChangeSet(target: RoleChangeTarget, userId: string, roles: string[], issuerUrl: string, privateKey: CryptoKey, kid: string): Promise<void> {
+    const payload: Record<string, unknown> = {
+        iss: issuerUrl,
+        sub: userId,
+        aud: target.clientId,
+        iat: Math.floor(Date.now() / 1000),
+        jti: crypto.randomUUID(),
+        events: { [ROLE_CHANGE_EVENT]: { roles } },
+    };
+
+    // SET 관례상 typ=secevent+jwt. id_token 오용을 막기 위해 nonce 는 절대 넣지 않는다.
+    const jwt = await signJwt(payload, privateKey, kid, { typ: "secevent+jwt" });
+    const body = new URLSearchParams({ role_change_token: jwt });
+
+    await fetch(target.roleChangeUri, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+    });
+}
