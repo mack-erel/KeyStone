@@ -1,0 +1,223 @@
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { eq } from "drizzle-orm";
+import { addAssignment, revokeAssignment } from "../../src/lib/server/admin/user-actions/service";
+import { b64uDecode, getActiveSigningKey } from "../../src/lib/server/crypto/keys";
+import { getRuntimeConfig } from "../../src/lib/server/auth/runtime";
+import { ROLE_CHANGE_EVENT } from "../../src/lib/server/oidc/role-change";
+import { auditEvents, oidcClients, serviceRoles, userServiceAssignments } from "../../src/lib/server/db/schema";
+import { openMemoryDb, seedTenantAndSigningKey, seedUser, seedOidcClient, seedSamlSp, makeEvent, makePlatform, TEST_ISSUER_URL, type MemoryDb } from "./harness";
+import type { Tenant, User } from "../../src/lib/server/db/schema";
+
+// role 부여/회수 시 대상 OIDC 클라이언트의 role_change_uri 로 서명된 SET 이 발행되는지를
+// 실 DB + 실 admin 액션(addAssignment/revokeAssignment)으로 검증한다.
+// 계약(§1): iss / aud(=clientId) / sub / iat / jti / events[ROLE_CHANGE_EVENT].roles, nonce 금지, typ=secevent+jwt.
+
+const CLIENT_ID = "role-change-client-abc123";
+const ROLE_CHANGE_URI = "https://rp.test.example/auth/oidc/role-change";
+
+let mem: MemoryDb;
+let tenant: Tenant;
+let admin: User;
+let target: User;
+
+// 캡처된 outbound POST (role_change_uri 전송).
+interface CapturedPost {
+    url: string;
+    body: string;
+    contentType: string | null;
+}
+let captured: CapturedPost[];
+let originalFetch: typeof globalThis.fetch;
+let failFetch: boolean;
+
+beforeEach(async () => {
+    mem = await openMemoryDb();
+    tenant = await seedTenantAndSigningKey(mem);
+    admin = await seedUser(mem.db, { tenantId: tenant.id, email: "admin@test.example", role: "admin" });
+    target = await seedUser(mem.db, { tenantId: tenant.id, email: "member@test.example", role: "user" });
+
+    captured = [];
+    failFetch = false;
+    originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        captured.push({
+            url: String(input),
+            body: String(init?.body ?? ""),
+            contentType: new Headers(init?.headers).get("content-type"),
+        });
+        if (failFetch) throw new Error("network down");
+        return new Response(null, { status: 200 });
+    }) as typeof globalThis.fetch;
+});
+
+afterEach(() => {
+    globalThis.fetch = originalFetch;
+    mem.close();
+});
+
+/** roleChangeUri 를 갖춘 OIDC 클라이언트 + (선택) role 을 시드한다. */
+async function seedClientWithRole(opts: { roleChangeUri?: string | null; roleKey?: string } = {}): Promise<{ clientDbId: string; roleId: string | null }> {
+    const client = await seedOidcClient(mem.db, {
+        tenantId: tenant.id,
+        clientId: CLIENT_ID,
+        secret: "role-change-secret-0123456789abcdef",
+        redirectUris: ["https://rp.test.example/callback"],
+    });
+    await mem.db
+        .update(oidcClients)
+        .set({ roleChangeUri: opts.roleChangeUri === undefined ? ROLE_CHANGE_URI : opts.roleChangeUri })
+        .where(eq(oidcClients.id, client.id));
+
+    let roleId: string | null = null;
+    if (opts.roleKey) {
+        roleId = crypto.randomUUID();
+        await mem.db.insert(serviceRoles).values({
+            id: roleId,
+            tenantId: tenant.id,
+            serviceType: "oidc",
+            serviceRefId: client.id,
+            key: opts.roleKey,
+            label: opts.roleKey,
+        });
+    }
+    return { clientDbId: client.id, roleId };
+}
+
+/** admin 컨텍스트의 POST 액션 이벤트를 만든다(params.id = 대상 사용자). */
+function makeAdminEvent(form: Record<string, string>) {
+    const event = makeEvent({
+        method: "POST",
+        url: `${TEST_ISSUER_URL}/admin/users/${target.id}`,
+        form,
+        locals: { db: mem.db, tenant, user: admin, env: mem.env },
+    });
+    (event as unknown as { params: { id: string } }).params = { id: target.id };
+    return event as Parameters<typeof addAssignment>[0];
+}
+
+function decodeJwt(jwt: string): { header: Record<string, unknown>; payload: Record<string, unknown> } {
+    const [h, p] = jwt.split(".");
+    const dec = new TextDecoder();
+    return {
+        header: JSON.parse(dec.decode(b64uDecode(h))) as Record<string, unknown>,
+        payload: JSON.parse(dec.decode(b64uDecode(p))) as Record<string, unknown>,
+    };
+}
+
+/** 캡처된 form body 에서 role_change_token 을 뽑는다. */
+function extractToken(body: string): string {
+    const params = new URLSearchParams(body);
+    return params.get("role_change_token") ?? "";
+}
+
+/** role_change_set_sent audit 이벤트를 조회한다. */
+async function roleChangeAudits(): Promise<{ outcome: string; detailJson: string | null }[]> {
+    return mem.db.select({ outcome: auditEvents.outcome, detailJson: auditEvents.detailJson }).from(auditEvents).where(eq(auditEvents.kind, "role_change_set_sent"));
+}
+
+/** 활성 서명키 공개 JWK 로 SET 서명을 검증한다. */
+async function verifySignature(jwt: string): Promise<boolean> {
+    const config = getRuntimeConfig(makePlatform(mem.env));
+    const key = await getActiveSigningKey(mem.db, tenant.id, config.signingKeySecrets);
+    if (!key) throw new Error("활성 서명키 없음");
+    const publicKey = await crypto.subtle.importKey("jwk", key.publicJwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+    const [h, p, s] = jwt.split(".");
+    return crypto.subtle.verify("RSASSA-PKCS1-v1_5", publicKey, b64uDecode(s), new TextEncoder().encode(`${h}.${p}`));
+}
+
+describe("role-change SET 발행", () => {
+    it("addAssignment(role 부여): 대상 role_change_uri 로 정확히 1건 POST, 계약대로 서명된 SET", async () => {
+        const { clientDbId, roleId } = await seedClientWithRole({ roleKey: "admin" });
+
+        const before = Math.floor(Date.now() / 1000);
+        const res = await addAssignment(makeAdminEvent({ service: `oidc:${clientDbId}`, serviceRoleId: roleId! }));
+        const after = Math.floor(Date.now() / 1000);
+
+        expect(res).toMatchObject({ addedAssignment: true });
+        expect(captured).toHaveLength(1);
+        expect(captured[0].url).toBe(ROLE_CHANGE_URI);
+        expect(captured[0].contentType).toBe("application/x-www-form-urlencoded");
+
+        const token = extractToken(captured[0].body);
+        expect(token).not.toBe("");
+        expect(await verifySignature(token)).toBe(true);
+
+        const { header, payload } = decodeJwt(token);
+        expect(header.typ).toBe("secevent+jwt");
+        expect(header.alg).toBe("RS256");
+        expect(payload.iss).toBe(TEST_ISSUER_URL);
+        expect(payload.aud).toBe(CLIENT_ID); // ⚠️ clientId 문자열 (oidcClients.id uuid 아님)
+        expect(payload.sub).toBe(target.id);
+        expect(typeof payload.jti).toBe("string");
+        expect(typeof payload.iat).toBe("number");
+        expect(payload.iat as number).toBeGreaterThanOrEqual(before);
+        expect(payload.iat as number).toBeLessThanOrEqual(after);
+        expect(payload.nonce).toBeUndefined(); // nonce 금지
+        expect(payload.events).toEqual({ [ROLE_CHANGE_EVENT]: { roles: ["admin"] } });
+
+        // 발행 성공 audit 기록
+        const audits = await roleChangeAudits();
+        expect(audits).toHaveLength(1);
+        expect(audits[0].outcome).toBe("success");
+        expect(JSON.parse(audits[0].detailJson!)).toMatchObject({ clientId: CLIENT_ID, roles: ["admin"] });
+    });
+
+    it("addAssignment(role 없이 access 만): roles: [] 로 발행 (로그인 roles 클레임과 동일)", async () => {
+        const { clientDbId } = await seedClientWithRole({ roleKey: "admin" });
+
+        await addAssignment(makeAdminEvent({ service: `oidc:${clientDbId}` }));
+
+        expect(captured).toHaveLength(1);
+        const { payload } = decodeJwt(extractToken(captured[0].body));
+        expect(payload.events).toEqual({ [ROLE_CHANGE_EVENT]: { roles: [] } });
+    });
+
+    it("revokeAssignment(회수): roles: [] SET 을 발행한다", async () => {
+        const { clientDbId, roleId } = await seedClientWithRole({ roleKey: "moderator" });
+        await addAssignment(makeAdminEvent({ service: `oidc:${clientDbId}`, serviceRoleId: roleId! }));
+        captured = []; // 부여 SET 은 무시하고 회수만 관찰
+
+        const [assignment] = await mem.db.select({ id: userServiceAssignments.id }).from(userServiceAssignments).where(eq(userServiceAssignments.userId, target.id)).limit(1);
+        const res = await revokeAssignment(makeAdminEvent({ assignmentId: assignment.id }));
+
+        expect(res).toMatchObject({ revokedAssignment: true });
+        expect(captured).toHaveLength(1);
+        expect(captured[0].url).toBe(ROLE_CHANGE_URI);
+        const { payload } = decodeJwt(extractToken(captured[0].body));
+        expect(payload.sub).toBe(target.id);
+        expect(payload.events).toEqual({ [ROLE_CHANGE_EVENT]: { roles: [] } });
+    });
+
+    it("role_change_uri 미설정 클라이언트면 발행하지 않는다", async () => {
+        const { clientDbId, roleId } = await seedClientWithRole({ roleChangeUri: null, roleKey: "admin" });
+
+        const res = await addAssignment(makeAdminEvent({ service: `oidc:${clientDbId}`, serviceRoleId: roleId! }));
+
+        expect(res).toMatchObject({ addedAssignment: true });
+        expect(captured).toHaveLength(0);
+    });
+
+    it("serviceType !== 'oidc' (saml) 이면 발행하지 않는다", async () => {
+        const sp = await seedSamlSp(mem.db, { tenantId: tenant.id, entityId: "https://sp.test.example/metadata", acsUrl: "https://sp.test.example/acs" });
+
+        const res = await addAssignment(makeAdminEvent({ service: `saml:${sp.id}` }));
+
+        expect(res).toMatchObject({ addedAssignment: true });
+        expect(captured).toHaveLength(0);
+    });
+
+    it("전송(fetch) 실패해도 액션 자체는 성공한다 (발행 실패는 삼킨다)", async () => {
+        const { clientDbId, roleId } = await seedClientWithRole({ roleKey: "admin" });
+        failFetch = true;
+
+        const res = await addAssignment(makeAdminEvent({ service: `oidc:${clientDbId}`, serviceRoleId: roleId! }));
+
+        expect(res).toMatchObject({ addedAssignment: true });
+        expect(captured).toHaveLength(1); // 시도는 했으나 던진다
+
+        // 전송 실패는 outcome=failure audit 로 남는다
+        const audits = await roleChangeAudits();
+        expect(audits).toHaveLength(1);
+        expect(audits[0].outcome).toBe("failure");
+    });
+});

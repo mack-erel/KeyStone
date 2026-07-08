@@ -85,6 +85,13 @@
       "when": 1783414015731,
       "tag": "0011_zippy_sugar_man",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783484292675,
+      "tag": "0012_foamy_prism",
+      "breakpoints": true
     }
   ]
 }

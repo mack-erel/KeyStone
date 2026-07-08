@@ -144,6 +144,16 @@ function urisToText(json: string | null): string {
                     </div>
                 </div>
                 <div>
+                    <label for="c-roleChange" class="block text-xs font-medium text-gray-700">Role Change URI</label>
+                    <input
+                        id="c-roleChange"
+                        type="url"
+                        name="roleChangeUri"
+                        placeholder="https://sp.example.com/auth/oidc/role-change"
+                        class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                    <p class="mt-1 text-xs text-gray-500">role 변경 시 서명된 Security Event Token 을 이 URI 로 push (세션 유지)</p>
+                </div>
+                <div>
                     <label for="c-authMethod" class="block text-xs font-medium text-gray-700">{t("oidc.auth_method_label")}</label>
                     <select id="c-authMethod" name="tokenEndpointAuthMethod" class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none">
                         <option value="client_secret_basic">client_secret_basic</option>
@@ -331,6 +341,17 @@ function urisToText(json: string | null): string {
                                                     class="h-4 w-4 rounded border-gray-300" />
                                                 <label for="e-bcSession-{client.id}" class="text-xs text-gray-600">session required (include sid)</label>
                                             </div>
+                                        </div>
+                                        <div>
+                                            <label for="e-roleChange-{client.id}" class="block text-xs font-medium text-gray-700">Role Change URI</label>
+                                            <input
+                                                id="e-roleChange-{client.id}"
+                                                type="url"
+                                                name="roleChangeUri"
+                                                value={client.roleChangeUri ?? ""}
+                                                placeholder="https://sp.example.com/auth/oidc/role-change"
+                                                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                                            <p class="mt-1 text-xs text-gray-500">role 변경 시 서명된 Security Event Token 을 이 URI 로 push (세션 유지)</p>
                                         </div>
                                         <div class="flex items-center gap-4">
                                             <div class="flex items-center gap-2">

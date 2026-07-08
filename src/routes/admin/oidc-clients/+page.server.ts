@@ -123,6 +123,7 @@ export const load: PageServerLoad = async ({ locals, cookies, url }) => {
             frontchannelLogoutSessionRequired: oidcClients.frontchannelLogoutSessionRequired,
             backchannelLogoutUri: oidcClients.backchannelLogoutUri,
             backchannelLogoutSessionRequired: oidcClients.backchannelLogoutSessionRequired,
+            roleChangeUri: oidcClients.roleChangeUri,
             scopes: oidcClients.scopes,
             tokenEndpointAuthMethod: oidcClients.tokenEndpointAuthMethod,
             requirePkce: oidcClients.requirePkce,
@@ -152,6 +153,7 @@ export const actions: Actions = {
         const postLogoutUrisRaw = String(fd.get("postLogoutRedirectUris") ?? "").trim();
         const frontchannelLogoutUri = String(fd.get("frontchannelLogoutUri") ?? "").trim();
         const backchannelLogoutUri = String(fd.get("backchannelLogoutUri") ?? "").trim();
+        const roleChangeUri = String(fd.get("roleChangeUri") ?? "").trim();
         const frontchannelLogoutSessionRequired = fd.get("frontchannelLogoutSessionRequired") === "true";
         const backchannelLogoutSessionRequired = fd.get("backchannelLogoutSessionRequired") === "true";
         const scopesRaw = String(fd.get("scopes") ?? "openid").trim();
@@ -179,6 +181,8 @@ export const actions: Actions = {
         if (!frontV.ok) return fail(400, { create: true, error: frontV.reason });
         const backV = validateSingleUri(backchannelLogoutUri, "Backchannel Logout URI", locale);
         if (!backV.ok) return fail(400, { create: true, error: backV.reason });
+        const roleChangeV = validateSingleUri(roleChangeUri, "Role Change URI", locale);
+        if (!roleChangeV.ok) return fail(400, { create: true, error: roleChangeV.reason });
 
         const scopesV = normalizeScopes(scopesRaw, locale);
         if (!scopesV.ok) return fail(400, { create: true, error: scopesV.reason });
@@ -199,6 +203,7 @@ export const actions: Actions = {
             frontchannelLogoutSessionRequired,
             backchannelLogoutUri: backchannelLogoutUri || null,
             backchannelLogoutSessionRequired,
+            roleChangeUri: roleChangeUri || null,
             scopes: scopesV.value,
             tokenEndpointAuthMethod: tokenMethod,
             requirePkce,
@@ -236,6 +241,7 @@ export const actions: Actions = {
         const postLogoutUrisRaw = String(fd.get("postLogoutRedirectUris") ?? "").trim();
         const frontchannelLogoutUri = String(fd.get("frontchannelLogoutUri") ?? "").trim();
         const backchannelLogoutUri = String(fd.get("backchannelLogoutUri") ?? "").trim();
+        const roleChangeUri = String(fd.get("roleChangeUri") ?? "").trim();
         const frontchannelLogoutSessionRequired = fd.get("frontchannelLogoutSessionRequired") === "true";
         const backchannelLogoutSessionRequired = fd.get("backchannelLogoutSessionRequired") === "true";
         const scopesRaw = String(fd.get("scopes") ?? "openid").trim();
@@ -252,6 +258,8 @@ export const actions: Actions = {
         if (!frontV.ok) return fail(400, { error: frontV.reason });
         const backV = validateSingleUri(backchannelLogoutUri, "Backchannel Logout URI", locale);
         if (!backV.ok) return fail(400, { error: backV.reason });
+        const roleChangeV = validateSingleUri(roleChangeUri, "Role Change URI", locale);
+        if (!roleChangeV.ok) return fail(400, { error: roleChangeV.reason });
         const scopesV = normalizeScopes(scopesRaw, locale);
         if (!scopesV.ok) return fail(400, { error: scopesV.reason });
 
@@ -277,6 +285,7 @@ export const actions: Actions = {
                 frontchannelLogoutSessionRequired,
                 backchannelLogoutUri: backchannelLogoutUri || null,
                 backchannelLogoutSessionRequired,
+                roleChangeUri: roleChangeUri || null,
                 scopes: scopesV.value,
                 requirePkce,
                 allowWildcardRedirectUri,
