@@ -10,6 +10,12 @@ updates:
       open-pull-requests-limit: 10
       labels:
           - "dependencies"
+      ignore:
+          # typescript 7.x (native/Go tsc) 는 typescript-eslint 미지원 (peer <6.1.0)
+          # — typescript-estree 가 "Cannot read properties of undefined (reading 'Cjs')"
+          # 로 크래시. typescript-eslint 가 TS7 지원할 때까지 major bump 차단.
+          - dependency-name: "typescript"
+            versions: [">=7.0.0"]
       groups:
           svelte:
               patterns:
