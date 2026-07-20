@@ -10,3 +10,6 @@ bun.lock
 /.claude/
 /.omc/
 /worker-configuration.d.ts
+
+# 작업용 기획/계획 문서 — 서식 강제 대상 아님(마크다운 원문 보존)
+/docs/plans/
