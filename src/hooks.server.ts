@@ -12,7 +12,13 @@ import { LOCALE_COOKIE_NAME, resolveLocale } from "$lib/server/locale";
 // ctrls H-AUTH-1: /oidc/end-session 추가 — POST 가 cookie 기반 세션을 폐기하므로
 // browser-initiated CSRF 면적이 있다. 핸들러 자체 Origin 검사 + hook 의 origin
 // 검사 둘 다로 defense-in-depth.
-const CSRF_PROTECTED = [/^\/admin(\/|$)/, /^\/account(\/|$)/, /^\/(login|signup|find-id|find-password|reset-password|mfa|logout)(\/|$)/, /^\/api\/webauthn\//, /^\/oidc\/end-session(\/|$)/];
+const CSRF_PROTECTED = [
+    /^\/admin(\/|$)/,
+    /^\/account(\/|$)/,
+    /^\/(login|signup|find-id|find-password|reset-password|mfa|logout|verify-email|accept-invite)(\/|$)/,
+    /^\/api\/webauthn\//,
+    /^\/oidc\/end-session(\/|$)/,
+];
 
 // CSRF: 프로토콜 자체 인증으로 보호되므로 origin 검사를 건너뛸 라우트 (서버-서버 요청 또는 cookie 미사용)
 // ctrls H-AUTH-1: 기존 정규식이 너무 광범위(`/oidc/` 전체)했기 때문에 정확한 endpoint

@@ -3,6 +3,7 @@ import { clientSkins } from "$lib/server/db/schema";
 import { and, eq } from "drizzle-orm";
 import { sanitizeSkinHtml } from "./sanitize";
 import { getSkinCacheStore } from "./storage";
+import { assertResolvedHostAllowed } from "$lib/server/validation";
 
 const CACHE_PREFIX = "skins/";
 
@@ -126,6 +127,13 @@ export async function resolveSkinHtml(
     try {
         const fetchUrl = isFetchUrlAllowed(skin.fetchUrl);
         if (!fetchUrl) return null;
+
+        // ctrls R7: DNS 리바인딩 완화 — 실호스트 해석 후 내부 IP 로 가면 skin fetch 를 건너뛴다.
+        try {
+            await assertResolvedHostAllowed(fetchUrl.hostname);
+        } catch {
+            return null;
+        }
 
         const headers: Record<string, string> = { Accept: "text/html" };
         if (skin.fetchSecret) {

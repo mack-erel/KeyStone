@@ -59,6 +59,20 @@ export const actions: Actions = {
             return fail(400, { error: translate(locals.locale, "profile.err_birthdate_format") });
         }
 
+        // ctrls LOW-PROFILE: 자유 텍스트 필드에 길이 상한을 둔다. 출력은 Svelte 이스케이프로
+        // XSS 는 없지만, 무제한 입력은 저장소 팽창/DoS 벡터이고 OIDC/SAML claim 으로도 전파된다.
+        const tooLong =
+            (displayName?.length ?? 0) > 200 ||
+            (givenName?.length ?? 0) > 200 ||
+            (familyName?.length ?? 0) > 200 ||
+            (phoneNumber?.length ?? 0) > 64 ||
+            (bio?.length ?? 0) > 1000 ||
+            locale.length > 32 ||
+            zoneinfo.length > 64;
+        if (tooLong) {
+            return fail(400, { error: translate(locals.locale, "profile.err_field_too_long") });
+        }
+
         await db
             .update(users)
             .set({

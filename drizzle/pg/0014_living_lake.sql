@@ -1,0 +1,2 @@
+ALTER TABLE "oidc_clients" ADD COLUMN "require_verified_email" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "saml_sps" ADD COLUMN "require_verified_email" boolean DEFAULT false NOT NULL;

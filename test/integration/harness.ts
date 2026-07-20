@@ -267,6 +267,7 @@ export interface SeedOidcClientOptions {
     grantTypes?: string;
     tokenEndpointAuthMethod?: "client_secret_basic" | "client_secret_post" | "none";
     requirePkce?: boolean;
+    requireVerifiedEmail?: boolean;
     allowAllUsers?: boolean;
 }
 
@@ -283,6 +284,7 @@ export async function seedOidcClient(db: DB, opts: SeedOidcClientOptions): Promi
         grantTypes: opts.grantTypes ?? "authorization_code,refresh_token",
         tokenEndpointAuthMethod: opts.tokenEndpointAuthMethod ?? "client_secret_basic",
         requirePkce: opts.requirePkce ?? true,
+        requireVerifiedEmail: opts.requireVerifiedEmail ?? false,
         allowAllUsers: opts.allowAllUsers ?? false,
         enabled: true,
     });
@@ -533,6 +535,7 @@ export interface SeedSamlSpOptions {
     signAssertion?: boolean;
     encryptAssertion?: boolean;
     wantAuthnRequestsSigned?: boolean;
+    requireVerifiedEmail?: boolean;
     allowedAttributes?: string[] | null;
     attributeMappingJson?: string | null;
     allowAllUsers?: boolean;
@@ -554,6 +557,7 @@ export async function seedSamlSp(db: DB, opts: SeedSamlSpOptions): Promise<SamlS
         signAssertion: opts.signAssertion ?? true,
         encryptAssertion: opts.encryptAssertion ?? false,
         wantAuthnRequestsSigned: opts.wantAuthnRequestsSigned ?? false,
+        requireVerifiedEmail: opts.requireVerifiedEmail ?? false,
         allowedAttributes: opts.allowedAttributes === undefined ? null : opts.allowedAttributes ? JSON.stringify(opts.allowedAttributes) : null,
         attributeMappingJson: opts.attributeMappingJson ?? null,
         allowAllUsers: opts.allowAllUsers ?? false,

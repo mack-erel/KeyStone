@@ -32,8 +32,8 @@ const LOOKUP_LIMIT = 120; // IP당 분당 120회
  *       또는 404.
  */
 export const GET: RequestHandler = async (event) => {
-    const { request, url, locals } = event;
-    await requireServiceToken(request, locals.runtimeConfig);
+    const { url, locals } = event;
+    await requireServiceToken(event);
     const { db, rateLimitStore } = requireDbContext(locals);
 
     const id = url.searchParams.get("id")?.trim();

@@ -9,6 +9,7 @@ import "reflect-metadata";
 import { DOMParser, onErrorStopParsing } from "@xmldom/xmldom";
 import { X509Certificate } from "@peculiar/x509";
 import { env } from "$env/dynamic/private";
+import { isSpCertTimeValid } from "./cert-validity";
 
 const MAX_COMPRESSED_BYTES = 8 * 1024; // 8 KB
 const MAX_DECOMPRESSED_BYTES = 64 * 1024; // 64 KB
@@ -104,6 +105,8 @@ export async function verifySamlRedirectSignature(rawQueryString: string, certPe
 
         // SP 인증서에서 공개 키(SPKI) 추출
         const cert = new X509Certificate(certPem);
+        // ctrls R2: 만료·미유효 SP 인증서 거부(기본 on, IDP_ENFORCE_SP_CERT_VALIDITY=false 로 완화).
+        if (!isSpCertTimeValid(cert)) return false;
         const spkiDer = cert.publicKey.rawData;
         const publicKey = await crypto.subtle.importKey("spki", spkiDer, algorithm, false, ["verify"]);
 

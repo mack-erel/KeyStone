@@ -23,6 +23,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             signResponse: samlSps.signResponse,
             encryptAssertion: samlSps.encryptAssertion,
             wantAuthnRequestsSigned: samlSps.wantAuthnRequestsSigned,
+            requireVerifiedEmail: samlSps.requireVerifiedEmail,
             allowedAttributes: samlSps.allowedAttributes,
             allowAllUsers: samlSps.allowAllUsers,
             enabled: samlSps.enabled,
@@ -75,6 +76,7 @@ export const actions: Actions = {
         // 않도록 IDP 가 항상 Response 자체를 서명한다. admin UI 가 false 를 보내도 무시.
         const signResponse = true;
         const wantAuthnRequestsSigned = fd.get("wantAuthnRequestsSigned") === "true";
+        const requireVerifiedEmail = fd.get("requireVerifiedEmail") === "true";
         const encryptAssertion = fd.get("encryptAssertion") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
         // 서비스 권한 게이트 우회 opt-in — 사용자별 매핑 없이 전체 허용.
@@ -115,6 +117,7 @@ export const actions: Actions = {
             signAssertion,
             signResponse,
             wantAuthnRequestsSigned,
+            requireVerifiedEmail,
             encryptAssertion,
             allowedAttributes,
             allowAllUsers,
@@ -153,6 +156,7 @@ export const actions: Actions = {
         // 않도록 IDP 가 항상 Response 자체를 서명한다. admin UI 가 false 를 보내도 무시.
         const signResponse = true;
         const wantAuthnRequestsSigned = fd.get("wantAuthnRequestsSigned") === "true";
+        const requireVerifiedEmail = fd.get("requireVerifiedEmail") === "true";
         const encryptAssertion = fd.get("encryptAssertion") === "true";
         const enabled = fd.get("enabled") === "true";
         const allowedAttributes = parseAllowedAttributes(String(fd.get("allowedAttributes") ?? ""));
@@ -193,6 +197,7 @@ export const actions: Actions = {
                 signAssertion,
                 signResponse,
                 wantAuthnRequestsSigned,
+                requireVerifiedEmail,
                 encryptAssertion,
                 allowedAttributes,
                 allowAllUsers,
@@ -221,6 +226,7 @@ export const actions: Actions = {
                     signAssertion: before?.signAssertion !== signAssertion,
                     signResponse: before?.signResponse !== signResponse,
                     wantAuthnRequestsSigned: before?.wantAuthnRequestsSigned !== wantAuthnRequestsSigned,
+                    requireVerifiedEmail: before?.requireVerifiedEmail !== requireVerifiedEmail,
                     // 권한 표면 확대 플래그 — 침해 forensics 를 위해 변경 여부 기록.
                     allowAllUsers: before?.allowAllUsers !== allowAllUsers,
                     enabled: before?.enabled !== enabled,

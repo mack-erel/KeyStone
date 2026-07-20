@@ -16,8 +16,9 @@ import { translate } from "$lib/i18n/server";
  * 호출자가 init 에서 받은 secret + 사용자가 입력한 6자리 code 를 보내면
  * 검증 후 영구 저장. 백업 코드 10개 생성 후 plaintext 로 응답 (한 번만 보임).
  */
-export const POST: RequestHandler = async ({ request, locals }) => {
-    await requireServiceToken(request, locals.runtimeConfig);
+export const POST: RequestHandler = async (event) => {
+    const { request, locals } = event;
+    await requireServiceToken(event);
     const { db, rateLimitStore } = requireDbContext(locals);
 
     const config = locals.runtimeConfig;

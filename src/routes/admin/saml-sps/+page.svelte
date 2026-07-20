@@ -19,7 +19,8 @@ let createNameIdFormat = $state("urn:oasis:names:tc:SAML:1.1:nameid-format:email
 let createCert = $state("");
 let createSignAssertion = $state(true);
 let createSignResponse = $state(false);
-let createWantSigned = $state(false);
+// ctrls R8: 신규 SP 는 서명된 AuthnRequest 요구를 기본값으로(secure-by-default).
+let createWantSigned = $state(true);
 let createEncryptAssertion = $state(false);
 let createAllowedAttributes = $state("");
 
@@ -86,7 +87,7 @@ function resetCreateForm() {
     createCert = "";
     createSignAssertion = true;
     createSignResponse = false;
-    createWantSigned = false;
+    createWantSigned = true;
     createAllowedAttributes = "";
     metadataXml = "";
     metaParseError = null;
@@ -236,6 +237,10 @@ const NAME_ID_OPTIONS = [
                     <div class="flex items-center gap-2">
                         <input id="s-wantSigned" type="checkbox" name="wantAuthnRequestsSigned" value="true" bind:checked={createWantSigned} class="h-4 w-4 rounded border-gray-300" />
                         <label for="s-wantSigned" class="text-xs text-gray-700">{t("saml.want_signed")}</label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input id="s-verifiedEmail" type="checkbox" name="requireVerifiedEmail" value="true" class="h-4 w-4 rounded border-gray-300" />
+                        <label for="s-verifiedEmail" class="text-xs text-gray-700">{t("saml.require_verified_email")}</label>
                     </div>
                     <div class="flex items-center gap-2">
                         <input id="s-encryptAssertion" type="checkbox" name="encryptAssertion" value="true" bind:checked={createEncryptAssertion} class="h-4 w-4 rounded border-gray-300" />
@@ -409,6 +414,16 @@ const NAME_ID_OPTIONS = [
                                                     checked={sp.wantAuthnRequestsSigned}
                                                     class="h-4 w-4 rounded border-gray-300" />
                                                 <label for="e-wantSigned-{sp.id}" class="text-xs text-gray-700">{t("saml.want_signed")}</label>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <input
+                                                    id="e-verifiedEmail-{sp.id}"
+                                                    type="checkbox"
+                                                    name="requireVerifiedEmail"
+                                                    value="true"
+                                                    checked={sp.requireVerifiedEmail}
+                                                    class="h-4 w-4 rounded border-gray-300" />
+                                                <label for="e-verifiedEmail-{sp.id}" class="text-xs text-gray-700">{t("saml.require_verified_email")}</label>
                                             </div>
                                             <div class="flex items-center gap-2">
                                                 <input

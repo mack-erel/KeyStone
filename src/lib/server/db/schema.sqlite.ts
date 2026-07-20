@@ -299,6 +299,10 @@ export const oidcClients = sqliteTable(
         // 등록돼 있어도 이 플래그가 true 가 아니면 매칭 자체를 거부.
         // subdomain takeover (dangling CNAME, 만료된 cloud subdomain) 위험 표면을 사전 차단.
         allowWildcardRedirectUri: integer("allow_wildcard_redirect_uri", { mode: "boolean" }).notNull().default(false),
+        // ctrls R6: 이 클라이언트로 로그인할 때 이메일 인증(emailVerifiedAt)을 요구한다.
+        // 기본 false — 미인증 계정도 로그인 가능(email_verified 클레임은 그대로 전파). true 면
+        // /oidc/authorize 에서 미인증 사용자를 access_denied(email_verification_required)로 거부.
+        requireVerifiedEmail: integer("require_verified_email", { mode: "boolean" }).notNull().default(false),
         idTokenSignedResponseAlg: text("id_token_signed_response_alg").notNull().default("RS256"),
         jwksUri: text("jwks_uri"),
         jwks: text("jwks"),
@@ -404,7 +408,12 @@ export const samlSps = sqliteTable(
         signAssertion: integer("sign_assertion", { mode: "boolean" }).notNull().default(true),
         signResponse: integer("sign_response", { mode: "boolean" }).notNull().default(true),
         encryptAssertion: integer("encrypt_assertion", { mode: "boolean" }).notNull().default(false),
-        wantAuthnRequestsSigned: integer("want_authn_requests_signed", { mode: "boolean" }).notNull().default(false),
+        // ctrls R8: 신규 SP 는 서명된 AuthnRequest 를 요구하도록 기본 true(secure-by-default).
+        // 미서명 AuthnRequest 허용 시 forced-SSO(login-CSRF) 면적이 생긴다. 필요한 SP 만 false 로.
+        wantAuthnRequestsSigned: integer("want_authn_requests_signed", { mode: "boolean" }).notNull().default(true),
+        // ctrls R6: 이 SP 로 SSO 할 때 이메일 인증을 요구한다(기본 false). true 면 /saml/sso 에서
+        // 미인증 사용자를 명확한 오류로 거부한다.
+        requireVerifiedEmail: integer("require_verified_email", { mode: "boolean" }).notNull().default(false),
         attributeMappingJson: text("attribute_mapping_json"),
         // JSON 배열 문자열 (예: ["email","department"]). NULL 이면 기본 최소 집합만 허용.
         allowedAttributes: text("allowed_attributes"),

@@ -5,7 +5,9 @@ import { TOTP_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 import { buildOtpAuthUri, generateTotpSecret } from "$lib/server/auth/totp";
+import { checkRateLimit } from "$lib/server/ratelimit";
 import { credentials, users } from "$lib/server/db/schema";
+import { translate } from "$lib/i18n/server";
 
 /**
  * Phase 7.3 — TOTP enrollment init.
@@ -16,13 +18,21 @@ import { credentials, users } from "$lib/server/db/schema";
  *
  * 이미 등록된 사용자는 409 (운영자가 의도적으로 reset 하려면 별도 admin API).
  */
-export const POST: RequestHandler = async ({ request, locals }) => {
-    await requireServiceToken(request, locals.runtimeConfig);
-    const { db } = requireDbContext(locals);
+export const POST: RequestHandler = async (event) => {
+    const { request, locals } = event;
+    await requireServiceToken(event);
+    const { db, rateLimitStore } = requireDbContext(locals);
 
     const body = (await request.json().catch(() => null)) as { userId?: string } | null;
     const userId = body?.userId?.trim();
     if (!userId) throw error(400, "userId required");
+
+    // ctrls M-SVC-2: init 응답(200/404/409)이 사용자 존재·enrollment 상태 oracle 이 되지
+    // 않도록, 그리고 무한 secret 생성을 막도록 confirm 과 동일하게 사용자당 rate-limit 한다.
+    const rl = await checkRateLimit(rateLimitStore, `totp-enroll-init:${userId}`, { windowMs: 5 * 60 * 1000, limit: 10 });
+    if (!rl.allowed) {
+        throw error(429, translate(locals.locale, "totp.errors.enroll_rate_limited"));
+    }
 
     const [u] = await db.select({ id: users.id, username: users.username }).from(users).where(eq(users.id, userId)).limit(1);
     if (!u) throw error(404, `user ${userId} not found`);

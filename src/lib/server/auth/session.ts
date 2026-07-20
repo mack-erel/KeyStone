@@ -1,5 +1,6 @@
 import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import type { Cookies } from "@sveltejs/kit";
+import { dev } from "$app/environment";
 import type { DB } from "$lib/server/db";
 import { sessions, users } from "$lib/server/db/schema";
 import { SESSION_COOKIE_NAME, SESSION_TTL_MS } from "./constants";
@@ -22,7 +23,10 @@ function cookieOptions(url: URL, expiresAt: Date) {
         path: "/",
         httpOnly: true,
         sameSite: "lax" as const,
-        secure: url.protocol === "https:",
+        // ctrls M-COOKIE-1: 프로덕션 빌드에서는 관측된 protocol 과 무관하게 Secure 를 강제한다.
+        // adapter-node 가 TLS 종단 프록시 뒤에서 평문 HTTP 로 요청을 받으면 url.protocol 이
+        // "http:" 라 Secure 가 빠지고 세션 쿠키가 평문 전송될 수 있다. Workers 는 항상 https.
+        secure: !dev || url.protocol === "https:",
         expires: expiresAt,
     };
 }

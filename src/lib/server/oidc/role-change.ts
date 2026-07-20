@@ -19,6 +19,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
 import { oidcClients } from "$lib/server/db/schema";
 import { assertPublicWebhookUrl } from "$lib/server/oidc/logout";
+import { assertResolvedHostAllowed } from "$lib/server/validation";
 import { signJwt } from "$lib/server/crypto/keys";
 
 /**
@@ -76,6 +77,8 @@ export async function sendRoleChangeSet(target: RoleChangeTarget, userId: string
     // ctrls M-1(SSRF): 등록 시 검증을 하더라도, 이전에 저장된 행이나 검증 우회 경로가
     // 내부 호스트로 서명된 SET 을 흘리지 않도록 fetch 직전 재검증(fail-closed).
     assertPublicWebhookUrl(target.roleChangeUri);
+    // ctrls R7: DNS 리바인딩 완화 — 실호스트 해석 후 내부 IP 면 차단.
+    await assertResolvedHostAllowed(new URL(target.roleChangeUri).hostname);
 
     await fetch(target.roleChangeUri, {
         method: "POST",

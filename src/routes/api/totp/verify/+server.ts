@@ -14,8 +14,9 @@ import { translate } from "$lib/i18n/server";
  * dispatcher 가 사용자 입력 6자리 code 를 보내면 idp 가 DB 의 암호화된 secret 으로 검증.
  * 검증 통과 시 credential 의 lastUsedAt 갱신.
  */
-export const POST: RequestHandler = async ({ request, locals }) => {
-    await requireServiceToken(request, locals.runtimeConfig);
+export const POST: RequestHandler = async (event) => {
+    const { request, locals } = event;
+    await requireServiceToken(event);
     const { db, rateLimitStore } = requireDbContext(locals);
 
     const config = locals.runtimeConfig;

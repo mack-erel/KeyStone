@@ -302,6 +302,10 @@ export const oidcClients = mysqlTable(
         // 등록돼 있어도 이 플래그가 true 가 아니면 매칭 자체를 거부.
         // subdomain takeover (dangling CNAME, 만료된 cloud subdomain) 위험 표면을 사전 차단.
         allowWildcardRedirectUri: boolean("allow_wildcard_redirect_uri").notNull().default(false),
+        // ctrls R6: 이 클라이언트로 로그인할 때 이메일 인증(emailVerifiedAt)을 요구한다.
+        // 기본 false — 미인증 계정도 로그인 가능(email_verified 클레임은 그대로 전파). true 면
+        // /oidc/authorize 에서 미인증 사용자를 access_denied(email_verification_required)로 거부.
+        requireVerifiedEmail: boolean("require_verified_email").notNull().default(false),
         idTokenSignedResponseAlg: text("id_token_signed_response_alg").notNull().default("RS256"),
         jwksUri: text("jwks_uri"),
         jwks: text("jwks"),
@@ -407,7 +411,11 @@ export const samlSps = mysqlTable(
         signAssertion: boolean("sign_assertion").notNull().default(true),
         signResponse: boolean("sign_response").notNull().default(true),
         encryptAssertion: boolean("encrypt_assertion").notNull().default(false),
-        wantAuthnRequestsSigned: boolean("want_authn_requests_signed").notNull().default(false),
+        // ctrls R8: 신규 SP 는 서명된 AuthnRequest 를 요구하도록 기본 true(secure-by-default).
+        wantAuthnRequestsSigned: boolean("want_authn_requests_signed").notNull().default(true),
+        // ctrls R6: 이 SP 로 SSO 할 때 이메일 인증을 요구한다(기본 false). true 면 /saml/sso 에서
+        // 미인증 사용자를 명확한 오류로 거부한다.
+        requireVerifiedEmail: boolean("require_verified_email").notNull().default(false),
         attributeMappingJson: text("attribute_mapping_json"),
         // JSON 배열 문자열 (예: ["email","department"]). NULL 이면 기본 최소 집합만 허용.
         allowedAttributes: text("allowed_attributes"),

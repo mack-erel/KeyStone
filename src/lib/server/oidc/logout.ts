@@ -14,7 +14,7 @@ import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { DB } from "$lib/server/db";
 import { oidcClients, oidcGrants, oidcRefreshTokens } from "$lib/server/db/schema";
 import { signJwt } from "$lib/server/crypto/keys";
-import { isForbiddenWebhookHost } from "$lib/server/validation";
+import { isForbiddenWebhookHost, assertResolvedHostAllowed } from "$lib/server/validation";
 
 /**
  * ctrls M-1(SSRF): IdP 가 서버측에서 직접 fetch 하는 아웃바운드 웹훅(backchannel logout,
@@ -149,6 +149,8 @@ export async function sendOneBackchannelLogout(target: BackchannelTarget, userId
 
     // ctrls M-1(SSRF): fetch 직전 재검증(fail-closed).
     assertPublicWebhookUrl(target.backchannelLogoutUri);
+    // ctrls R7: DNS 리바인딩 완화 — 실호스트 해석 후 내부 IP 면 차단(발행 실패는 상위에서 삼킴).
+    await assertResolvedHostAllowed(new URL(target.backchannelLogoutUri).hostname);
 
     await fetch(target.backchannelLogoutUri, {
         method: "POST",

@@ -15,7 +15,12 @@ function pemToBase64(pem: string): string {
 }
 
 function xmlEscape(str: string): string {
-    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    // response.ts / slo.ts 와 동일한 정책: XML 1.0 미허용 제어문자를 먼저 제거하고
+    // 5개 predefined entity 를 모두 escape 한다(apostrophe 포함). 값은 admin 설정
+    // (issuerUrl 등)이라 현재 악용 경로는 없으나, 이스케이퍼를 일관되게 유지한다.
+    // eslint-disable-next-line no-control-regex
+    const sanitized = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, "");
+    return sanitized.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
 /**

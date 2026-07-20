@@ -50,6 +50,12 @@ export const POST: RequestHandler = async (event) => {
     const auth = await authenticateOidcClient(db, tenant.id, request.headers.get("Authorization"), body);
     if (!auth.ok) return errorResponse(auth.code, auth.description, auth.status);
 
+    // ctrls R4: introspection(RFC 7662)은 자격 증명을 가진 confidential client 를 위한 보호
+    // 엔드포인트다. secret 이 없는 public client(auth_method="none")는 인증 없이 통과하므로,
+    // 토큰 메타데이터를 노출하지 않도록 항상 inactive 로 응답한다(존재 여부 oracle 차단).
+    // revoke(RFC 7009)는 public client 도 자기 토큰을 폐기하도록 설계돼 그대로 둔다.
+    if (auth.client.tokenEndpointAuthMethod === "none") return inactive();
+
     const token = String(body.get("token") ?? "");
     if (!token) return errorResponse("invalid_request", translate(locals.locale, "oidc.errors.token_param_required"), 400);
 

@@ -129,6 +129,23 @@ async function gateAndIssueSamlAssertion(event: Parameters<RequestHandler>[0], p
         throw error(403, translate(event.locals.locale, "saml.errors.access_denied"));
     }
 
+    // ctrls R6: SP 가 이메일 인증을 요구하면(requireVerifiedEmail) 미인증 사용자를 거부한다.
+    if (sp.requireVerifiedEmail && !user.emailVerifiedAt) {
+        const meta = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: user.id,
+            actorId: user.id,
+            spOrClientId: sp.entityId,
+            kind: "saml_sso",
+            outcome: "failure",
+            ip: meta.ip,
+            userAgent: meta.userAgent,
+            detail: { error: "access_denied", reason: "email_verification_required" },
+        });
+        throw error(403, translate(event.locals.locale, "saml.errors.email_verification_required"));
+    }
+
     // Replay 가드 (SP-initiated 한정). Assertion 발급 직전에 동일 AuthnRequest ID 의
     // 재사용 여부를 확인 후 INSERT. unsolicited(inResponseTo=null)는 대응 요청이 없어 생략.
     if (p.inResponseTo) {

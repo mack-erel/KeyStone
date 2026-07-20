@@ -12,6 +12,7 @@
 
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import type { Cookies } from "@sveltejs/kit";
+import { dev } from "$app/environment";
 import type { DB } from "$lib/server/db";
 import { trustedDevices } from "$lib/server/db/schema";
 
@@ -36,7 +37,8 @@ function cookieOptions(url: URL, expiresAt: Date) {
         path: "/",
         httpOnly: true,
         sameSite: "lax" as const,
-        secure: url.protocol === "https:",
+        // ctrls M-COOKIE-1: 프로덕션에서는 protocol 관측값과 무관하게 Secure 강제 (session.ts 와 동일).
+        secure: !dev || url.protocol === "https:",
         expires: expiresAt,
     };
 }

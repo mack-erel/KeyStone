@@ -252,9 +252,31 @@ export interface AccessTokenClaims {
     iss?: string;
 }
 
+// ctrls R10: access-token HMAC 키는 마스터 시크릿(IDP_SIGNING_KEY_SECRET)을 직접 쓰지 않고
+// HKDF 로 파생한 전용 서브키를 쓴다(도메인 분리). wrapPrivateKey/encryptSecret 이 이미
+// HKDF+info 로 키를 분리하는 것과 동일한 원칙 — 한 마스터 키를 여러 용도로 직접 재사용하지 않는다.
+// 서명·검증이 동일 키를 재현해야 하므로 salt/info 는 고정 상수다(마스터 시크릿이 고엔트로피라 안전).
+const ACCESS_TOKEN_HMAC_SALT = "idp-access-token-hmac-salt-v1";
+const ACCESS_TOKEN_HMAC_INFO = "idp-access-token-hmac-v1";
+
 async function deriveHmacKey(secret: string): Promise<CryptoKey> {
     const enc = new TextEncoder();
-    return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(secret), "HKDF", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey(
+        { name: "HKDF", hash: "SHA-256", salt: enc.encode(ACCESS_TOKEN_HMAC_SALT), info: enc.encode(ACCESS_TOKEN_HMAC_INFO) },
+        keyMaterial,
+        { name: "HMAC", hash: "SHA-256", length: 256 },
+        false,
+        ["sign", "verify"],
+    );
+}
+
+// R10 전환기 하위호환: 이전에는 마스터 시크릿을 raw HMAC 키로 직접 임포트했다. 배포 시점에
+// 이미 발급된 미만료 access token 도 TTL 동안 검증되도록 legacy 키로 폴백 검증만 지원한다
+// (신규 서명은 절대 이 키를 쓰지 않는다). access token 은 단명이라 전환기는 곧 소멸한다.
+async function deriveLegacyHmacKey(secret: string): Promise<CryptoKey> {
+    const enc = new TextEncoder();
+    return crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
 }
 
 export async function generateAccessToken(claims: AccessTokenClaims, secret: string): Promise<string> {
@@ -277,8 +299,14 @@ export async function verifyAccessToken(token: string, secret: string, expectedT
         const data = token.slice(0, lastDot);
         const sigB64 = token.slice(lastDot + 1);
         const enc = new TextEncoder();
+        const sig = b64uDecode(sigB64);
         const key = await deriveHmacKey(secret);
-        const valid = await crypto.subtle.verify("HMAC", key, b64uDecode(sigB64), enc.encode(data));
+        let valid = await crypto.subtle.verify("HMAC", key, sig, enc.encode(data));
+        if (!valid) {
+            // R10 전환기: HKDF 키로 실패하면 legacy(raw) 키로 폴백 검증.
+            const legacyKey = await deriveLegacyHmacKey(secret);
+            valid = await crypto.subtle.verify("HMAC", legacyKey, sig, enc.encode(data));
+        }
         if (!valid) return null;
         const dec = new TextDecoder();
         const claims = JSON.parse(dec.decode(b64uDecode(data))) as AccessTokenClaims;

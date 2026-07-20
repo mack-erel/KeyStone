@@ -1,4 +1,5 @@
 import { fail, redirect } from "@sveltejs/kit";
+import { dev } from "$app/environment";
 import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
@@ -360,7 +361,8 @@ export const actions: Actions = {
                 path: "/",
                 httpOnly: true,
                 sameSite: "lax",
-                secure: event.url.protocol === "https:",
+                // ctrls M-COOKIE-1: 프로덕션에서는 protocol 관측값과 무관하게 Secure 강제.
+                secure: !dev || event.url.protocol === "https:",
                 maxAge: 5 * 60, // 5분
             });
 

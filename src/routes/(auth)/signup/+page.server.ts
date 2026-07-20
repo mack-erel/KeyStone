@@ -4,6 +4,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { resolveSkinHtml, replacePlaceholders, escapeHtml } from "$lib/server/skin/resolver";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { hashPassword, MAX_PASSWORD_LENGTH } from "$lib/server/auth/password";
+import { isBreachCheckEnabled, isPasswordBreached } from "$lib/server/auth/breach-check";
 import { users, credentials, identities } from "$lib/server/db/schema";
 import { resolve } from "$app/paths";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
@@ -87,6 +88,8 @@ export const actions: Actions = {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return failSkin(400, translate(locale, "signup.err_invalid_email"));
         if (password.length < 8) return failSkin(400, translate(locale, "signup.err_password_short"));
         if (password.length > MAX_PASSWORD_LENGTH) return failSkin(400, translate(locale, "errors.password_too_long", { max: MAX_PASSWORD_LENGTH }));
+        // ctrls R5: HIBP 유출 비밀번호 차단(운영자 opt-in). 오류 시 fail-open.
+        if (isBreachCheckEnabled() && (await isPasswordBreached(password))) return failSkin(400, translate(locale, "signup.err_password_breached"));
         if (password !== confirmPassword) return failSkin(400, translate(locale, "signup.err_password_mismatch"));
 
         const [existingByUsername] = await db
