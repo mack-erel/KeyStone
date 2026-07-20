@@ -323,6 +323,7 @@
         "email_resend": "Resend verification email",
         "email_resend_sent": "Verification email resent. Please check your inbox shortly.",
         "err_birthdate_format": "The date of birth format is invalid. (YYYY-MM-DD)",
+        "err_field_too_long": "One or more fields are too long. Please shorten them.",
         "email_change_title": "Change Email Address",
         "email_change_desc": "We will send a confirmation email to the new address. The change completes only after you click the confirmation link.",
         "email_change_new_label": "New Email Address",
@@ -570,6 +571,7 @@
         "auth_method_label": "Authentication Method",
         "auth_method_none": "none (public client)",
         "pkce_required": "PKCE Required",
+        "require_verified_email": "Allow login only for accounts with a verified email",
         "allow_wildcard_redirect_uri": "Allow wildcard redirect_uri matching (security risk)",
         "allow_wildcard_redirect_uri_hint": "Allows matching redirect URI patterns that contain *. This can lead to token theft in the event of a subdomain takeover, so enable it only for trusted domains.",
         "allow_all_users": "Allow all users",
@@ -612,6 +614,7 @@
             "login_required": "Cannot complete authentication without user interaction.",
             "session_missing_after_gate": "No session found after the authentication gate.",
             "service_access_denied": "You do not have access to this service.",
+            "email_verification_required": "This service is only available to accounts with a verified email. Please verify your email first.",
             "token_param_required": "The token parameter is required.",
             "id_token_hint_required": "id_token_hint is required.",
             "aud_mismatch": "aud mismatch",
@@ -642,6 +645,7 @@
         "encrypt_assertion": "Encrypt Assertion (SP certificate required)",
         "sign_response": "Sign Response",
         "want_signed": "Require Signed AuthnRequest",
+        "require_verified_email": "Allow SSO only for accounts with a verified email",
         "cert_label": "SP Certificate (PEM, optional)",
         "allowed_attrs_label": "Allowed Attributes (comma-separated; if blank, only email, username, displayName are sent)",
         "allow_all_users": "Allow all users",
@@ -661,6 +665,7 @@
             "signing_key_not_set": "IDP_SIGNING_KEY_SECRET is not configured.",
             "signing_key_missing": "No signing key available. Restart the server to generate one.",
             "access_denied": "You do not have access to this SP.",
+            "email_verification_required": "This SP is only available to accounts with a verified email. Please verify your email first.",
             "authn_request_replay": "This AuthnRequest ID has already been used (replay).",
             "unknown_sp": "Unregistered SP: {{entityId}}",
             "destination_mismatch": "AuthnRequest Destination does not match the IdP SSO endpoint.",
@@ -709,6 +714,7 @@
         "password_label": "Password",
         "password_placeholder": "At least 8 characters",
         "confirm_password_label": "Confirm Password",
+        "err_password_breached": "This password appears in a known data breach and cannot be used. Please choose a different one.",
         "submit": "Sign up",
         "have_account": "Already have an account?",
         "not_available": "Currently, accounts can only be created by an administrator."
@@ -739,6 +745,7 @@
         "password_placeholder": "At least 8 characters",
         "confirm_label": "Confirm Password",
         "submit": "Change Password",
+        "err_password_breached": "This password appears in a known data breach and cannot be used. Please choose a different one.",
         "invalid_link": "This link has expired or is invalid."
     },
     "verify_email": {
@@ -761,6 +768,7 @@
         "invalid_link": "This link has expired or is invalid.",
         "go_login": "Go to login",
         "err_password_short": "Password must be at least 8 characters.",
+        "err_password_breached": "This password appears in a known data breach and cannot be used. Please choose a different one.",
         "err_password_mismatch": "Passwords do not match.",
         "credential_label": "Password"
     },

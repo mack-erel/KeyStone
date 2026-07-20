@@ -130,6 +130,7 @@ export const load: PageServerLoad = async ({ locals, cookies, url }) => {
             tokenEndpointAuthMethod: oidcClients.tokenEndpointAuthMethod,
             requirePkce: oidcClients.requirePkce,
             allowWildcardRedirectUri: oidcClients.allowWildcardRedirectUri,
+            requireVerifiedEmail: oidcClients.requireVerifiedEmail,
             allowAllUsers: oidcClients.allowAllUsers,
             enabled: oidcClients.enabled,
             createdAt: oidcClients.createdAt,
@@ -168,6 +169,8 @@ export const actions: Actions = {
         const requirePkce = tokenMethod === "none" ? true : fd.get("requirePkce") === "true";
         // ctrls H-OIDC-4: 와일드카드 redirect_uri 매칭은 명시적 opt-in.
         const allowWildcardRedirectUri = fd.get("allowWildcardRedirectUri") === "true";
+        // ctrls R6: 이 클라이언트 로그인 시 이메일 인증 요구(opt-in).
+        const requireVerifiedEmail = fd.get("requireVerifiedEmail") === "true";
         // 서비스 권한 게이트 우회 opt-in — 사용자별 매핑 없이 전체 허용.
         const allowAllUsers = fd.get("allowAllUsers") === "true";
 
@@ -210,6 +213,7 @@ export const actions: Actions = {
             tokenEndpointAuthMethod: tokenMethod,
             requirePkce,
             allowWildcardRedirectUri,
+            requireVerifiedEmail,
             allowAllUsers,
             enabled: true,
         });
@@ -274,6 +278,8 @@ export const actions: Actions = {
         const requirePkce = existingClient?.tokenEndpointAuthMethod === "none" ? true : fd.get("requirePkce") === "true";
         // ctrls H-OIDC-4: wildcard redirect_uri opt-in 플래그.
         const allowWildcardRedirectUri = fd.get("allowWildcardRedirectUri") === "true";
+        // ctrls R6: 이 클라이언트 로그인 시 이메일 인증 요구(opt-in).
+        const requireVerifiedEmail = fd.get("requireVerifiedEmail") === "true";
         // 서비스 권한 게이트 우회 opt-in — 사용자별 매핑 없이 전체 허용.
         const allowAllUsers = fd.get("allowAllUsers") === "true";
 
@@ -291,6 +297,7 @@ export const actions: Actions = {
                 scopes: scopesV.value,
                 requirePkce,
                 allowWildcardRedirectUri,
+                requireVerifiedEmail,
                 allowAllUsers,
                 enabled,
                 updatedAt: new Date(),

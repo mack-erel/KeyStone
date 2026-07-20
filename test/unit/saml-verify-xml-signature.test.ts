@@ -17,13 +17,13 @@ interface KeyCert {
     certB64: string;
 }
 
-async function makeKeyCert(cn: string): Promise<KeyCert> {
+async function makeKeyCert(cn: string, validity?: { notBefore: Date; notAfter: Date }): Promise<KeyCert> {
     const keys = (await crypto.subtle.generateKey(RSA_ALG, true, ["sign", "verify"])) as CryptoKeyPair;
     const cert = await x509.X509CertificateGenerator.createSelfSigned({
         serialNumber: "01",
         name: `CN=${cn}`,
-        notBefore: new Date("2020-01-01T00:00:00Z"),
-        notAfter: new Date("2035-01-01T00:00:00Z"),
+        notBefore: validity?.notBefore ?? new Date("2020-01-01T00:00:00Z"),
+        notAfter: validity?.notAfter ?? new Date("2035-01-01T00:00:00Z"),
         signingAlgorithm: RSA_ALG,
         keys,
     });
@@ -160,5 +160,25 @@ describe("verifyEnvelopedXmlSignature", () => {
         const sp = await makeKeyCert("Test SP");
         const xml = await signAuthnRequest("_emptycert", sp);
         expect(await verifyEnvelopedXmlSignature(xml, "")).toBe(false);
+    });
+
+    // ctrls R2: SP 인증서 유효기간 검증 (기본 on).
+    it("만료된 SP 인증서로 서명하면 실패한다 (notAfter 초과)", async () => {
+        const expired = await makeKeyCert("Expired SP", {
+            notBefore: new Date("2020-01-01T00:00:00Z"),
+            notAfter: new Date("2021-01-01T00:00:00Z"), // 이미 만료
+        });
+        const xml = await signAuthnRequest("_authnreq_expired", expired);
+        // 서명 자체는 유효하지만 인증서가 만료되어 거부되어야 한다.
+        expect(await verifyEnvelopedXmlSignature(xml, expired.certPem)).toBe(false);
+    });
+
+    it("아직 유효하지 않은 SP 인증서로 서명하면 실패한다 (notBefore 이전)", async () => {
+        const notYet = await makeKeyCert("Future SP", {
+            notBefore: new Date("2099-01-01T00:00:00Z"), // 미래 발효
+            notAfter: new Date("2100-01-01T00:00:00Z"),
+        });
+        const xml = await signAuthnRequest("_authnreq_notyet", notYet);
+        expect(await verifyEnvelopedXmlSignature(xml, notYet.certPem)).toBe(false);
     });
 });

@@ -152,6 +152,25 @@ describe("SAML SP-initiated POST 바인딩", () => {
         expect(sessions.length).toBe(0);
     });
 
+    it("requireVerifiedEmail SP 는 이메일 미인증 사용자를 403 으로 거부한다(R6)", async () => {
+        await mem.db.update(samlSps).set({ requireVerifiedEmail: true }).where(eq(samlSps.id, sp.id));
+        await seedServiceAssignment(mem.db, { tenantId: tenant.id, userId: user.id, serviceType: "saml", serviceRefId: sp.id });
+        // 강제 로직은 locals.user.emailVerifiedAt 를 본다 — 미인증 사용자로 요청.
+        const unverifiedUser = { ...user, emailVerifiedAt: null };
+        const { status } = await catchError(() => postAuthnRequest({ id: "_authnreq_unverified", loggedIn: true, assignUser: true, requestUser: unverifiedUser }));
+        expect(status).toBe(403);
+        const sessions = await mem.db.select().from(samlSessions).where(eq(samlSessions.userId, user.id));
+        expect(sessions.length).toBe(0);
+    });
+
+    it("requireVerifiedEmail SP 도 이메일 인증된 사용자는 Assertion 을 발급한다(R6)", async () => {
+        await mem.db.update(samlSps).set({ requireVerifiedEmail: true }).where(eq(samlSps.id, sp.id));
+        await seedServiceAssignment(mem.db, { tenantId: tenant.id, userId: user.id, serviceType: "saml", serviceRefId: sp.id });
+        // 기본 seedUser 는 emailVerifiedAt=now(인증됨).
+        const res = await postAuthnRequest({ id: "_authnreq_verified_ok", loggedIn: true, assignUser: true });
+        expect(res.status).toBe(200);
+    });
+
     it("allowAllUsers SP 는 서비스 매핑 없이도 Assertion 을 발급한다(Role 속성은 미포함)", async () => {
         await mem.db.update(samlSps).set({ allowAllUsers: true }).where(eq(samlSps.id, sp.id));
 

@@ -4,6 +4,10 @@
  * 공통 판정을 한곳으로 모은다.
  */
 
+// ctrls R7: DNS 리바인딩 완화용 실호스트 해석. Cloudflare Workers 는 nodejs_compat 하에서
+// node:dns 의 resolve4/resolve6(1.1.1.1 DoH)를 지원한다(lookup/resolve 는 미구현). Node 는 네이티브.
+import { resolve4, resolve6 } from "node:dns/promises";
+
 /**
  * 검증 실패 사유. 로케일 비의존 — i18n 키(admin.errors.<key>)와 치환 파라미터만 담는다.
  * 호출부에서 `adminError(locale, reason.key, reason.params)` 로 표시 문자열을 만든다.
@@ -58,6 +62,33 @@ export function isForbiddenWebhookHost(hostname: string): boolean {
     if (/^f[cd][0-9a-f]{2}:/.test(h)) return true; // fc00::/7 unique-local
     if (/^fe80:/.test(h)) return true; // link-local
     return false;
+}
+
+/**
+ * ctrls R7: DNS 리바인딩 완화. 리터럴 호스트 검사(isForbiddenWebhookHost)는 hostname
+ * 문자열만 보므로, 공인 도메인처럼 보이지만 사설/메타데이터 IP 로 해석되는 호스트를 놓친다.
+ * fetch 직전에 실제 A/AAAA 를 해석해, 결과 IP 중 하나라도 금지 대역이면 예외를 던진다.
+ *
+ * 한계(원천 차단 아님): 여기서 해석한 IP 와 이후 fetch 가 실제 접속 시 재해석하는 IP 가
+ * 다를 수 있다(TOCTOU) — 해석된 IP 로 커넥션을 핀 고정하는 API 가 없다. 따라서 "완화".
+ * 해석 실패(NXDOMAIN/타임아웃/모듈 부재)는 fail-open — 이후 fetch 가 자연히 실패한다.
+ */
+export async function assertResolvedHostAllowed(hostname: string): Promise<void> {
+    const h = hostname.replace(/^\[/, "").replace(/\]$/, "");
+    // 이미 리터럴 IP 면 문자열 검사가 담당하므로 재해석 불필요.
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h) || h.includes(":")) return;
+
+    const addrs: string[] = [];
+    const [v4, v6] = await Promise.allSettled([resolve4(h), resolve6(h)]);
+    if (v4.status === "fulfilled") addrs.push(...v4.value);
+    if (v6.status === "fulfilled") addrs.push(...v6.value);
+    // 둘 다 실패하면 해석 불가 → fail-open(빈 목록이라 아래 루프가 no-op).
+
+    for (const ip of addrs) {
+        if (isForbiddenWebhookHost(ip)) {
+            throw new Error(`SSRF blocked: ${hostname} resolved to a forbidden internal address (${ip}).`);
+        }
+    }
 }
 
 /**

@@ -253,6 +253,23 @@ export const GET: RequestHandler = async (event) => {
         authRedirectError(redirectUri, "access_denied", translate(locals.locale, "oidc.errors.service_access_denied"), state);
     }
 
+    // ctrls R6: 클라이언트가 이메일 인증을 요구하면(requireVerifiedEmail) 미인증 사용자를 거부한다.
+    // email_verified 클레임은 항상 전파되지만, RP 가 IdP 측 강제를 원할 때 이 플래그로 차단한다.
+    if (client.requireVerifiedEmail && !locals.user.emailVerifiedAt) {
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: locals.user.id,
+            actorId: locals.user.id,
+            spOrClientId: clientId,
+            kind: "oidc_authorize",
+            outcome: "failure",
+            ip,
+            userAgent: getRequestMetadata(event).userAgent,
+            detail: { error: "access_denied", reason: "email_verification_required" },
+        });
+        authRedirectError(redirectUri, "access_denied", translate(locals.locale, "oidc.errors.email_verification_required"), state);
+    }
+
     // authorization code 발급
     const code = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
 

@@ -157,11 +157,36 @@ describe("HMAC opaque access token (generate/verifyAccessToken)", () => {
     });
 
     it("HMAC 서명을 WebCrypto 로 직접 검증 (독립 교차검증)", async () => {
+        // ctrls R10: access-token HMAC 키는 raw secret 이 아니라 HKDF 파생 서브키다.
+        // 교차검증도 동일 salt/info 로 키를 독립 재현해 raw 서명을 검증한다.
         const token = await generateAccessToken(baseClaims(), secret);
         const [data, sig] = token.split(".");
-        const macKey = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
-        const ok = await crypto.subtle.verify("HMAC", macKey, b64urlToBytes(sig), new TextEncoder().encode(data));
+        const enc = new TextEncoder();
+        const ikm = await crypto.subtle.importKey("raw", enc.encode(secret), "HKDF", false, ["deriveKey"]);
+        const macKey = await crypto.subtle.deriveKey(
+            { name: "HKDF", hash: "SHA-256", salt: enc.encode("idp-access-token-hmac-salt-v1"), info: enc.encode("idp-access-token-hmac-v1") },
+            ikm,
+            { name: "HMAC", hash: "SHA-256", length: 256 },
+            false,
+            ["verify"],
+        );
+        const ok = await crypto.subtle.verify("HMAC", macKey, b64urlToBytes(sig), enc.encode(data));
         expect(ok).toBe(true);
+        // raw secret 을 그대로 HMAC 키로 쓰던 이전 방식으로는 더 이상 검증되지 않아야 한다(키 분리 확인).
+        const legacyKey = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+        expect(await crypto.subtle.verify("HMAC", legacyKey, b64urlToBytes(sig), enc.encode(data))).toBe(false);
+    });
+
+    it("R10 전환기: legacy(raw-key)로 서명된 미만료 토큰도 검증된다(하위호환)", async () => {
+        // 이전 방식(raw secret 을 직접 HMAC 키로)으로 토큰을 만들어 verifyAccessToken 이 폴백 검증하는지 확인.
+        const enc = new TextEncoder();
+        const data = b64uEncode(enc.encode(JSON.stringify(baseClaims())));
+        const legacyKey = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+        const legacySig = await crypto.subtle.sign("HMAC", legacyKey, enc.encode(data));
+        const legacyToken = `${data}.${b64uEncode(new Uint8Array(legacySig))}`;
+        const verified = await verifyAccessToken(legacyToken, secret, "tenant-1", "client-a");
+        expect(verified).not.toBeNull();
+        expect(verified!.sub).toBe(baseClaims().sub);
     });
 
     it("페이로드 변조 거부 (서명 미갱신)", async () => {

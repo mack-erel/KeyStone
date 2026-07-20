@@ -30,6 +30,7 @@ import "reflect-metadata";
 import { X509Certificate } from "@peculiar/x509";
 import { env } from "$env/dynamic/private";
 import { ensureXmlEngine, xmldsigjs } from "./xml-setup";
+import { isSpCertTimeValid } from "./cert-validity";
 
 const XMLDSIG_NS = "http://www.w3.org/2000/09/xmldsig#";
 const ENVELOPED_TRANSFORM = "http://www.w3.org/2000/09/xmldsig#enveloped-signature";
@@ -78,6 +79,8 @@ export async function verifyEnvelopedXmlSignature(xml: string, certPem: string):
         // 신뢰하는 SP 인증서의 공개키. extractable=true — xmldsigjs Verify 내부에서
         // SignatureMethod 에 맞춰 키를 재-import 하려고 SPKI 를 export 하기 때문.
         const cert = new X509Certificate(certPem);
+        // ctrls R2: 만료·미유효 SP 인증서 거부(기본 on, IDP_ENFORCE_SP_CERT_VALIDITY=false 로 완화).
+        if (!isSpCertTimeValid(cert)) return false;
         const publicKey = await crypto.subtle.importKey("spki", cert.publicKey.rawData, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["verify"]);
 
         const signedXml = new xmldsigjs.SignedXml(doc);

@@ -165,6 +165,10 @@ function urisToText(json: string | null): string {
                     <input id="c-pkce" type="checkbox" name="requirePkce" value="true" checked class="h-4 w-4 rounded border-gray-300 text-blue-600" />
                     <label for="c-pkce" class="text-xs text-gray-700">{t("oidc.pkce_required")}</label>
                 </div>
+                <div class="flex items-center gap-2 pt-1 sm:col-span-2">
+                    <input id="c-verifiedEmail" type="checkbox" name="requireVerifiedEmail" value="true" class="h-4 w-4 rounded border-gray-300 text-blue-600" />
+                    <label for="c-verifiedEmail" class="text-xs text-gray-700">{t("oidc.require_verified_email")}</label>
+                </div>
                 <div class="flex items-start gap-2 pt-1 sm:col-span-2">
                     <input id="c-wildcard" type="checkbox" name="allowWildcardRedirectUri" value="true" class="mt-0.5 h-4 w-4 rounded border-gray-300 text-amber-600" />
                     <label for="c-wildcard" class="text-xs text-gray-700">
@@ -357,6 +361,16 @@ function urisToText(json: string | null): string {
                                             <div class="flex items-center gap-2">
                                                 <input id="e-pkce-{client.id}" type="checkbox" name="requirePkce" value="true" checked={client.requirePkce} class="h-4 w-4 rounded border-gray-300" />
                                                 <label for="e-pkce-{client.id}" class="text-xs text-gray-700">{t("oidc.pkce_required")}</label>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <input
+                                                    id="e-verifiedEmail-{client.id}"
+                                                    type="checkbox"
+                                                    name="requireVerifiedEmail"
+                                                    value="true"
+                                                    checked={client.requireVerifiedEmail}
+                                                    class="h-4 w-4 rounded border-gray-300" />
+                                                <label for="e-verifiedEmail-{client.id}" class="text-xs text-gray-700">{t("oidc.require_verified_email")}</label>
                                             </div>
                                             <div class="flex items-center gap-2">
                                                 <input id="e-enabled-{client.id}" type="checkbox" name="enabled" value="true" checked={client.enabled} class="h-4 w-4 rounded border-gray-300" />

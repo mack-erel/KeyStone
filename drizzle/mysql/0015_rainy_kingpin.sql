@@ -1,0 +1,1 @@
+ALTER TABLE `saml_sps` MODIFY COLUMN `want_authn_requests_signed` boolean NOT NULL DEFAULT true;

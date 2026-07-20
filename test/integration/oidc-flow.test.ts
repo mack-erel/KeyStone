@@ -223,6 +223,70 @@ describe("OIDC 풀플로우 (authorize → token → userinfo)", () => {
         expect(dest.searchParams.get("error")).toBeNull();
         expect(dest.searchParams.get("code")).toBeTruthy();
     });
+
+    it("requireVerifiedEmail 클라이언트는 이메일 미인증 사용자를 access_denied 로 거부한다(R6)", async () => {
+        await seedOidcClient(mem.db, {
+            tenantId: tenant.id,
+            clientId: "verified-email-client",
+            secret: CLIENT_SECRET,
+            redirectUris: [REDIRECT_URI],
+            allowAllUsers: true, // 서비스 게이트를 통과시켜 이메일 인증 게이트만 검증
+            requireVerifiedEmail: true,
+        });
+        const unverified = await seedUser(mem.db, { tenantId: tenant.id, email: "unverified@test.example", username: "unverified", password: "pw", emailVerifiedAt: null });
+        const sess = (await seedSession(mem.db, { tenantId: tenant.id, userId: unverified.id })).session;
+        const challenge = await pkceChallengeS256("verifier-unverified-email-3333444455556666cccc");
+        const params = new URLSearchParams({
+            client_id: "verified-email-client",
+            redirect_uri: REDIRECT_URI,
+            response_type: "code",
+            scope: "openid",
+            code_challenge: challenge,
+            code_challenge_method: "S256",
+        });
+        const event = makeEvent({
+            method: "GET",
+            url: `${TEST_ISSUER_URL}/oidc/authorize?${params.toString()}`,
+            locals: { db: mem.db, tenant, user: unverified, session: sess, env: mem.env },
+        });
+        const { location } = await catchRedirect(() => authorizeGET(event));
+        const dest = new URL(location);
+        expect(dest.searchParams.get("error")).toBe("access_denied");
+        expect(dest.searchParams.get("code")).toBeNull();
+    });
+
+    it("requireVerifiedEmail 클라이언트도 이메일 인증된 사용자는 허용한다(R6)", async () => {
+        await seedOidcClient(mem.db, {
+            tenantId: tenant.id,
+            clientId: "verified-email-client-ok",
+            secret: CLIENT_SECRET,
+            redirectUris: [REDIRECT_URI],
+            allowAllUsers: true,
+            requireVerifiedEmail: true,
+        });
+        // seedUser 는 emailVerifiedAt 를 기본 now(=인증됨)로 설정한다.
+        const verified = await seedUser(mem.db, { tenantId: tenant.id, email: "verified@test.example", username: "verifieduser", password: "pw" });
+        const sess = (await seedSession(mem.db, { tenantId: tenant.id, userId: verified.id })).session;
+        const challenge = await pkceChallengeS256("verifier-verified-email-7777888899990000dddd");
+        const params = new URLSearchParams({
+            client_id: "verified-email-client-ok",
+            redirect_uri: REDIRECT_URI,
+            response_type: "code",
+            scope: "openid",
+            code_challenge: challenge,
+            code_challenge_method: "S256",
+        });
+        const event = makeEvent({
+            method: "GET",
+            url: `${TEST_ISSUER_URL}/oidc/authorize?${params.toString()}`,
+            locals: { db: mem.db, tenant, user: verified, session: sess, env: mem.env },
+        });
+        const { status, location } = await catchRedirect(() => authorizeGET(event));
+        expect(status).toBe(302);
+        const dest = new URL(location);
+        expect(dest.searchParams.get("error")).toBeNull();
+        expect(dest.searchParams.get("code")).toBeTruthy();
+    });
 });
 
 describe("OIDC authorize 재인증(prompt=login / max_age)", () => {

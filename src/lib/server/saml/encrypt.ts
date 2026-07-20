@@ -17,6 +17,7 @@
 
 import "reflect-metadata";
 import { X509Certificate } from "@peculiar/x509";
+import { isSpCertTimeValid } from "./cert-validity";
 
 const XENC_NS = "http://www.w3.org/2001/04/xmlenc#";
 const DS_NS = "http://www.w3.org/2000/09/xmldsig#";
@@ -48,6 +49,8 @@ export async function encryptSamlAssertion(assertionXml: string, spCertPem: stri
 
     // 2. SP RSA 공개키로 세션 키를 RSA-OAEP-mgf1p(SHA-1) 암호화.
     const cert = new X509Certificate(spCertPem);
+    // ctrls R2: 만료·미유효 SP 인증서로는 암호화하지 않는다(기본 on, IDP_ENFORCE_SP_CERT_VALIDITY=false 로 완화).
+    if (!isSpCertTimeValid(cert)) throw new Error("SP 인증서가 유효기간을 벗어났습니다 (notBefore/notAfter).");
     const spki = cert.publicKey.rawData;
     const rsaPub = await crypto.subtle.importKey("spki", spki, { name: "RSA-OAEP", hash: "SHA-1" }, false, ["encrypt"]);
     const encryptedKey = new Uint8Array(await crypto.subtle.encrypt({ name: "RSA-OAEP" }, rsaPub, aesKeyRaw));
