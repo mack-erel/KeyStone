@@ -5,7 +5,8 @@ import { requireDbContext } from "$lib/server/auth/guards";
 import { createSessionRecord, setSessionCookie } from "$lib/server/auth/session";
 import { authenticateLocalUser, authenticatePendingDeletionUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
-import { AMR_PASSWORD, amrToAcr } from "$lib/server/auth/constants";
+import { clearTrustedDeviceCookie, TRUSTED_DEVICE_COOKIE, verifyTrustedDevice } from "$lib/server/auth/trusted-device";
+import { AMR_PASSWORD, AMR_TOTP, amrToAcr } from "$lib/server/auth/constants";
 import { getRuntimeConfig } from "$lib/server/auth/runtime";
 import { checkRateLimit, peekRateLimit } from "$lib/server/ratelimit";
 import { and, eq } from "drizzle-orm";
@@ -307,7 +308,53 @@ export const actions: Actions = {
                 });
             }
 
-            const mfaToken = await createMfaPendingToken({ userId: user.id, tenantId: tenant.id, redirectTo, ip: requestMetadata.ip }, config.signingKeySecret);
+            // 강제 재인증 신호. OIDC prompt=login / max_age 초과 / id_token_hint 불일치(authorize:145-190)와
+            // SAML ForceAuthn / ACR step-up(sso:326,345,353,373)은 모두 로그인 URL 의 forceAuthn=true 로
+            // 수렴하므로 이 파라미터 하나만 보면 된다. forced 면 신뢰 기기를 적용하지도, 등록하지도 않는다.
+            const forced = event.url.searchParams.get("forceAuthn") === "true";
+
+            // 신뢰 기기: 14일 내 MFA 를 통과한 기기면 TOTP 단계를 건너뛴다.
+            const trustedDeviceToken = event.cookies.get(TRUSTED_DEVICE_COOKIE);
+            if (!forced && trustedDeviceToken) {
+                const trusted = await verifyTrustedDevice(db, trustedDeviceToken, {
+                    userId: user.id,
+                    tenantId: tenant.id,
+                    ip: requestMetadata.ip,
+                });
+
+                if (trusted) {
+                    // 신뢰 기기는 14일 내 MFA 를 이미 통과했으므로 ACR_MFA 를 만족시킨다.
+                    const amr = [AMR_PASSWORD, AMR_TOTP];
+                    const { sessionToken, expiresAt } = await createSessionRecord(db, {
+                        tenantId: tenant.id,
+                        userId: user.id,
+                        ip: requestMetadata.ip,
+                        userAgent: requestMetadata.userAgent,
+                        amr,
+                        acr: amrToAcr(amr),
+                    });
+
+                    setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);
+                    await recordAuditEvent(db, {
+                        tenantId: tenant.id,
+                        userId: user.id,
+                        actorId: user.id,
+                        kind: "login",
+                        outcome: "success",
+                        ip: requestMetadata.ip,
+                        userAgent: requestMetadata.userAgent,
+                        // MFA 를 건너뛴 로그인은 감사 로그에서 식별 가능해야 한다.
+                        detail: { amr, via: "trusted_device" },
+                    });
+
+                    throw redirect(303, user.role === "admin" ? (redirectTo ?? "/admin") : (redirectTo ?? "/"));
+                }
+
+                // 만료·폐기·IP 불일치 — 쿠키를 정리하고 정상적으로 MFA 단계로 보낸다.
+                clearTrustedDeviceCookie(event.cookies, event.url);
+            }
+
+            const mfaToken = await createMfaPendingToken({ userId: user.id, tenantId: tenant.id, redirectTo, ip: requestMetadata.ip, forced }, config.signingKeySecret);
 
             event.cookies.set(MFA_PENDING_COOKIE, mfaToken, {
                 path: "/",

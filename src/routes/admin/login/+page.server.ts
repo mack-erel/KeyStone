@@ -166,6 +166,8 @@ export const actions: Actions = {
                 tenantId: tenant.id,
                 redirectTo: redirectTo ?? "/admin",
                 ip: requestMetadata.ip,
+                // admin 로그인은 신뢰 기기 예외 — 항상 TOTP 를 요구하고 신뢰 기기 등록도 막는다.
+                forced: true,
             },
             config.signingKeySecret,
         );

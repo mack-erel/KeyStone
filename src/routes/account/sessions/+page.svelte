@@ -8,6 +8,8 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 const formError = $derived((form as { error?: string } | null)?.error ?? null);
 const revoked = $derived(Boolean((form as { revoked?: boolean } | null)?.revoked));
 const revokedOthers = $derived(Boolean((form as { revokedOthers?: boolean } | null)?.revokedOthers));
+const trustedDeviceRevoked = $derived(Boolean((form as { trustedDeviceRevoked?: boolean } | null)?.trustedDeviceRevoked));
+const trustedDevicesRevokedAll = $derived(Boolean((form as { trustedDevicesRevokedAll?: boolean } | null)?.trustedDevicesRevokedAll));
 
 function formatWhen(value: string | Date): string {
     return new Date(value).toLocaleString("ko-KR");
@@ -42,6 +44,18 @@ const otherCount = $derived(data.sessions.filter((s: (typeof data.sessions)[numb
             {#if revokedOthers}
                 <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
                     {t("account.sessions.revoked_others_notice")}
+                </div>
+            {/if}
+
+            {#if trustedDeviceRevoked}
+                <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                    {t("account.sessions.trusted_device_revoked_notice")}
+                </div>
+            {/if}
+
+            {#if trustedDevicesRevokedAll}
+                <div class="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                    {t("account.sessions.trusted_devices_revoked_all_notice")}
                 </div>
             {/if}
 
@@ -124,6 +138,70 @@ const otherCount = $derived(data.sessions.filter((s: (typeof data.sessions)[numb
                     </button>
                 </form>
             {/if}
+
+            <div class="mt-8 border-t border-gray-200 pt-6">
+                <h2 class="mb-1 text-lg font-bold text-gray-900">{t("account.sessions.trusted_devices_title")}</h2>
+                <p class="mb-4 text-sm text-gray-500">{t("account.sessions.trusted_devices_subtitle")}</p>
+
+                {#if data.trustedDevices.length > 0}
+                    <div class="mb-4 space-y-2">
+                        {#each data.trustedDevices as d (d.id)}
+                            <div class="rounded-xl border border-gray-200 px-4 py-3">
+                                <div class="flex items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <p class="truncate text-sm font-medium text-gray-900">
+                                            {t("account.sessions.device_label")}: {d.userAgent ?? t("account.sessions.unknown")}
+                                        </p>
+                                        <p class="text-xs text-gray-400">
+                                            {t("account.sessions.ip_label")}: {d.ip ?? t("account.sessions.unknown")}
+                                            {#if d.ipBound}
+                                                <span class="ml-1 rounded-full bg-gray-100 px-1.5 py-0.5 text-gray-600">{t("account.sessions.ip_bound_badge")}</span>
+                                            {/if}
+                                        </p>
+                                        <p class="text-xs text-gray-400">
+                                            {t("account.sessions.last_used_label")}: {formatWhen(d.lastUsedAt)}
+                                        </p>
+                                        <p class="text-xs text-gray-400">
+                                            {t("account.sessions.expires_label")}: {formatWhen(d.expiresAt)}
+                                        </p>
+                                    </div>
+
+                                    <form method="POST" action="?/revokeTrustedDevice" use:enhance>
+                                        <input type="hidden" name="id" value={d.id} />
+                                        <button
+                                            type="submit"
+                                            class="shrink-0 text-sm text-red-500 hover:text-red-700"
+                                            onclick={(e: MouseEvent) => {
+                                                if (!confirm(t("account.sessions.revoke_trusted_device_confirm"))) {
+                                                    e.preventDefault();
+                                                }
+                                            }}>
+                                            {t("account.sessions.revoke_trusted_device")}
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+
+                    <form method="POST" action="?/revokeAllTrustedDevices" use:enhance>
+                        <button
+                            type="submit"
+                            class="w-full rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 shadow-sm transition hover:bg-red-50"
+                            onclick={(e: MouseEvent) => {
+                                if (!confirm(t("account.sessions.revoke_all_trusted_devices_confirm"))) {
+                                    e.preventDefault();
+                                }
+                            }}>
+                            {t("account.sessions.revoke_all_trusted_devices")}
+                        </button>
+                    </form>
+                {:else}
+                    <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                        <p class="text-sm text-gray-500">{t("account.sessions.trusted_devices_empty")}</p>
+                    </div>
+                {/if}
+            </div>
         </div>
     </div>
 </div>

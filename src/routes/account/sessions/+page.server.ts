@@ -3,6 +3,7 @@ import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { clearSessionCookie, listActiveSessions, revokeAllUserSessions, revokeOtherSessions, revokeSessionById } from "$lib/server/auth/session";
+import { clearTrustedDeviceCookie, listTrustedDevices, revokeAllTrustedDevices, revokeTrustedDeviceById } from "$lib/server/auth/trusted-device";
 import { revokeAllUserRefreshTokens, revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
 import { dispatchSecurityAlert } from "$lib/server/security-notify";
 import { translate } from "$lib/i18n/server";
@@ -14,9 +15,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
     const { db } = requireDbContext(locals);
     const activeSessions = await listActiveSessions(db, locals.user.id);
+    const trustedDeviceList = await listTrustedDevices(db, locals.user.id);
 
     return {
         sessions: activeSessions,
+        trustedDevices: trustedDeviceList,
         currentSessionId: locals.session?.id ?? null,
     };
 };
@@ -103,6 +106,69 @@ export const actions: Actions = {
         }
 
         return { revokedOthers: true };
+    },
+
+    // 개별 신뢰 기기 폐기. 폐기하면 그 기기는 다음 로그인부터 다시 MFA 를 요구받는다.
+    // 세션 폐기와는 독립 — 현재 로그인 상태에는 영향을 주지 않는다.
+    revokeTrustedDevice: async (event) => {
+        const { locals } = event;
+        if (!locals.user) throw redirect(303, "/login");
+
+        const { db, tenant } = requireDbContext(locals);
+        const formData = await event.request.formData();
+        const deviceId = String(formData.get("id") ?? "").trim();
+        if (!deviceId) {
+            return fail(400, { error: translate(locals.locale, "account.sessions.err_select_device") });
+        }
+
+        const revoked = await revokeTrustedDeviceById(db, deviceId, locals.user.id);
+        if (!revoked) {
+            return fail(404, { error: translate(locals.locale, "account.sessions.err_device_not_found") });
+        }
+
+        const requestMetadata = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: locals.user.id,
+            actorId: locals.user.id,
+            kind: "trusted_device_revoked",
+            outcome: "success",
+            ip: requestMetadata.ip,
+            userAgent: requestMetadata.userAgent,
+            detail: { trustedDeviceId: deviceId },
+        });
+
+        // 쿠키는 건드리지 않는다. 폐기 판정은 DB(revokedAt)가 권위이므로 폐기된 기기의 쿠키는
+        // 어차피 verifyTrustedDevice 에서 탈락한다. 반대로 여기서 쿠키를 지우면 "다른 기기를
+        // 폐기했을 뿐인 현재 브라우저" 의 유효한 신뢰까지 함께 잃는다.
+        return { trustedDeviceRevoked: true };
+    },
+
+    // 모든 신뢰 기기 폐기 — 이후 모든 기기에서 로그인 시 MFA 를 다시 요구한다.
+    revokeAllTrustedDevices: async (event) => {
+        const { locals } = event;
+        if (!locals.user) throw redirect(303, "/login");
+
+        const { db, tenant } = requireDbContext(locals);
+        const active = await listTrustedDevices(db, locals.user.id);
+
+        await revokeAllTrustedDevices(db, locals.user.id);
+
+        const requestMetadata = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: locals.user.id,
+            actorId: locals.user.id,
+            kind: "trusted_devices_revoked",
+            outcome: "success",
+            ip: requestMetadata.ip,
+            userAgent: requestMetadata.userAgent,
+            detail: { all: true, count: active.length },
+        });
+
+        clearTrustedDeviceCookie(event.cookies, event.url);
+
+        return { trustedDevicesRevokedAll: true };
     },
 
     // 일괄 로그아웃 — 현재 세션을 포함한 모든 세션 + 모든 OIDC refresh token 폐기.

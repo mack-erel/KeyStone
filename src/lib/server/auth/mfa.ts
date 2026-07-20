@@ -16,6 +16,11 @@ export interface MfaPendingClaims {
     tenantId: string;
     redirectTo: string | null;
     ip: string | null;
+    /**
+     * 강제 재인증 여부. true 면 신뢰 기기("이 기기에서 다시 인증하지 않기")를 적용하지 않는다.
+     * admin 로그인 / SAML ForceAuthn / OIDC prompt=login·max_age 초과 / ACR step-up 이 해당한다.
+     */
+    forced: boolean;
 }
 
 interface MfaPendingPayload {
@@ -23,6 +28,7 @@ interface MfaPendingPayload {
     tid: string;
     redir: string | null;
     ip: string | null;
+    frc: boolean;
     exp: number;
 }
 
@@ -56,6 +62,7 @@ export async function createMfaPendingToken(claims: MfaPendingClaims, signingKey
         tid: claims.tenantId,
         redir: claims.redirectTo,
         ip: claims.ip,
+        frc: claims.forced,
         exp: Date.now() + MFA_PENDING_TTL_MS,
     };
     const data = b64uEncode(enc.encode(JSON.stringify(payload)));
@@ -85,6 +92,10 @@ export async function verifyMfaPendingToken(token: string, signingKeySecret: str
             tenantId: payload.tid,
             redirectTo: payload.redir,
             ip: payload.ip ?? null,
+            // fail-safe: frc 필드가 없는 구버전 토큰(배포 전환 중 발급분)은 "강제"로 간주한다.
+            // 기본값을 false 로 두면 구토큰이 신뢰 기기 등록/적용을 허용해 forceAuthn 을
+            // 우회할 수 있으므로, 불확실할 때는 보수적으로 재인증을 요구하는 쪽을 택한다.
+            forced: payload.frc ?? true,
         };
     } catch {
         return null;

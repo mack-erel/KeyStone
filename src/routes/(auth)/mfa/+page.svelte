@@ -10,6 +10,10 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>();
 
 let useBackup = $state(false);
 
+// 신뢰 기기 옵션. ipBound 는 rememberDevice 에 종속 — 상위가 꺼지면 함께 꺼진다.
+let rememberDevice = $state(false);
+let ipBound = $state(false);
+
 let submitting = $state(false);
 const enhanceSubmit: SubmitFunction = () => {
     submitting = true;
@@ -87,6 +91,34 @@ const loginHref = $derived(
                         maxlength={useBackup ? 8 : 6}
                         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-center text-lg tracking-widest shadow-sm focus:border-blue-500 focus:ring-blue-500 focus:outline-none" />
                 </div>
+
+                {#if data.canRememberDevice}
+                    <div class="space-y-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                        <label class="flex items-start gap-2.5 text-sm text-gray-700">
+                            <input
+                                type="checkbox"
+                                name="remember_device"
+                                value="1"
+                                bind:checked={rememberDevice}
+                                onchange={() => {
+                                    if (!rememberDevice) ipBound = false;
+                                }}
+                                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                            <span>{t("mfa_login.remember_device")}</span>
+                        </label>
+
+                        <label class="flex items-start gap-2.5 pl-6 text-sm" class:text-gray-400={!rememberDevice} class:text-gray-600={rememberDevice}>
+                            <input
+                                type="checkbox"
+                                name="ip_bound"
+                                value="1"
+                                bind:checked={ipBound}
+                                disabled={!rememberDevice}
+                                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50" />
+                            <span>{t("mfa_login.remember_device_ip_bound")}</span>
+                        </label>
+                    </div>
+                {/if}
 
                 <button
                     type="submit"
