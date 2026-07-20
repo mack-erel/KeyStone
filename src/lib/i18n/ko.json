@@ -210,7 +210,21 @@
             "revoked_notice": "선택한 세션을 로그아웃했습니다.",
             "revoked_others_notice": "다른 모든 기기에서 로그아웃했습니다.",
             "err_select_session": "세션을 지정해 주세요.",
-            "err_not_found": "세션을 찾을 수 없습니다."
+            "err_not_found": "세션을 찾을 수 없습니다.",
+            "trusted_devices_title": "신뢰 기기",
+            "trusted_devices_subtitle": "2단계 인증을 건너뛸 수 있는 기기입니다. 낯선 기기가 있으면 해제해 주세요.",
+            "trusted_devices_empty": "등록된 신뢰 기기가 없습니다.",
+            "ip_bound_badge": "IP 고정",
+            "last_used_label": "마지막 사용",
+            "expires_label": "만료",
+            "revoke_trusted_device": "해제",
+            "revoke_trusted_device_confirm": "이 기기의 신뢰를 해제할까요? 다음 로그인부터 2단계 인증을 다시 요구합니다.",
+            "revoke_all_trusted_devices": "모든 신뢰 기기 해제",
+            "revoke_all_trusted_devices_confirm": "모든 신뢰 기기를 해제할까요? 모든 기기에서 다음 로그인부터 2단계 인증을 다시 요구합니다.",
+            "trusted_device_revoked_notice": "선택한 신뢰 기기를 해제했습니다.",
+            "trusted_devices_revoked_all_notice": "모든 신뢰 기기를 해제했습니다.",
+            "err_select_device": "기기를 지정해 주세요.",
+            "err_device_not_found": "신뢰 기기를 찾을 수 없습니다."
         },
         "danger_zone": {
             "title": "계정 탈퇴",
@@ -244,7 +258,9 @@
         "err_rate_limit": "인증 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
         "err_missing_code": "코드를 입력해 주세요.",
         "err_invalid_totp": "인증 코드가 올바르지 않습니다.",
-        "err_invalid_backup": "백업 코드가 올바르지 않습니다."
+        "err_invalid_backup": "백업 코드가 올바르지 않습니다.",
+        "remember_device": "이 기기에서 14일간 다시 인증하지 않기",
+        "remember_device_ip_bound": "IP 주소가 바뀌면 다시 인증"
     },
     "mfa_manage": {
         "title": "2단계 인증 관리",

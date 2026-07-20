@@ -13,6 +13,7 @@ import {
     makeEvent,
     pkceChallengeS256,
     catchRedirect,
+    makeCookieJar,
     TEST_ISSUER_URL,
     type MemoryDb,
 } from "./harness";
@@ -221,5 +222,103 @@ describe("OIDC 풀플로우 (authorize → token → userinfo)", () => {
         const dest = new URL(location);
         expect(dest.searchParams.get("error")).toBeNull();
         expect(dest.searchParams.get("code")).toBeTruthy();
+    });
+});
+
+describe("OIDC authorize 재인증(prompt=login / max_age)", () => {
+    /** authorize 요청 URL 을 만든다. extra 로 prompt/max_age 등을 덧붙인다. */
+    async function authorizeUrl(verifier: string, extra: Record<string, string> = {}): Promise<string> {
+        const challenge = await pkceChallengeS256(verifier);
+        const params = new URLSearchParams({
+            client_id: CLIENT_ID,
+            redirect_uri: REDIRECT_URI,
+            response_type: "code",
+            scope: "openid",
+            code_challenge: challenge,
+            code_challenge_method: "S256",
+            ...extra,
+        });
+        return `${TEST_ISSUER_URL}/oidc/authorize?${params.toString()}`;
+    }
+
+    it("미로그인 + prompt=login 이면 /login 리다이렉트에 forceAuthn=true 를 붙인다", async () => {
+        const url = await authorizeUrl("verifier-anon-prompt-login-aaaabbbbccccdddd0000", { prompt: "login" });
+        const event = makeEvent({ method: "GET", url, locals: { db: mem.db, tenant, user: null, session: null, env: mem.env } });
+
+        const { status, location } = await catchRedirect(() => authorizeGET(event));
+        expect(status).toBe(302);
+        const dest = new URL(location);
+        expect(dest.pathname).toBe("/login");
+        // 신뢰 기기가 OTP 를 건너뛰지 않도록 RP 의 재인증 요구가 반드시 전달돼야 한다.
+        expect(dest.searchParams.get("forceAuthn")).toBe("true");
+    });
+
+    it("로그인 + prompt=login: 1회차는 forceAuthn 리다이렉트, 재인증 후 복귀한 2회차는 통과한다", async () => {
+        const url = await authorizeUrl("verifier-loop-guard-1111222233334444eeee", { prompt: "login" });
+        const jar = makeCookieJar();
+        // 마커 발급 시각과의 비교가 명확하도록 기존 세션은 확실히 과거로 둔다.
+        const oldSession = { ...session, createdAt: new Date(Date.now() - 3600 * 1000) };
+
+        // 1회차 — 재인증 요구로 /login 리다이렉트 + 마커 쿠키 설정
+        const first = makeEvent({ method: "GET", url, locals: { db: mem.db, tenant, user, session: oldSession, env: mem.env }, cookies: jar.cookies });
+        const { location: loginLocation } = await catchRedirect(() => authorizeGET(first));
+        const loginDest = new URL(loginLocation);
+        expect(loginDest.pathname).toBe("/login");
+        expect(loginDest.searchParams.get("forceAuthn")).toBe("true");
+        const markers = Object.keys(jar.snapshot()).filter((n) => n.startsWith("oidc_reauth_"));
+        expect(markers).toHaveLength(1);
+
+        // 2회차 — 재인증으로 새 세션이 생긴 뒤 동일 URL 로 복귀. 루프에 빠지지 않고 code 를 발급해야 한다.
+        const reauthedSession = { ...session, createdAt: new Date() };
+        const second = makeEvent({
+            method: "GET",
+            url,
+            locals: { db: mem.db, tenant, user, session: reauthedSession, env: mem.env },
+            cookies: jar.cookies,
+        });
+        const { location: callbackLocation } = await catchRedirect(() => authorizeGET(second));
+        const callbackDest = new URL(callbackLocation);
+        expect(`${callbackDest.origin}${callbackDest.pathname}`).toBe(REDIRECT_URI);
+        expect(callbackDest.searchParams.get("code")).toBeTruthy();
+        // 마커 쿠키는 소진돼야 한다.
+        expect(Object.keys(jar.snapshot()).filter((n) => n.startsWith("oidc_reauth_"))).toHaveLength(0);
+    });
+
+    it("로그인 + prompt=login: 재인증 없이 같은 URL 로 되돌아오면 마커가 있어도 다시 forceAuthn 을 요구한다", async () => {
+        // 마커 존재 여부만 보는 가드였다면, /login 에서 아무것도 하지 않고 뒤로가기만 해도
+        // prompt=login 이 소진돼 RP 의 재인증 요구를 우회할 수 있다.
+        const url = await authorizeUrl("verifier-reauth-bypass-9999aaaabbbbcccc1234", { prompt: "login" });
+        const jar = makeCookieJar();
+        const oldSession = { ...session, createdAt: new Date(Date.now() - 3600 * 1000) };
+
+        const first = makeEvent({ method: "GET", url, locals: { db: mem.db, tenant, user, session: oldSession, env: mem.env }, cookies: jar.cookies });
+        await catchRedirect(() => authorizeGET(first));
+        expect(Object.keys(jar.snapshot()).filter((n) => n.startsWith("oidc_reauth_"))).toHaveLength(1);
+
+        // 세션이 그대로(= 재인증하지 않음)인 채 복귀 — code 가 아니라 다시 /login 으로 가야 한다.
+        const second = makeEvent({ method: "GET", url, locals: { db: mem.db, tenant, user, session: oldSession, env: mem.env }, cookies: jar.cookies });
+        const { location } = await catchRedirect(() => authorizeGET(second));
+        const dest = new URL(location);
+        expect(dest.pathname).toBe("/login");
+        expect(dest.searchParams.get("forceAuthn")).toBe("true");
+    });
+
+    it("prompt=none + max_age 초과는 login_required 오류이며 마커 쿠키를 설정하지 않는다", async () => {
+        const url = await authorizeUrl("verifier-prompt-none-maxage-5555666677778888ffff", { prompt: "none", max_age: "60" });
+        const jar = makeCookieJar();
+        // 세션이 max_age(60초)보다 오래된 상태를 만든다.
+        const staleSession = { ...session, createdAt: new Date(Date.now() - 3600 * 1000) };
+        const event = makeEvent({
+            method: "GET",
+            url,
+            locals: { db: mem.db, tenant, user, session: staleSession, env: mem.env },
+            cookies: jar.cookies,
+        });
+
+        const { location } = await catchRedirect(() => authorizeGET(event));
+        const dest = new URL(location);
+        expect(`${dest.origin}${dest.pathname}`).toBe(REDIRECT_URI);
+        expect(dest.searchParams.get("error")).toBe("login_required");
+        expect(Object.keys(jar.snapshot()).filter((n) => n.startsWith("oidc_reauth_"))).toHaveLength(0);
     });
 });

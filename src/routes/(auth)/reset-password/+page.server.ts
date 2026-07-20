@@ -6,6 +6,7 @@ import { users, passwordResetTokens } from "$lib/server/db/schema";
 import { hashPassword, MAX_PASSWORD_LENGTH } from "$lib/server/auth/password";
 import { hashToken } from "$lib/server/email";
 import { revokeAllUserSessions } from "$lib/server/auth/session";
+import { clearTrustedDeviceCookie, revokeAllTrustedDevices } from "$lib/server/auth/trusted-device";
 import { revokeAllUserRefreshTokens } from "$lib/server/oidc/refresh";
 import { resolve } from "$app/paths";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
@@ -133,6 +134,9 @@ export const actions: Actions = {
         // 비밀번호가 바뀌었으므로 기존 세션과 OIDC refresh token 을 모두 무효화한다.
         await revokeAllUserSessions(db, record.userId, now);
         await revokeAllUserRefreshTokens(db, record.userId);
+        // 신뢰 기기도 함께 폐기한다 — 비밀번호 탈취자가 기존 신뢰 기기로 MFA 를 건너뛰지 못하게.
+        await revokeAllTrustedDevices(db, record.userId, now);
+        clearTrustedDeviceCookie(event.cookies, event.url);
 
         // 보안 알림(best-effort, 완전 격리) — 비밀번호가 변경됨.
         dispatchSecurityAlert({ to: record.email, locale: record.locale, kind: "password_changed", when: now, platform: event.platform });

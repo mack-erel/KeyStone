@@ -6,7 +6,7 @@ import { findOidcClient, isAllowedRedirectUri, parseGrantedScopes } from "$lib/s
 import { createGrant } from "$lib/server/oidc/grant";
 import { checkRateLimit } from "$lib/server/ratelimit";
 import { hasServiceAccess } from "$lib/server/access/service-permissions";
-import { verifyIdToken } from "$lib/server/crypto/keys";
+import { verifyIdToken, b64uEncode } from "$lib/server/crypto/keys";
 import { resolveIssuerUrl } from "$lib/server/auth/runtime";
 import { translate } from "$lib/i18n/server";
 
@@ -142,11 +142,12 @@ export const GET: RequestHandler = async (event) => {
 
     const loggedIn = Boolean(locals.user && locals.session);
 
-    // 재인증 필요 여부 (로그인된 경우에만 의미 있음): prompt=login, max_age 초과,
-    // id_token_hint 의 sub 불일치.
-    let reauthRequired = false;
+    // 재인증 필요 여부: prompt=login, max_age 초과, id_token_hint 의 sub 불일치.
+    // prompt=login 은 로그인 여부와 무관하게 재인증 요구다 — 미로그인이어도 forceAuthn 을 전달해야
+    // 신뢰 기기(trusted device) 가 OTP 를 건너뛰지 않는다. 나머지 두 조건은 locals.session/user 를
+    // 읽으므로 로그인된 경우에만 평가한다(미로그인은 어차피 새로 인증하므로 자동 충족).
+    let reauthRequired = prompts.has("login");
     if (loggedIn) {
-        if (prompts.has("login")) reauthRequired = true;
         if (!reauthRequired && maxAge !== null) {
             const authTimeSec = Math.floor(locals.session!.createdAt.getTime() / 1000);
             if (Math.floor(Date.now() / 1000) - authTimeSec > maxAge) reauthRequired = true;
@@ -177,13 +178,49 @@ export const GET: RequestHandler = async (event) => {
     }
 
     if (needsInteraction) {
-        // 인터랙티브 로그인/재인증으로 리다이렉트.
-        const loginUrl = new URL("/login", url);
-        loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
-        loginUrl.searchParams.set("skinHint", `oidc:${client.id}`);
-        if (reauthRequired) loginUrl.searchParams.set("forceAuthn", "true");
-        if (loginHint) loginUrl.searchParams.set("loginHint", loginHint);
-        throw redirect(302, loginUrl.toString());
+        // 무한 루프 방지 (SAML /saml/sso 의 saml_reauth_<id> 가드를 변형).
+        // reauthRequired 조건(prompt=login / max_age / id_token_hint)은 재인증을 마치고 돌아와도
+        // 요청 파라미터가 그대로라 여전히 참일 수 있어, 가드가 없으면 /login ↔ /oidc/authorize 를
+        // 무한 왕복한다. SAML 과 달리 authorize 요청에는 AuthnRequest.id 같은 고유 ID 가 없으므로
+        // 재진입 시에도 동일하게 유지되는 pathname+search 를 SHA-256 해시해 마커 쿠키명을 만든다.
+        // 해시의 base64url 출력은 [A-Za-z0-9_-] 뿐이라, SAML 이 겪은 쿠키명 injection(공백·;·제어문자로
+        // cookie.serialize 가 throw → 500 DoS) 문제는 구조적으로 발생하지 않는다.
+        // prompt=none 은 위에서 이미 login_required 로 끝났으므로 여기서 쿠키를 남기지 않는다.
+        if (reauthRequired) {
+            const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(url.pathname + url.search));
+            const reauthCookieName = `oidc_reauth_${b64uEncode(digest).slice(0, 32)}`;
+            // 마커에는 발급 시각(ms)을 담고, 복귀 시 "그 이후에 생성된 세션" 일 때만 재인증을 인정한다.
+            // 존재 여부만 보면(SAML 가드의 약점) 사용자가 /login 에서 실제로 인증하지 않고 같은 authorize
+            // URL 로 되돌아오기만 해도 prompt=login 이 소진돼 재인증 요구를 우회할 수 있다.
+            // 미로그인 상태에서는 마커가 있어도 재인증을 마쳤다고 볼 수 없다 — 반드시 forceAuthn 을 붙인다.
+            // 숫자 형식을 원시 문자열에서 검사한다: Number("") 는 0 이라 빈 쿠키 값이 "아주 오래된 마커" 로
+            // 둔갑해 무조건 통과해버린다.
+            const rawMarker = event.cookies.get(reauthCookieName);
+            const marker = rawMarker && /^\d+$/.test(rawMarker) ? Number(rawMarker) : null;
+            if (loggedIn && marker !== null && locals.session!.createdAt.getTime() >= marker) {
+                // 마커 발급 이후에 만들어진 세션 = 재인증을 실제로 마치고 돌아온 복귀 — 소진 후 정상 진행.
+                event.cookies.delete(reauthCookieName, { path: "/oidc/authorize" });
+                reauthRequired = false;
+            } else {
+                event.cookies.set(reauthCookieName, String(Date.now()), {
+                    path: "/oidc/authorize",
+                    httpOnly: true,
+                    sameSite: "lax",
+                    secure: url.protocol === "https:",
+                    maxAge: 600,
+                });
+            }
+        }
+
+        if (!loggedIn || reauthRequired) {
+            // 인터랙티브 로그인/재인증으로 리다이렉트.
+            const loginUrl = new URL("/login", url);
+            loginUrl.searchParams.set("redirectTo", url.pathname + url.search);
+            loginUrl.searchParams.set("skinHint", `oidc:${client.id}`);
+            if (reauthRequired) loginUrl.searchParams.set("forceAuthn", "true");
+            if (loginHint) loginUrl.searchParams.set("loginHint", loginHint);
+            throw redirect(302, loginUrl.toString());
+        }
     }
 
     // 여기 도달 시 로그인 상태가 보장된다 (타입 좁히기용 방어 체크).

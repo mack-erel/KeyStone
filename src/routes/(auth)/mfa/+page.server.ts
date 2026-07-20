@@ -5,6 +5,7 @@ import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { createSessionRecord, setSessionCookie } from "$lib/server/auth/session";
 import { verifyMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
+import { createTrustedDevice, setTrustedDeviceCookie } from "$lib/server/auth/trusted-device";
 import { tryWithSecrets, tryWithSecretsNullable } from "$lib/server/crypto/keys";
 import { verifyTotp, decryptTotpSecret, encryptTotpSecret, isLegacyTotpCiphertext, verifyBackupCode } from "$lib/server/auth/totp";
 import { checkRateLimit } from "$lib/server/ratelimit";
@@ -63,7 +64,8 @@ export const load: PageServerLoad = async ({ locals, cookies, platform, url }) =
         }
     }
 
-    return { skinHtml, skinHint, redirectTo: claims.redirectTo ?? null };
+    // 강제 재인증(admin·ForceAuthn·prompt=login 등) 중에는 신뢰 기기 옵션 자체를 노출하지 않는다.
+    return { skinHtml, skinHint, redirectTo: claims.redirectTo ?? null, canRememberDevice: !claims.forced };
 };
 
 async function resolveMfaSkinForAction(event: Parameters<Actions["default"]>[0], flashMsg: string): Promise<string | null> {
@@ -132,6 +134,10 @@ export const actions: Actions = {
             .trim()
             .replace(/\s/g, "");
         const useBackup = formData.get("use_backup") === "1";
+        // 신뢰 기기 등록 요청. claims.forced 면 폼 값과 무관하게 무시한다(서버측 강제 —
+        // 클라이언트가 체크박스를 임의로 제출해도 forceAuthn 흐름을 우회할 수 없다).
+        const rememberDevice = !claims.forced && formData.get("remember_device") === "1";
+        const ipBound = rememberDevice && formData.get("ip_bound") === "1";
 
         if (!code) {
             const msg = translate(locale, "mfa_login.err_missing_code");
@@ -243,6 +249,20 @@ export const actions: Actions = {
         });
 
         setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);
+
+        // 신뢰 기기 등록 — MFA 를 실제로 통과한 이 시점에만 발급한다.
+        // 백업 코드로 통과한 경우도 허용한다(감사 detail 의 method 로 구분 가능).
+        if (rememberDevice) {
+            const trusted = await createTrustedDevice(db, {
+                tenantId: claims.tenantId,
+                userId: user.id,
+                ip: requestMetadata.ip,
+                userAgent: requestMetadata.userAgent,
+                ipBound,
+            });
+            setTrustedDeviceCookie(event.cookies, event.url, trusted.token, trusted.expiresAt);
+        }
+
         await recordAuditEvent(db, {
             tenantId: claims.tenantId,
             userId: user.id,
@@ -251,7 +271,7 @@ export const actions: Actions = {
             outcome: "success",
             ip: requestMetadata.ip,
             userAgent: requestMetadata.userAgent,
-            detail: { amr: [AMR_PASSWORD, amrMethod] },
+            detail: { amr: [AMR_PASSWORD, amrMethod], method: useBackup ? "backup_code" : "totp", trustedDevice: rememberDevice },
         });
 
         const dest = claims.redirectTo;

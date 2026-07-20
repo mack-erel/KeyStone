@@ -224,6 +224,44 @@ export const sessions = sqliteTable(
     (t) => [uniqueIndex("sessions_idp_session_id_uidx").on(t.idpSessionId), index("sessions_user_idx").on(t.userId), index("sessions_expires_idx").on(t.expiresAt)],
 );
 
+/**
+ * 신뢰 기기("이 기기에서 다시 인증하지 않기"). 로그인 시 MFA 단계를 건너뛸 수 있는 기기를
+ * 기록한다. 쿠키에는 랜덤 토큰 원본을, DB 에는 SHA-256 해시만 저장해 DB 유출만으로는
+ * 기기를 위장할 수 없게 한다(sessions.idp_session_id 와 동일한 모델).
+ *
+ * `ip_bound` 는 사용자가 등록 시 선택하는 옵트인 옵션이다. true 면 저장된 ip 와 다른 곳에서의
+ * 재사용을 거부한다(모바일 등 IP 가 자주 바뀌는 환경에서는 false 가 기본).
+ */
+export const trustedDevices = sqliteTable(
+    "trusted_devices",
+    {
+        id: text("id")
+            .primaryKey()
+            .$defaultFn(() => crypto.randomUUID()),
+        tenantId: text("tenant_id")
+            .notNull()
+            .references(() => tenants.id, { onDelete: "cascade" }),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        /** 쿠키 토큰의 SHA-256 해시(base64url). 원본은 저장하지 않는다. */
+        tokenHash: text("token_hash").notNull(),
+        ip: text("ip"),
+        userAgent: text("user_agent"),
+        /** true 면 등록 시점 ip 와 다른 요청에서는 신뢰를 적용하지 않는다. */
+        ipBound: integer("ip_bound", { mode: "boolean" }).notNull().default(false),
+        createdAt: integer("created_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+        lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" })
+            .notNull()
+            .default(sql`(unixepoch() * 1000)`),
+        expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+        revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    },
+    (t) => [uniqueIndex("trusted_devices_token_hash_uidx").on(t.tokenHash), index("trusted_devices_user_idx").on(t.userId), index("trusted_devices_expires_idx").on(t.expiresAt)],
+);
+
 // ---------- OIDC ----------
 
 export const oidcClients = sqliteTable(
@@ -996,6 +1034,7 @@ export type Credential = typeof credentials.$inferSelect;
 export type Identity = typeof identities.$inferSelect;
 export type IdentityProvider = typeof identityProviders.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+export type TrustedDevice = typeof trustedDevices.$inferSelect;
 export type OidcClient = typeof oidcClients.$inferSelect;
 export type OidcGrant = typeof oidcGrants.$inferSelect;
 export type OidcRefreshToken = typeof oidcRefreshTokens.$inferSelect;

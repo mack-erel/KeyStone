@@ -210,7 +210,21 @@
             "revoked_notice": "The selected session was signed out.",
             "revoked_others_notice": "Signed out of all other devices.",
             "err_select_session": "Please select a session.",
-            "err_not_found": "Session not found."
+            "err_not_found": "Session not found.",
+            "trusted_devices_title": "Trusted devices",
+            "trusted_devices_subtitle": "Devices allowed to skip two-factor authentication. Remove any you don't recognize.",
+            "trusted_devices_empty": "No trusted devices.",
+            "ip_bound_badge": "IP-bound",
+            "last_used_label": "Last used",
+            "expires_label": "Expires",
+            "revoke_trusted_device": "Remove",
+            "revoke_trusted_device_confirm": "Remove trust for this device? It will require two-factor authentication on the next sign-in.",
+            "revoke_all_trusted_devices": "Remove all trusted devices",
+            "revoke_all_trusted_devices_confirm": "Remove all trusted devices? Every device will require two-factor authentication on the next sign-in.",
+            "trusted_device_revoked_notice": "The selected trusted device was removed.",
+            "trusted_devices_revoked_all_notice": "All trusted devices were removed.",
+            "err_select_device": "Please select a device.",
+            "err_device_not_found": "Trusted device not found."
         },
         "danger_zone": {
             "title": "Delete account",
@@ -244,7 +258,9 @@
         "err_rate_limit": "Too many verification attempts. Please try again later.",
         "err_missing_code": "Please enter your code.",
         "err_invalid_totp": "Invalid authentication code.",
-        "err_invalid_backup": "Invalid backup code."
+        "err_invalid_backup": "Invalid backup code.",
+        "remember_device": "Don't ask again on this device for 14 days",
+        "remember_device_ip_bound": "Re-authenticate if my IP address changes"
     },
     "mfa_manage": {
         "title": "Two-Factor Authentication Settings",

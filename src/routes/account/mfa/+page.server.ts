@@ -8,6 +8,7 @@ import { tryWithSecrets, tryWithSecretsNullable } from "$lib/server/crypto/keys"
 import { TOTP_CREDENTIAL_TYPE, BACKUP_CODE_CREDENTIAL_TYPE } from "$lib/server/auth/constants";
 import { credentials } from "$lib/server/db/schema";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit";
+import { clearTrustedDeviceCookie, revokeAllTrustedDevices } from "$lib/server/auth/trusted-device";
 import { dispatchSecurityAlert } from "$lib/server/security-notify";
 import { checkRateLimit } from "$lib/server/ratelimit";
 
@@ -291,6 +292,11 @@ export const actions: Actions = {
         await db.delete(credentials).where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, TOTP_CREDENTIAL_TYPE)));
 
         await db.delete(credentials).where(and(eq(credentials.userId, locals.user.id), eq(credentials.type, BACKUP_CODE_CREDENTIAL_TYPE)));
+
+        // MFA 를 해제했으므로 "MFA 를 통과한 기기" 라는 신뢰의 근거도 사라진다 — 전부 폐기한다.
+        // (재등록 시 이전 신뢰 기기가 되살아나면 안 된다.)
+        await revokeAllTrustedDevices(db, locals.user.id);
+        clearTrustedDeviceCookie(event.cookies, event.url);
 
         const requestMetadata = getRequestMetadata(event);
         await recordAuditEvent(db, {
