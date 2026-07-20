@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { RequestHandler } from "./$types";
 import { requireDbContext } from "$lib/server/auth/guards";
 import { recordAuditEvent, getRequestMetadata } from "$lib/server/audit/index";
-import { createSessionRecord, revokeOtherSessions, setSessionCookie } from "$lib/server/auth/session";
+import { createSessionRecord, setSessionCookie } from "$lib/server/auth/session";
 import { sanitizeRedirectTarget } from "$lib/server/auth/redirect";
 import { AMR_WEBAUTHN, amrToAcr } from "$lib/server/auth/constants";
 import { checkRateLimit } from "$lib/server/ratelimit";
@@ -99,7 +99,7 @@ export const POST: RequestHandler = async (event) => {
     }
 
     const requestMetadata = getRequestMetadata(event);
-    const { sessionToken, expiresAt, sessionId } = await createSessionRecord(db, {
+    const { sessionToken, expiresAt } = await createSessionRecord(db, {
         tenantId: tenant.id,
         userId: user.id,
         ip: requestMetadata.ip,
@@ -107,9 +107,6 @@ export const POST: RequestHandler = async (event) => {
         amr: [AMR_WEBAUTHN],
         acr: amrToAcr([AMR_WEBAUTHN]),
     });
-
-    // 기존 세션 회수 — 새 세션만 살아남도록.
-    await revokeOtherSessions(db, user.id, sessionId);
 
     setSessionCookie(cookies, url, sessionToken, expiresAt);
 
