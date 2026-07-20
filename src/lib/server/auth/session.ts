@@ -68,8 +68,9 @@ export async function createSessionRecord(
 }
 
 /**
- * 새로 발급된 세션을 제외한 동일 사용자의 모든 활성 세션을 무효화한다.
- * 로그인/MFA/패스키 인증 직후 호출하면 기존 세션 탈취 흔적을 제거할 수 있다.
+ * 지정한 세션을 제외한 동일 사용자의 모든 활성 세션을 무효화한다.
+ * 셀프서비스 세션 관리 화면의 "다른 세션 모두 로그아웃" 에서 사용한다.
+ * (로그인 시에는 호출하지 않는다 — 디바이스별 동시 세션을 허용한다.)
  */
 export async function revokeOtherSessions(db: DB, userId: string, keepSessionId: string, revokedAt = new Date()) {
     await db

@@ -3,7 +3,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
-import { createSessionRecord, revokeOtherSessions, setSessionCookie } from "$lib/server/auth/session";
+import { createSessionRecord, setSessionCookie } from "$lib/server/auth/session";
 import { verifyMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
 import { tryWithSecrets, tryWithSecretsNullable } from "$lib/server/crypto/keys";
 import { verifyTotp, decryptTotpSecret, encryptTotpSecret, isLegacyTotpCiphertext, verifyBackupCode } from "$lib/server/auth/totp";
@@ -233,7 +233,7 @@ export const actions: Actions = {
         // MFA 통과 — 세션 생성
         event.cookies.delete(MFA_PENDING_COOKIE, { path: "/" });
 
-        const { sessionToken, expiresAt, sessionId } = await createSessionRecord(db, {
+        const { sessionToken, expiresAt } = await createSessionRecord(db, {
             tenantId: claims.tenantId,
             userId: user.id,
             ip: requestMetadata.ip,
@@ -241,9 +241,6 @@ export const actions: Actions = {
             amr: [AMR_PASSWORD, amrMethod],
             acr: amrToAcr([AMR_PASSWORD, amrMethod]),
         });
-
-        // 기존 세션 회수 — 새 세션만 살아남도록.
-        await revokeOtherSessions(db, user.id, sessionId);
 
         setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);
         await recordAuditEvent(db, {

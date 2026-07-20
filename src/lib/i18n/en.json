@@ -204,6 +204,8 @@
             "revoke_current_confirm": "This is the device you're currently using. Signing out will log you out here too. Continue?",
             "revoke_others": "Sign out all other devices",
             "revoke_others_confirm": "Sign out every session except this device?",
+            "revoke_all": "Sign out all devices",
+            "revoke_all_confirm": "Sign out every session, including this device? You will need to sign in again.",
             "empty": "No active sessions.",
             "revoked_notice": "The selected session was signed out.",
             "revoked_others_notice": "Signed out of all other devices.",

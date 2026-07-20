@@ -96,7 +96,7 @@ const otherCount = $derived(data.sessions.filter((s: (typeof data.sessions)[numb
             {/if}
 
             {#if otherCount > 0}
-                <form method="POST" action="?/revokeOthers" use:enhance>
+                <form method="POST" action="?/revokeOthers" use:enhance class="mb-3">
                     <button
                         type="submit"
                         class="w-full rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
@@ -106,6 +106,21 @@ const otherCount = $derived(data.sessions.filter((s: (typeof data.sessions)[numb
                             }
                         }}>
                         {t("account.sessions.revoke_others")}
+                    </button>
+                </form>
+            {/if}
+
+            {#if data.sessions.length > 0}
+                <form method="POST" action="?/revokeAll" use:enhance>
+                    <button
+                        type="submit"
+                        class="w-full rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 shadow-sm transition hover:bg-red-50"
+                        onclick={(e: MouseEvent) => {
+                            if (!confirm(t("account.sessions.revoke_all_confirm"))) {
+                                e.preventDefault();
+                            }
+                        }}>
+                        {t("account.sessions.revoke_all")}
                     </button>
                 </form>
             {/if}

@@ -2,7 +2,7 @@ import { fail, redirect } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
-import { createSessionRecord, revokeOtherSessions, setSessionCookie } from "$lib/server/auth/session";
+import { createSessionRecord, setSessionCookie } from "$lib/server/auth/session";
 import { authenticateLocalUser, authenticatePendingDeletionUser, hasTotpCredential, normalizeUsername } from "$lib/server/auth/users";
 import { createMfaPendingToken, MFA_PENDING_COOKIE } from "$lib/server/auth/mfa";
 import { AMR_PASSWORD, amrToAcr } from "$lib/server/auth/constants";
@@ -323,7 +323,7 @@ export const actions: Actions = {
         }
 
         // MFA 없음 — 세션 바로 생성
-        const { sessionToken, expiresAt, sessionId } = await createSessionRecord(db, {
+        const { sessionToken, expiresAt } = await createSessionRecord(db, {
             tenantId: tenant.id,
             userId: user.id,
             ip: requestMetadata.ip,
@@ -331,9 +331,6 @@ export const actions: Actions = {
             amr: [AMR_PASSWORD],
             acr: amrToAcr([AMR_PASSWORD]),
         });
-
-        // 기존 세션 회수 — 새 세션만 살아남도록.
-        await revokeOtherSessions(db, user.id, sessionId);
 
         setSessionCookie(event.cookies, event.url, sessionToken, expiresAt);
         await recordAuditEvent(db, {

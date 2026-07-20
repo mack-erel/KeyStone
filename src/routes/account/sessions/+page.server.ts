@@ -2,8 +2,8 @@ import { fail, redirect } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types";
 import { getRequestMetadata, recordAuditEvent } from "$lib/server/audit";
 import { requireDbContext } from "$lib/server/auth/guards";
-import { clearSessionCookie, listActiveSessions, revokeOtherSessions, revokeSessionById } from "$lib/server/auth/session";
-import { revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
+import { clearSessionCookie, listActiveSessions, revokeAllUserSessions, revokeOtherSessions, revokeSessionById } from "$lib/server/auth/session";
+import { revokeAllUserRefreshTokens, revokeRefreshTokensForSession } from "$lib/server/oidc/refresh";
 import { dispatchSecurityAlert } from "$lib/server/security-notify";
 import { translate } from "$lib/i18n/server";
 
@@ -103,5 +103,37 @@ export const actions: Actions = {
         }
 
         return { revokedOthers: true };
+    },
+
+    // 일괄 로그아웃 — 현재 세션을 포함한 모든 세션 + 모든 OIDC refresh token 폐기.
+    // 관리자 강제 로그아웃(forceLogout)과 동일한 폐기 조합을 셀프서비스로 제공한다.
+    revokeAll: async (event) => {
+        const { locals } = event;
+        if (!locals.user) throw redirect(303, "/login");
+
+        const { db, tenant } = requireDbContext(locals);
+        const active = await listActiveSessions(db, locals.user.id);
+
+        await revokeAllUserSessions(db, locals.user.id);
+        await revokeAllUserRefreshTokens(db, locals.user.id);
+
+        const requestMetadata = getRequestMetadata(event);
+        await recordAuditEvent(db, {
+            tenantId: tenant.id,
+            userId: locals.user.id,
+            actorId: locals.user.id,
+            kind: "sessions_revoked",
+            outcome: "success",
+            ip: requestMetadata.ip,
+            userAgent: requestMetadata.userAgent,
+            detail: { all: true, count: active.length },
+        });
+
+        // 보안 알림(best-effort, waitUntil 격리) — 세션 탈취 방어를 위해 항상 발송한다.
+        dispatchSecurityAlert({ to: locals.user.email, locale: locals.user.locale, kind: "sessions_revoked_all", platform: event.platform });
+
+        // 현재 세션도 폐기되었으므로 쿠키를 지우고 로그인으로 보낸다.
+        clearSessionCookie(event.cookies, event.url);
+        throw redirect(303, "/login");
     },
 };

@@ -204,6 +204,8 @@
             "revoke_current_confirm": "현재 사용 중인 기기입니다. 로그아웃하면 이 화면에서도 로그아웃됩니다. 계속할까요?",
             "revoke_others": "다른 모든 기기에서 로그아웃",
             "revoke_others_confirm": "현재 기기를 제외한 모든 세션을 로그아웃할까요?",
+            "revoke_all": "모든 기기에서 로그아웃",
+            "revoke_all_confirm": "현재 기기를 포함한 모든 세션을 로그아웃할까요? 로그아웃 후 다시 로그인해야 합니다.",
             "empty": "활성 세션이 없습니다.",
             "revoked_notice": "선택한 세션을 로그아웃했습니다.",
             "revoked_others_notice": "다른 모든 기기에서 로그아웃했습니다.",
